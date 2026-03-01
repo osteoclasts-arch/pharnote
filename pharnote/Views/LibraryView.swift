@@ -119,6 +119,12 @@ struct LibraryView: View {
     }
 }
 
+#Preview("LibraryView iPad", traits: .device("iPad Pro (11-inch)")) {
+    NavigationStack {
+        LibraryView()
+    }
+}
+
 private struct DocumentRowView: View {
     let document: PharDocument
 

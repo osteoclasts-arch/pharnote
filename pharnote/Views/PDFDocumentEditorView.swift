@@ -366,6 +366,47 @@ struct PDFDocumentEditorView: View {
     }
 }
 
+#Preview("PDFEditor iPad", traits: .device("iPad Pro (11-inch)")) {
+    NavigationStack {
+        PDFDocumentEditorView(document: PreviewDocumentFactory.pdfDocument())
+    }
+}
+
+private enum PreviewDocumentFactory {
+    static func pdfDocument() -> PharDocument {
+        let baseURL = FileManager.default.temporaryDirectory.appendingPathComponent("PDFPreview.pharnote", isDirectory: true)
+        let pdfURL = baseURL.appendingPathComponent("Original.pdf", isDirectory: false)
+        ensurePreviewPDFExists(at: pdfURL)
+        return PharDocument(
+            id: UUID(),
+            title: "미리보기 PDF",
+            createdAt: Date(),
+            updatedAt: Date(),
+            type: .pdf,
+            path: baseURL.path
+        )
+    }
+
+    private static func ensurePreviewPDFExists(at url: URL) {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: url.path) { return }
+        try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 595, height: 842))
+        let data = renderer.pdfData { context in
+            context.beginPage()
+            let text = "Preview PDF"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 32, weight: .semibold),
+                .foregroundColor: UIColor.darkGray
+            ]
+            let textRect = CGRect(x: 40, y: 40, width: 515, height: 100)
+            text.draw(in: textRect, withAttributes: attributes)
+        }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 private struct PDFPageThumbnailCell: View {
     let image: UIImage?
     let pageNumber: Int

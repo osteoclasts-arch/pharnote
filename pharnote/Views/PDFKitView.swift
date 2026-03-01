@@ -48,15 +48,15 @@ struct PDFKitView: UIViewRepresentable {
                 guard let self,
                       let document = sender.document,
                       let currentPage = sender.currentPage else {
-                    self?.viewModel.setActiveOverlayCanvas(nil)
+                    self?.setActiveOverlayCanvas(nil)
                     return
                 }
                 let pageIndex = document.index(for: currentPage)
                 if pageIndex == NSNotFound {
-                    self.viewModel.setActiveOverlayCanvas(nil)
+                    self.setActiveOverlayCanvas(nil)
                     return
                 }
-                self.viewModel.setActiveOverlayCanvas(self.pageCanvases[pageIndex])
+                self.setActiveOverlayCanvas(self.pageCanvases[pageIndex])
             }
         }
 
@@ -90,7 +90,7 @@ struct PDFKitView: UIViewRepresentable {
             canvasPageMap[ObjectIdentifier(canvas)] = pageIndex
 
             if pageIndex == viewModel.currentPageIndex {
-                viewModel.setActiveOverlayCanvas(canvas)
+                setActiveOverlayCanvas(canvas)
             }
 
             Task { [weak self, weak canvas] in
@@ -99,7 +99,7 @@ struct PDFKitView: UIViewRepresentable {
                 await MainActor.run {
                     canvas.drawing = drawing
                     if pageIndex == self.viewModel.currentPageIndex {
-                        self.viewModel.setActiveOverlayCanvas(canvas)
+                        self.setActiveOverlayCanvas(canvas)
                     }
                 }
             }
@@ -121,7 +121,11 @@ struct PDFKitView: UIViewRepresentable {
             canvas.allowsFingerDrawing = viewModel.allowsFingerDrawing()
             canvas.drawingPolicy = viewModel.currentDrawingPolicy()
             canvas.tool = viewModel.currentTool()
-            canvas.becomeFirstResponder()
+        }
+
+        private func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
+            viewModel.setActiveOverlayCanvas(canvas)
+            canvas?.becomeFirstResponder()
         }
     }
 }

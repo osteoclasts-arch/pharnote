@@ -173,6 +173,26 @@ struct BlankNoteEditorView: View {
     }
 }
 
+#Preview("BlankNoteEditor iPad", traits: .device("iPad Pro (11-inch)")) {
+    NavigationStack {
+        BlankNoteEditorView(document: PreviewDocumentFactory.blankNoteDocument())
+    }
+}
+
+private enum PreviewDocumentFactory {
+    static func blankNoteDocument() -> PharDocument {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("BlankNotePreview.pharnote", isDirectory: true)
+        return PharDocument(
+            id: UUID(),
+            title: "미리보기 노트",
+            createdAt: Date(),
+            updatedAt: Date(),
+            type: .blankNote,
+            path: url.path
+        )
+    }
+}
+
 private struct PageThumbnailCell: View {
     let image: UIImage?
     let pageNumber: Int
