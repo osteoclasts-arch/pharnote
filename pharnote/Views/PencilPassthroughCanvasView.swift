@@ -2,10 +2,10 @@ import PencilKit
 import UIKit
 
 final class PencilPassthroughCanvasView: PKCanvasView {
-    var allowsFingerDrawing: Bool = false
+    var allowsFingerTouchInput: Bool = false
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard !allowsFingerDrawing else {
+        guard !allowsFingerTouchInput else {
             return super.hitTest(point, with: event)
         }
 

@@ -1,0 +1,521 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+			93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F642F5474A1007D741C /* PharTheme.swift */; };
+		93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */; };
+		93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7C2F5474A1007D741C /* PDFKitView.swift */; };
+		93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F812F5474A1007D741C /* pharnoteApp.swift */; };
+		93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */; };
+		93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F662F5474A1007D741C /* BlankNoteContent.swift */; };
+		93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */; };
+		93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F742F5474A1007D741C /* LibraryViewModel.swift */; };
+		93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6E2F5474A1007D741C /* LibraryStore.swift */; };
+		93FC7F8C2F5474A1007D741C /* PharControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F632F5474A1007D741C /* PharControls.swift */; };
+		93FC7F8D2F5474A1007D741C /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F792F5474A1007D741C /* LibraryView.swift */; };
+		93FC7F8E2F5474A1007D741C /* PDFEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */; };
+		93FC7F8F2F5474A1007D741C /* BlankNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */; };
+		93FC7F902F5474A1007D741C /* PencilPassthroughCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */; };
+		93FC7F912F5474A1007D741C /* HandwritingSearchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */; };
+		93FC7F922F5474A1007D741C /* LibraryFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F682F5474A1007D741C /* LibraryFolder.swift */; };
+		93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */; };
+		93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */; };
+		93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */; };
+		93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */; };
+		93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */; };
+		93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F692F5474A1007D741C /* PharDocument.swift */; };
+		93FC7F992F5474A1007D741C /* DocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F782F5474A1007D741C /* DocumentEditorView.swift */; };
+		93FC7F9A2F5474A1007D741C /* PDFImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */; };
+			93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */; };
+			93FC7F9C2F5474A1007D741C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93FC7F802F5474A1007D741C /* Assets.xcassets */; };
+			AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000112F56000100AA0001 /* PersistenceController.swift */; };
+			AA0000022F56000100AA0001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000122F56000100AA0001 /* ContentView.swift */; };
+			AA0000032F56000100AA0001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000132F56000100AA0001 /* SettingsView.swift */; };
+			AA0000042F56000100AA0001 /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000142F56000100AA0001 /* NoteListView.swift */; };
+			AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000152F56000100AA0001 /* NoteDetailView.swift */; };
+			AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+			93FC7F1B2F5473E9007D741C /* pharnote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = pharnote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		93FC7F632F5474A1007D741C /* PharControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharControls.swift; sourceTree = "<group>"; };
+		93FC7F642F5474A1007D741C /* PharTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharTheme.swift; sourceTree = "<group>"; };
+		93FC7F662F5474A1007D741C /* BlankNoteContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteContent.swift; sourceTree = "<group>"; };
+		93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchModels.swift; sourceTree = "<group>"; };
+		93FC7F682F5474A1007D741C /* LibraryFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolder.swift; sourceTree = "<group>"; };
+		93FC7F692F5474A1007D741C /* PharDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharDocument.swift; sourceTree = "<group>"; };
+		93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteStore.swift; sourceTree = "<group>"; };
+		93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingIndexingPipeline.swift; sourceTree = "<group>"; };
+		93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchStore.swift; sourceTree = "<group>"; };
+		93FC7F6E2F5474A1007D741C /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFOverlayStore.swift; sourceTree = "<group>"; };
+		93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFThumbnailGenerator.swift; sourceTree = "<group>"; };
+		93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchInfrastructure.swift; sourceTree = "<group>"; };
+		93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteEditorViewModel.swift; sourceTree = "<group>"; };
+		93FC7F742F5474A1007D741C /* LibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewModel.swift; sourceTree = "<group>"; };
+		93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFEditorViewModel.swift; sourceTree = "<group>"; };
+		93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteEditorView.swift; sourceTree = "<group>"; };
+		93FC7F782F5474A1007D741C /* DocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorView.swift; sourceTree = "<group>"; };
+		93FC7F792F5474A1007D741C /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentEditorView.swift; sourceTree = "<group>"; };
+		93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImportPicker.swift; sourceTree = "<group>"; };
+		93FC7F7C2F5474A1007D741C /* PDFKitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFKitView.swift; sourceTree = "<group>"; };
+		93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilCanvasView.swift; sourceTree = "<group>"; };
+			93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilPassthroughCanvasView.swift; sourceTree = "<group>"; };
+			93FC7F802F5474A1007D741C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+			93FC7F812F5474A1007D741C /* pharnoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = pharnoteApp.swift; sourceTree = "<group>"; };
+			AA0000112F56000100AA0001 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+			AA0000122F56000100AA0001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+			AA0000132F56000100AA0001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+			AA0000142F56000100AA0001 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
+			AA0000152F56000100AA0001 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
+			AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Note+CoreDataClass.swift"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		93FC7F1D2F5473E9007D741C /* pharnote */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = pharnote;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		93FC7F182F5473E9007D741C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		93FC7F122F5473E9007D741C = {
+			isa = PBXGroup;
+			children = (
+				93FC7F1D2F5473E9007D741C /* pharnote */,
+				93FC7F1C2F5473E9007D741C /* Products */,
+				93FC7F822F5474A1007D741C /* pharnote */,
+			);
+			sourceTree = "<group>";
+		};
+		93FC7F1C2F5473E9007D741C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				93FC7F1B2F5473E9007D741C /* pharnote.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		93FC7F652F5474A1007D741C /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				93FC7F632F5474A1007D741C /* PharControls.swift */,
+				93FC7F642F5474A1007D741C /* PharTheme.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+			93FC7F6A2F5474A1007D741C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				93FC7F662F5474A1007D741C /* BlankNoteContent.swift */,
+				93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */,
+				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
+				93FC7F692F5474A1007D741C /* PharDocument.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+			};
+			AA0000212F56000100AA0001 /* CoreData */ = {
+				isa = PBXGroup;
+				children = (
+					AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */,
+				);
+				path = CoreData;
+				sourceTree = "<group>";
+			};
+			93FC7F722F5474A1007D741C /* Services */ = {
+				isa = PBXGroup;
+				children = (
+					93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */,
+					93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */,
+					93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */,
+					93FC7F6E2F5474A1007D741C /* LibraryStore.swift */,
+					93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */,
+					93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */,
+					93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */,
+					AA0000112F56000100AA0001 /* PersistenceController.swift */,
+				);
+				path = Services;
+				sourceTree = "<group>";
+			};
+		93FC7F762F5474A1007D741C /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */,
+				93FC7F742F5474A1007D741C /* LibraryViewModel.swift */,
+				93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+			93FC7F7F2F5474A1007D741C /* Views */ = {
+				isa = PBXGroup;
+				children = (
+					AA0000122F56000100AA0001 /* ContentView.swift */,
+					93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */,
+					93FC7F782F5474A1007D741C /* DocumentEditorView.swift */,
+					93FC7F792F5474A1007D741C /* LibraryView.swift */,
+					AA0000152F56000100AA0001 /* NoteDetailView.swift */,
+					AA0000142F56000100AA0001 /* NoteListView.swift */,
+					93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */,
+					93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
+					93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
+					93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
+					93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
+					AA0000132F56000100AA0001 /* SettingsView.swift */,
+				);
+				path = Views;
+				sourceTree = "<group>";
+			};
+			93FC7F822F5474A1007D741C /* pharnote */ = {
+				isa = PBXGroup;
+				children = (
+					AA0000212F56000100AA0001 /* CoreData */,
+					93FC7F652F5474A1007D741C /* DesignSystem */,
+					93FC7F6A2F5474A1007D741C /* Models */,
+					93FC7F722F5474A1007D741C /* Services */,
+					93FC7F762F5474A1007D741C /* ViewModels */,
+				93FC7F7F2F5474A1007D741C /* Views */,
+				93FC7F802F5474A1007D741C /* Assets.xcassets */,
+				93FC7F812F5474A1007D741C /* pharnoteApp.swift */,
+			);
+			name = pharnote;
+			path = /Users/osteoclasts_/Desktop/coding/pharnote/pharnote;
+			sourceTree = "<absolute>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		93FC7F1A2F5473E9007D741C /* pharnote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 93FC7F262F5473EB007D741C /* Build configuration list for PBXNativeTarget "pharnote" */;
+			buildPhases = (
+				93FC7F172F5473E9007D741C /* Sources */,
+				93FC7F182F5473E9007D741C /* Frameworks */,
+				93FC7F192F5473E9007D741C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				93FC7F1D2F5473E9007D741C /* pharnote */,
+			);
+			name = pharnote;
+			packageProductDependencies = (
+			);
+			productName = pharnote;
+			productReference = 93FC7F1B2F5473E9007D741C /* pharnote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		93FC7F132F5473E9007D741C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					93FC7F1A2F5473E9007D741C = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = 93FC7F162F5473E9007D741C /* Build configuration list for PBXProject "pharnote" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 93FC7F122F5473E9007D741C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 93FC7F1C2F5473E9007D741C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				93FC7F1A2F5473E9007D741C /* pharnote */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		93FC7F192F5473E9007D741C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				93FC7F9C2F5474A1007D741C /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+			93FC7F172F5473E9007D741C /* Sources */ = {
+				isa = PBXSourcesBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
+					AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,
+					AA0000022F56000100AA0001 /* ContentView.swift in Sources */,
+					AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */,
+					AA0000042F56000100AA0001 /* NoteListView.swift in Sources */,
+					AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
+					93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */,
+					93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */,
+					93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */,
+				93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */,
+				93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */,
+				93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */,
+				93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */,
+				93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */,
+				93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */,
+				93FC7F8C2F5474A1007D741C /* PharControls.swift in Sources */,
+				93FC7F8D2F5474A1007D741C /* LibraryView.swift in Sources */,
+				93FC7F8E2F5474A1007D741C /* PDFEditorViewModel.swift in Sources */,
+				93FC7F8F2F5474A1007D741C /* BlankNoteStore.swift in Sources */,
+				93FC7F902F5474A1007D741C /* PencilPassthroughCanvasView.swift in Sources */,
+				93FC7F912F5474A1007D741C /* HandwritingSearchStore.swift in Sources */,
+				93FC7F922F5474A1007D741C /* LibraryFolder.swift in Sources */,
+				93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */,
+				93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */,
+				93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */,
+				93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */,
+				93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */,
+				93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */,
+				93FC7F992F5474A1007D741C /* DocumentEditorView.swift in Sources */,
+				93FC7F9A2F5474A1007D741C /* PDFImportPicker.swift in Sources */,
+				93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		93FC7F242F5473EB007D741C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		93FC7F252F5473EB007D741C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		93FC7F272F5473EB007D741C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		93FC7F282F5473EB007D741C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		93FC7F162F5473E9007D741C /* Build configuration list for PBXProject "pharnote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				93FC7F242F5473EB007D741C /* Debug */,
+				93FC7F252F5473EB007D741C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		93FC7F262F5473EB007D741C /* Build configuration list for PBXNativeTarget "pharnote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				93FC7F272F5473EB007D741C /* Debug */,
+				93FC7F282F5473EB007D741C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 93FC7F132F5473E9007D741C /* Project object */;
+}

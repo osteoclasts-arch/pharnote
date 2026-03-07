@@ -173,7 +173,7 @@ struct BlankNoteEditorView: View {
     }
 }
 
-#Preview("BlankNoteEditor iPad", traits: .device("iPad Pro (11-inch)")) {
+#Preview("BlankNoteEditor") {
     NavigationStack {
         BlankNoteEditorView(document: PreviewDocumentFactory.blankNoteDocument())
     }

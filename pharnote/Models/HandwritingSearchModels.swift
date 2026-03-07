@@ -28,11 +28,11 @@ struct HandwritingIndexRecord: Identifiable, Codable {
 }
 
 struct SearchIndexStorageLayout {
-    static let rootDirectoryName = "SearchIndexes"
-    static let metadataDirectoryName = "Metadata"
-    static let payloadDirectoryName = "Payloads"
-    static let handwritingPayloadDirectoryName = "Handwriting"
+    nonisolated static let rootDirectoryName = "SearchIndexes"
+    nonisolated static let metadataDirectoryName = "Metadata"
+    nonisolated static let payloadDirectoryName = "Payloads"
+    nonisolated static let handwritingPayloadDirectoryName = "Handwriting"
 
-    static let jobsFileName = "handwriting_jobs.json"
-    static let recordsFileName = "handwriting_records.json"
+    nonisolated static let jobsFileName = "handwriting_jobs.json"
+    nonisolated static let recordsFileName = "handwriting_records.json"
 }

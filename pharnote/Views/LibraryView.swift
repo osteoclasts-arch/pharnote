@@ -6,12 +6,16 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(LibraryFolder.allCases, selection: $viewModel.selectedFolder) { folder in
-                Label(folder.rawValue, systemImage: iconName(for: folder))
-                    .font(PharTypography.body)
+            VStack(spacing: 0) {
+                sidebarBrandHeader
+
+                List(LibraryFolder.allCases, selection: $viewModel.selectedFolder) { folder in
+                    Label(folder.rawValue, systemImage: iconName(for: folder))
+                        .font(PharTypography.body)
+                }
+                .listStyle(.sidebar)
             }
             .navigationTitle("파르노트")
-            .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
         } detail: {
             NavigationStack(path: $viewModel.navigationPath) {
@@ -117,9 +121,32 @@ struct LibraryView: View {
             return "doc.richtext"
         }
     }
+
+    private var sidebarBrandHeader: some View {
+        VStack(spacing: 8) {
+            Image("BrandMark")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 132, height: 132)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(PharTheme.ColorToken.border.opacity(0.25), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
+
+            Text("pharnode")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(PharTheme.ColorToken.subtleText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(PharTheme.ColorToken.appBackground)
+    }
 }
 
-#Preview("LibraryView iPad", traits: .device("iPad Pro (11-inch)")) {
+#Preview("LibraryView") {
     NavigationStack {
         LibraryView()
     }

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 @MainActor
@@ -10,7 +11,11 @@ final class LibraryViewModel: ObservableObject {
 
     private let store: LibraryStore
 
-    init(store: LibraryStore = LibraryStore()) {
+    convenience init() {
+        self.init(store: LibraryStore())
+    }
+
+    init(store: LibraryStore) {
         self.store = store
         loadDocuments()
     }

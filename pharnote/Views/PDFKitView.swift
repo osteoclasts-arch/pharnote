@@ -44,19 +44,21 @@ struct PDFKitView: UIViewRepresentable {
                 queue: .main
             ) { [weak self] notification in
                 guard let sender = notification.object as? PDFView else { return }
-                self?.viewModel.handlePDFPageChanged(sender.currentPage)
-                guard let self,
-                      let document = sender.document,
-                      let currentPage = sender.currentPage else {
-                    self?.setActiveOverlayCanvas(nil)
-                    return
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.viewModel.handlePDFPageChanged(sender.currentPage)
+                    guard let document = sender.document,
+                          let currentPage = sender.currentPage else {
+                        self.setActiveOverlayCanvas(nil)
+                        return
+                    }
+                    let pageIndex = document.index(for: currentPage)
+                    if pageIndex == NSNotFound {
+                        self.setActiveOverlayCanvas(nil)
+                        return
+                    }
+                    self.setActiveOverlayCanvas(self.pageCanvases[pageIndex])
                 }
-                let pageIndex = document.index(for: currentPage)
-                if pageIndex == NSNotFound {
-                    self.setActiveOverlayCanvas(nil)
-                    return
-                }
-                self.setActiveOverlayCanvas(self.pageCanvases[pageIndex])
             }
         }
 
@@ -118,7 +120,7 @@ struct PDFKitView: UIViewRepresentable {
         }
 
         private func configureCanvas(_ canvas: PencilPassthroughCanvasView) {
-            canvas.allowsFingerDrawing = viewModel.allowsFingerDrawing()
+            canvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing()
             canvas.drawingPolicy = viewModel.currentDrawingPolicy()
             canvas.tool = viewModel.currentTool()
         }

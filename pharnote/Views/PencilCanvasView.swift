@@ -60,7 +60,7 @@ struct PencilCanvasView: UIViewRepresentable {
 
         func updateToolPickerVisibility(isVisible: Bool) {
             guard let canvasView else { return }
-            guard let windowScene = canvasView.window?.windowScene else {
+            guard let window = canvasView.window else {
                 guard windowLookupRetryCount < 3 else { return }
                 windowLookupRetryCount += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -70,7 +70,7 @@ struct PencilCanvasView: UIViewRepresentable {
             }
             windowLookupRetryCount = 0
 
-            let picker = PKToolPicker.shared(for: windowScene)
+            let picker = PKToolPicker.shared(for: window)
             toolPicker = picker
 
             guard let picker else { return }

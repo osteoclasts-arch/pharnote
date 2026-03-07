@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import PDFKit
 import PencilKit
 import SwiftUI

@@ -75,22 +75,6 @@ struct PDFDocumentEditorView: View {
 
                 HStack(spacing: PharTheme.Spacing.xSmall) {
                     PharToolbarIconButton(
-                        systemName: "arrow.uturn.backward",
-                        accessibilityLabel: "실행 취소",
-                        isEnabled: viewModel.canUndo
-                    ) {
-                        viewModel.undo()
-                    }
-
-                    PharToolbarIconButton(
-                        systemName: "arrow.uturn.forward",
-                        accessibilityLabel: "다시 실행",
-                        isEnabled: viewModel.canRedo
-                    ) {
-                        viewModel.redo()
-                    }
-
-                    PharToolbarIconButton(
                         systemName: "chevron.left",
                         accessibilityLabel: "이전 페이지",
                         isEnabled: viewModel.canGoPrevious
@@ -280,71 +264,226 @@ struct PDFDocumentEditorView: View {
 
     private var toolControls: some View {
         VStack(spacing: PharTheme.Spacing.xSmall) {
-            HStack(spacing: PharTheme.Spacing.small) {
-                Picker("도구", selection: $viewModel.selectedTool) {
-                    ForEach(PDFEditorViewModel.AnnotationTool.allCases) { tool in
-                        Text(tool.rawValue).tag(tool)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    paletteActionButton(
+                        systemName: "arrow.uturn.backward",
+                        label: "실행 취소",
+                        isEnabled: viewModel.canUndo
+                    ) {
+                        viewModel.undo()
                     }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
 
-                Button {
-                    viewModel.togglePencilOnlyInput()
-                } label: {
-                    Label(
-                        viewModel.isPencilOnlyInputEnabled ? "Pencil 전용" : "손가락 필기",
-                        systemImage: viewModel.isPencilOnlyInputEnabled ? "pencil.tip" : "hand.draw"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .hoverEffect(.highlight)
-            }
+                    paletteActionButton(
+                        systemName: "arrow.uturn.forward",
+                        label: "다시 실행",
+                        isEnabled: viewModel.canRedo
+                    ) {
+                        viewModel.redo()
+                    }
 
-            HStack(spacing: PharTheme.Spacing.xSmall) {
-                ForEach(viewModel.annotationColors) { colorOption in
+                    paletteDivider
+
+                    paletteToolButton(.pen, icon: "pencil.tip")
+                    paletteToolButton(.highlighter, icon: "highlighter")
+                    paletteToolButton(.eraser, icon: "eraser.fill")
+                    paletteToolButton(.lasso, icon: "lasso")
+
+                    paletteDivider
+
+                    HStack(spacing: 6) {
+                        ForEach(viewModel.annotationColors) { color in
+                            paletteColorButton(colorID: color.id)
+                        }
+                    }
+
+                    paletteDivider
+
+                    HStack(spacing: 6) {
+                        strokePresetButton(2)
+                        strokePresetButton(5)
+                        strokePresetButton(9)
+                        strokePresetButton(14)
+                    }
+                    .disabled(!viewModel.isEditingInkTool)
+
+                    paletteDivider
+
                     Button {
-                        viewModel.updateSelectedColor(colorOption.id)
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            viewModel.togglePencilOnlyInput()
+                        }
                     } label: {
-                        Circle()
-                            .fill(viewModel.swiftUIColorForColorID(colorOption.id))
-                            .frame(width: 22, height: 22)
-                            .overlay {
-                                Circle()
-                                    .stroke(
-                                        viewModel.selectedColorID == colorOption.id ? Color.primary : Color.clear,
-                                        lineWidth: 2
-                                    )
-                            }
+                        Label(
+                            viewModel.isPencilOnlyInputEnabled ? "Pencil" : "Touch",
+                            systemImage: viewModel.isPencilOnlyInputEnabled ? "pencil.tip" : "hand.draw.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    viewModel.isPencilOnlyInputEnabled
+                                    ? Color.accentColor.opacity(0.2)
+                                    : PharTheme.ColorToken.toolbarFill.opacity(0.6)
+                                )
+                        )
                     }
                     .buttonStyle(.plain)
-                    .frame(
-                        minWidth: PharTheme.HitArea.minimum,
-                        minHeight: PharTheme.HitArea.minimum
-                    )
-                    .contentShape(Circle())
-                    .hoverEffect(.lift)
-                    .disabled(!viewModel.isEditingInkTool)
+                    .hoverEffect(.highlight)
+                    .accessibilityLabel("입력 방식 전환")
                 }
+                .padding(.horizontal, PharTheme.Spacing.xSmall)
+                .padding(.vertical, PharTheme.Spacing.xSmall)
+            }
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
 
-                Text("굵기")
-                    .font(PharTypography.caption)
-                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+            if viewModel.isEditingInkTool {
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    Text("굵기")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
 
-                Slider(value: $viewModel.strokeWidth, in: 1...20, step: 1)
-                    .frame(maxWidth: 190)
-                    .disabled(!viewModel.isEditingInkTool)
+                    Slider(value: $viewModel.strokeWidth, in: 1...20, step: 1)
+                        .frame(maxWidth: 220)
 
-                Text("\(Int(viewModel.strokeWidth))")
-                    .font(PharTypography.captionStrong.monospacedDigit())
-                    .frame(width: 28, alignment: .trailing)
+                    Text("\(Int(viewModel.strokeWidth))")
+                        .font(PharTypography.captionStrong.monospacedDigit())
+                        .frame(width: 32, alignment: .trailing)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, PharTheme.Spacing.small)
+                .padding(.vertical, PharTheme.Spacing.xSmall)
+                .background(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                        .fill(PharTheme.ColorToken.toolbarFill.opacity(0.5))
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .padding(.horizontal, PharTheme.Spacing.small)
         .padding(.top, PharTheme.Spacing.xxSmall)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.selectedTool)
+    }
+
+    private var paletteDivider: some View {
+        Rectangle()
+            .fill(PharTheme.ColorToken.border.opacity(0.45))
+            .frame(width: 1, height: 30)
+    }
+
+    private func paletteActionButton(
+        systemName: String,
+        label: String,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .semibold))
+        }
+        .buttonStyle(PharToolbarButtonStyle(isSelected: false, isDestructive: false))
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
+    }
+
+    private func paletteToolButton(
+        _ tool: PDFEditorViewModel.AnnotationTool,
+        icon: String
+    ) -> some View {
+        Button {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.selectedTool = tool
+            }
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(
+                    minWidth: PharTheme.HitArea.minimum,
+                    minHeight: PharTheme.HitArea.minimum
+                )
+                .foregroundStyle(
+                    viewModel.selectedTool == tool
+                    ? Color.accentColor
+                    : Color.primary
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
+                        .fill(
+                            viewModel.selectedTool == tool
+                            ? Color.accentColor.opacity(0.18)
+                            : Color.clear
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.lift)
+        .accessibilityLabel("\(tool.rawValue) 도구")
+    }
+
+    private func paletteColorButton(colorID: Int) -> some View {
+        Button {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.updateSelectedColor(colorID)
+            }
+        } label: {
+            Circle()
+                .fill(viewModel.swiftUIColorForColorID(colorID))
+                .frame(width: 24, height: 24)
+                .overlay {
+                    Circle()
+                        .stroke(
+                            viewModel.selectedColorID == colorID ? Color.primary : Color.clear,
+                            lineWidth: 2
+                        )
+                }
+                .scaleEffect(viewModel.selectedColorID == colorID ? 1.08 : 1.0)
+                .frame(
+                    minWidth: PharTheme.HitArea.minimum,
+                    minHeight: PharTheme.HitArea.minimum
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.lift)
+        .disabled(!viewModel.isEditingInkTool)
+        .animation(.easeInOut(duration: 0.16), value: viewModel.selectedColorID)
+    }
+
+    private func strokePresetButton(_ width: Double) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.12)) {
+                viewModel.strokeWidth = width
+            }
+        } label: {
+            Circle()
+                .fill(Color.primary.opacity(0.86))
+                .frame(width: strokeDotSize(for: width), height: strokeDotSize(for: width))
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(viewModel.strokeWidth == width ? Color.accentColor.opacity(0.18) : Color.clear)
+                )
+                .frame(
+                    minWidth: PharTheme.HitArea.minimum,
+                    minHeight: PharTheme.HitArea.minimum
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.lift)
+    }
+
+    private func strokeDotSize(for width: Double) -> CGFloat {
+        min(max(CGFloat(width) * 1.2, 4), 14)
     }
 
     private var isErrorPresented: Binding<Bool> {
@@ -366,7 +505,7 @@ struct PDFDocumentEditorView: View {
     }
 }
 
-#Preview("PDFEditor iPad", traits: .device("iPad Pro (11-inch)")) {
+#Preview("PDFEditor") {
     NavigationStack {
         PDFDocumentEditorView(document: PreviewDocumentFactory.pdfDocument())
     }
