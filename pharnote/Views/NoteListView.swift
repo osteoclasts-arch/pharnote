@@ -56,13 +56,13 @@ struct NoteListView: View {
                 }
                 .listStyle(.insetGrouped)
             }
-            .navigationTitle("PárNote")
+            .navigationTitle("pharnode")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         createNoteAndOpen()
                     } label: {
-                        Label("New Note", systemImage: "plus")
+                        Label("새 노트", systemImage: "plus")
                     }
                 }
             }
@@ -80,10 +80,12 @@ struct NoteListView: View {
             .overlay {
                 if notes.isEmpty {
                     ContentUnavailableView(
-                        "No Notes",
+                        "노트가 없습니다",
                         systemImage: "note.text",
-                        description: Text("Tap + to create your first note.")
+                        description: Text("+ 버튼으로 첫 노트를 만드세요.")
                     )
+                    // Prevent this placeholder overlay from blocking toolbar/tab interactions.
+                    .allowsHitTesting(false)
                 }
             }
         }

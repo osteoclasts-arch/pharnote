@@ -103,15 +103,10 @@ final class PersistenceController: ObservableObject {
                 let status = try await queryAccountStatus()
                 guard !Task.isCancelled else { return }
 
-                switch status {
-                case .available:
-                    if case .syncing = syncState {
-                        return
-                    }
-                    if case .error = syncState {
-                        return
-                    }
-                    syncState = .idle
+        switch status {
+        case .available:
+            // Account is available. Do not keep an indefinite "syncing" state.
+            syncState = .idle
                 case .noAccount:
                     syncState = .unavailable("iCloud unavailable: please sign in.")
                     presentedError = PresentedError(
@@ -196,7 +191,8 @@ final class PersistenceController: ObservableObject {
             return
         }
 
-        syncState = .syncing
+        // Store loaded successfully. Idle by default, switch to syncing only on actual CloudKit events.
+        syncState = .idle
     }
 
     private func observeCloudEvents() {

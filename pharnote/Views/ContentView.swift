@@ -5,12 +5,12 @@ struct ContentView: View {
         TabView {
             NoteListView()
                 .tabItem {
-                    Label("Notes", systemImage: "note.text")
+                    Label("노트", systemImage: "note.text")
                 }
 
             SettingsView()
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape")
+                    Label("설정", systemImage: "gearshape")
                 }
         }
     }
