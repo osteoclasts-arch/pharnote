@@ -1,0 +1,130 @@
+[
+  {
+    "id": "ednet",
+    "category": "bootstrap_dkt",
+    "status": "ready_for_official_download",
+    "source_url": "https://github.com/riiid/ednet",
+    "use_cases": [
+      "kt_baseline_pretraining",
+      "sequence_schema_validation",
+      "action_taxonomy_design"
+    ],
+    "constraints": [
+      "not_pharnote_handwriting",
+      "not_page_note_understanding"
+    ]
+  },
+  {
+    "id": "assistments",
+    "category": "bootstrap_dkt",
+    "status": "conditional_access",
+    "source_url": "https://sites.google.com/view/assistmentsdatamining/dataset",
+    "use_cases": [
+      "kt_baseline_training",
+      "evaluation_harness_design"
+    ],
+    "constraints": [
+      "dataset_specific_terms_may_apply",
+      "not_korean_curriculum_native"
+    ]
+  },
+  {
+    "id": "datashop_public",
+    "category": "bootstrap_dkt",
+    "status": "public_but_account_needed_for_api",
+    "source_url": "https://pslcdatashop.web.cmu.edu/",
+    "use_cases": [
+      "public_dataset_discovery",
+      "etl_benchmarking",
+      "schema_validation"
+    ],
+    "constraints": [
+      "api_keys_needed_for_web_services",
+      "dataset_visibility_varies"
+    ]
+  },
+  {
+    "id": "junyi",
+    "category": "bootstrap_dkt",
+    "status": "access_flow_needs_verification",
+    "source_url": "https://sites.google.com/view/junyidataset/home",
+    "use_cases": [
+      "kt_benchmark_shortlist"
+    ],
+    "constraints": [
+      "current_site_redirects_to_google_signin"
+    ]
+  },
+  {
+    "id": "openstax",
+    "category": "support",
+    "status": "ready_for_reviewed_use",
+    "source_url": "https://openstax.org/licensing",
+    "use_cases": [
+      "textbook_structure",
+      "section_heading_patterns",
+      "concept_phrase_bootstrap"
+    ],
+    "constraints": [
+      "not_korean_curriculum_native"
+    ]
+  },
+  {
+    "id": "open_textbook_library",
+    "category": "support",
+    "status": "ready_for_reviewed_use",
+    "source_url": "https://open.umn.edu/opentextbooks",
+    "use_cases": [
+      "open_textbook_metadata",
+      "subject_grouping",
+      "isbn_mapping"
+    ],
+    "constraints": [
+      "metadata_and_open_textbook_discovery_only"
+    ]
+  },
+  {
+    "id": "aladin_ttb_api",
+    "category": "support",
+    "status": "api_terms_review_required",
+    "source_url": "https://www.aladin.co.kr/ttb/apiguide.aspx",
+    "use_cases": [
+      "book_metadata_enrichment",
+      "pdf_textbook_matching"
+    ],
+    "constraints": [
+      "metadata_only",
+      "api_terms_must_be_followed"
+    ]
+  },
+  {
+    "id": "data4library",
+    "category": "support",
+    "status": "api_registration_review_required",
+    "source_url": "https://www.data4library.kr/",
+    "use_cases": [
+      "isbn_metadata_enrichment",
+      "library_cross_reference"
+    ],
+    "constraints": [
+      "registration_and_rate_limit_review_needed"
+    ]
+  },
+  {
+    "id": "orbi",
+    "category": "support_manual_only",
+    "status": "manual_legal_review_required",
+    "source_url": "https://orbi.kr/robots.txt",
+    "use_cases": [
+      "alias_collection",
+      "misconception_phrase_candidates",
+      "exam_slang_review"
+    ],
+    "constraints": [
+      "no_dkt_ground_truth",
+      "no_disallowed_paths",
+      "no_personal_profile_storage",
+      "copyright_and_terms_review_still_required"
+    ]
+  }
+]

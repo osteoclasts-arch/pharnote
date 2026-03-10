@@ -13,7 +13,6 @@ struct PencilCanvasView: UIViewRepresentable {
         canvasView.delegate = context.coordinator
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
-        canvasView.drawingPolicy = .anyInput
         canvasView.alwaysBounceVertical = false
         canvasView.alwaysBounceHorizontal = false
         canvasView.contentInset = .zero
@@ -25,14 +24,14 @@ struct PencilCanvasView: UIViewRepresentable {
         viewModel.attachCanvasView(canvasView)
 
         DispatchQueue.main.async {
-            context.coordinator.updateToolPickerVisibility(isVisible: viewModel.isToolPickerVisible)
+            context.coordinator.updateCanvasState()
         }
 
         return canvasView
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        context.coordinator.updateToolPickerVisibility(isVisible: viewModel.isToolPickerVisible)
+        context.coordinator.updateCanvasState()
     }
 
     static func dismantleUIView(_ uiView: PKCanvasView, coordinator: Coordinator) {
@@ -42,7 +41,7 @@ struct PencilCanvasView: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private let viewModel: BlankNoteEditorViewModel
         private weak var canvasView: PKCanvasView?
-        private weak var toolPicker: PKToolPicker?
+        private let toolPicker = PKToolPicker()
         private var currentPickerVisibility: Bool = false
         private var windowLookupRetryCount: Int = 0
 
@@ -58,6 +57,14 @@ struct PencilCanvasView: UIViewRepresentable {
             viewModel.canvasDidChange()
         }
 
+        func updateCanvasState() {
+            guard let canvasView else { return }
+            canvasView.tool = viewModel.currentTool()
+            canvasView.drawingPolicy = viewModel.currentDrawingPolicy()
+            toolPicker.selectedTool = viewModel.currentTool()
+            updateToolPickerVisibility(isVisible: viewModel.isToolPickerVisible)
+        }
+
         func updateToolPickerVisibility(isVisible: Bool) {
             guard let canvasView else { return }
             guard let window = canvasView.window else {
@@ -70,10 +77,8 @@ struct PencilCanvasView: UIViewRepresentable {
             }
             windowLookupRetryCount = 0
 
-            let picker = PKToolPicker.shared(for: window)
-            toolPicker = picker
-
-            guard let picker else { return }
+            _ = window
+            let picker = toolPicker
 
             if isVisible {
                 if !currentPickerVisibility {
@@ -86,14 +91,13 @@ struct PencilCanvasView: UIViewRepresentable {
                     picker.removeObserver(canvasView)
                 }
                 picker.setVisible(false, forFirstResponder: canvasView)
-                canvasView.resignFirstResponder()
             }
 
             currentPickerVisibility = isVisible
         }
 
         func cleanup() {
-            guard let canvasView, let toolPicker else { return }
+            guard let canvasView else { return }
             toolPicker.setVisible(false, forFirstResponder: canvasView)
             toolPicker.removeObserver(canvasView)
         }

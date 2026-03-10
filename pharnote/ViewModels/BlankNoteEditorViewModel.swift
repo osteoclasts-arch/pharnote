@@ -5,33 +5,93 @@ import UIKit
 
 @MainActor
 final class BlankNoteEditorViewModel: ObservableObject {
-    @Published var isToolPickerVisible: Bool = true
+    enum AnnotationTool: String, CaseIterable, Identifiable {
+        case pen = "펜"
+        case highlighter = "형광펜"
+        case eraser = "지우개"
+        case lasso = "라쏘"
+
+        var id: String { rawValue }
+    }
+
+    struct AnnotationColor: Identifiable {
+        let id: Int
+        let uiColor: UIColor
+        let label: String
+    }
+
+    struct AnalysisPreview {
+        let pageNumber: Int
+        let strokeCount: Int
+        let isBookmarked: Bool
+        let hasUnsavedChanges: Bool
+        let updatedAt: Date
+    }
+
+    @Published var isToolPickerVisible: Bool = false
+    @Published var selectedTool: AnnotationTool = .pen
+    @Published var selectedColorID: Int = 0
+    @Published var strokeWidth: Double = 5.0
+    @Published var isPencilOnlyInputEnabled: Bool = false
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
     @Published private(set) var pages: [BlankNotePage] = []
     @Published private(set) var currentPageID: UUID?
     @Published private(set) var thumbnails: [UUID: UIImage] = [:]
+    @Published private(set) var bookmarkedPageIDs: Set<UUID>
     @Published var errorMessage: String?
 
     let document: PharDocument
+    let annotationColors: [AnnotationColor] = [
+        AnnotationColor(id: 0, uiColor: .black, label: "블랙"),
+        AnnotationColor(id: 1, uiColor: .systemBlue, label: "블루"),
+        AnnotationColor(id: 2, uiColor: .systemRed, label: "레드"),
+        AnnotationColor(id: 3, uiColor: .systemGreen, label: "그린"),
+        AnnotationColor(id: 4, uiColor: .systemOrange, label: "오렌지")
+    ]
 
     private let noteStore: BlankNoteStore
+    private let eventLogger: StudyEventLogger
+    private let userDefaults: UserDefaults
     private weak var canvasView: PKCanvasView?
     private var didRequestInitialLoad = false
+    private var didLogDocumentOpen = false
     private var isApplyingLoadedDrawing = false
     private var drawingCache: [UUID: PKDrawing] = [:]
     private var dirtyPageIDs: Set<UUID> = []
     private var persistTasks: [UUID: Task<Void, Never>] = [:]
     private var pageLoadToken: UUID = UUID()
     private let thumbnailSize = CGSize(width: 92, height: 120)
+    private let sessionID = UUID()
+    private let sessionStartedAt = Date()
+    private var pageEntryStartedAt = Date()
+    private var dwellSecondsByPageID: [UUID: TimeInterval] = [:]
+    private var revisitCountByPageID: [UUID: Int] = [:]
+    private var toolUsageCounts: [AnnotationTool: Int] = [.pen: 1]
+    private var undoCountByPageID: [UUID: Int] = [:]
+    private var redoCountByPageID: [UUID: Int] = [:]
+    private var lassoActionCountByPageID: [UUID: Int] = [:]
+    private var copyActionCountByPageID: [UUID: Int] = [:]
+    private var pasteActionCountByPageID: [UUID: Int] = [:]
+    private var pageNavigationHistory: [UUID] = []
 
-    init(document: PharDocument, noteStore: BlankNoteStore = BlankNoteStore()) {
+    init(
+        document: PharDocument,
+        noteStore: BlankNoteStore = BlankNoteStore(),
+        eventLogger: StudyEventLogger? = nil,
+        userDefaults: UserDefaults = .standard
+    ) {
         self.document = document
         self.noteStore = noteStore
+        self.eventLogger = eventLogger ?? StudyEventLogger.shared
+        self.userDefaults = userDefaults
+        self.bookmarkedPageIDs = Set((userDefaults.stringArray(forKey: "pharnote.bookmarks.\(document.id.uuidString)") ?? []).compactMap(UUID.init(uuidString:)))
     }
 
     func attachCanvasView(_ canvasView: PKCanvasView) {
         self.canvasView = canvasView
+        applyCanvasConfiguration()
+
         if let currentPageID, let drawing = drawingCache[currentPageID] {
             applyDrawingToCanvas(drawing)
         } else {
@@ -50,6 +110,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 if currentPageID == nil {
                     currentPageID = pages.first?.id
                 }
+                logDocumentOpenedIfNeeded()
+                if let currentPageID {
+                    recordPageVisit(currentPageID)
+                }
                 await loadThumbnailCacheForAllPages()
                 if let currentPageID {
                     await loadAndApplyPage(pageID: currentPageID)
@@ -64,7 +128,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
         guard currentPageID != pageID else { return }
         commitCurrentCanvasToCache()
         saveCurrentPageImmediately()
+        recordPageExit()
         currentPageID = pageID
+        recordPageVisit(pageID)
 
         Task {
             await loadAndApplyPage(pageID: pageID)
@@ -74,6 +140,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     func addPage() {
         commitCurrentCanvasToCache()
         saveCurrentPageImmediately()
+        recordPageExit()
 
         let now = Date()
         let newPage = BlankNotePage(id: UUID(), createdAt: now, updatedAt: now)
@@ -85,6 +152,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         }
 
         currentPageID = newPage.id
+        recordPageVisit(newPage.id)
         drawingCache[newPage.id] = PKDrawing()
         applyDrawingToCanvas(PKDrawing())
         saveContentSnapshot()
@@ -107,6 +175,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
         dirtyPageIDs.remove(pageID)
         drawingCache.removeValue(forKey: pageID)
         thumbnails.removeValue(forKey: pageID)
+        bookmarkedPageIDs.remove(pageID)
+        persistBookmarks()
 
         let nextSelectedPageID: UUID?
         if removeIndex < pages.count - 1 {
@@ -122,12 +192,11 @@ final class BlankNoteEditorViewModel: ObservableObject {
             await noteStore.deleteThumbnailData(documentURL: documentURL, pageID: pageID)
         }
 
-        if currentPageID == pageID {
-            if let nextSelectedPageID {
-                currentPageID = nextSelectedPageID
-                Task {
-                    await loadAndApplyPage(pageID: nextSelectedPageID)
-                }
+        if currentPageID == pageID, let nextSelectedPageID {
+            currentPageID = nextSelectedPageID
+            recordPageVisit(nextSelectedPageID)
+            Task {
+                await loadAndApplyPage(pageID: nextSelectedPageID)
             }
         }
 
@@ -143,8 +212,103 @@ final class BlankNoteEditorViewModel: ObservableObject {
         thumbnails[pageID]
     }
 
+    func isPageBookmarked(_ pageID: UUID) -> Bool {
+        bookmarkedPageIDs.contains(pageID)
+    }
+
+    func isPageDirty(_ pageID: UUID) -> Bool {
+        dirtyPageIDs.contains(pageID)
+    }
+
     var canDeletePage: Bool {
         pages.count > 1
+    }
+
+    var isEditingInkTool: Bool {
+        selectedTool == .pen || selectedTool == .highlighter
+    }
+
+    var currentPageNumber: Int {
+        guard let currentPageID else { return 0 }
+        return pageNumber(for: currentPageID)
+    }
+
+    var currentPageStrokeCount: Int {
+        guard let currentPageID else { return 0 }
+        return currentDrawing(for: currentPageID).strokes.count
+    }
+
+    var currentPageHasUnsavedChanges: Bool {
+        guard let currentPageID else { return false }
+        return dirtyPageIDs.contains(currentPageID)
+    }
+
+    var isCurrentPageBookmarked: Bool {
+        guard let currentPageID else { return false }
+        return bookmarkedPageIDs.contains(currentPageID)
+    }
+
+    var currentPageUpdatedAt: Date {
+        guard let currentPageID,
+              let page = pages.first(where: { $0.id == currentPageID }) else {
+            return document.updatedAt
+        }
+        return page.updatedAt
+    }
+
+    var analysisPreview: AnalysisPreview? {
+        guard currentPageID != nil else { return nil }
+        return AnalysisPreview(
+            pageNumber: currentPageNumber,
+            strokeCount: currentPageStrokeCount,
+            isBookmarked: isCurrentPageBookmarked,
+            hasUnsavedChanges: currentPageHasUnsavedChanges,
+            updatedAt: currentPageUpdatedAt
+        )
+    }
+
+    var currentAnalysisPageID: UUID? {
+        currentPageID
+    }
+
+    var analysisSource: BlankNoteAnalysisSource? {
+        guard let currentPageID,
+              let currentIndex = pages.firstIndex(where: { $0.id == currentPageID }) else {
+            return nil
+        }
+
+        let drawing = currentDrawing(for: currentPageID)
+        let previousPageIDs = currentIndex > 0 ? [pages[currentIndex - 1].id] : []
+        let nextPageIDs = currentIndex + 1 < pages.count ? [pages[currentIndex + 1].id] : []
+        let pageState = currentPageState(for: currentPageID)
+
+        return BlankNoteAnalysisSource(
+            document: document,
+            pageId: currentPageID,
+            pageIndex: currentIndex,
+            pageCount: pages.count,
+            previousPageIds: previousPageIDs,
+            nextPageIds: nextPageIDs,
+            pageState: pageState,
+            previewImageData: thumbnails[currentPageID]?.pngData(),
+            drawingData: drawing.strokes.isEmpty ? nil : drawing.dataRepresentation(),
+            drawingStats: drawingStats(for: drawing),
+            manualTags: [],
+            bookmarks: isCurrentPageBookmarked ? ["page-bookmark"] : [],
+            sessionId: sessionID,
+            dwellMs: currentDwellMilliseconds(for: currentPageID),
+            foregroundEditsMs: currentForegroundEditMilliseconds(for: drawing),
+            revisitCount: revisitCountByPageID[currentPageID, default: 0],
+            toolUsage: toolUsageCounts
+                .map { AnalysisToolUsage(tool: $0.key.rawValue, count: $0.value) }
+                .sorted { $0.tool < $1.tool },
+            lassoActions: lassoActionCountByPageID[currentPageID, default: 0],
+            copyActions: copyActionCountByPageID[currentPageID, default: 0],
+            pasteActions: pasteActionCountByPageID[currentPageID, default: 0],
+            undoCount: undoCountByPageID[currentPageID, default: 0],
+            redoCount: redoCountByPageID[currentPageID, default: 0],
+            navigationPath: navigationPathLabels()
+        )
     }
 
     func canvasDidChange() {
@@ -156,24 +320,138 @@ final class BlankNoteEditorViewModel: ObservableObject {
         scheduleDebouncedPersist(for: currentPageID)
     }
 
+    func selectTool(_ tool: AnnotationTool) {
+        selectedTool = tool
+        toolUsageCounts[tool, default: 0] += 1
+        if tool == .lasso, let currentPageID {
+            lassoActionCountByPageID[currentPageID, default: 0] += 1
+        }
+        eventLogger.log(
+            .annotationToolSelected,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "tool": .string(tool.rawValue),
+                "source": .string("toolbar")
+            ]
+        )
+        applyCanvasConfiguration()
+        refreshUndoRedoState()
+    }
+
+    func updateSelectedColor(_ colorID: Int) {
+        selectedColorID = colorID
+        applyCanvasConfiguration()
+    }
+
+    func selectStrokeWidth(_ width: Double) {
+        strokeWidth = width
+        applyCanvasConfiguration()
+    }
+
+    func togglePencilOnlyInput() {
+        isPencilOnlyInputEnabled.toggle()
+        applyCanvasConfiguration()
+        eventLogger.log(
+            .inputModeChanged,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "allows_finger_drawing": .bool(!isPencilOnlyInputEnabled)
+            ]
+        )
+    }
+
     func toggleToolPicker() {
         isToolPickerVisible.toggle()
     }
 
+    func toggleCurrentPageBookmark() {
+        guard let currentPageID else { return }
+        let isBookmarked: Bool
+        if bookmarkedPageIDs.contains(currentPageID) {
+            bookmarkedPageIDs.remove(currentPageID)
+            isBookmarked = false
+        } else {
+            bookmarkedPageIDs.insert(currentPageID)
+            isBookmarked = true
+        }
+        persistBookmarks()
+        eventLogger.log(
+            .pageBookmarkToggled,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "bookmarked": .bool(isBookmarked),
+                "page_index": .integer(pageNumber(for: currentPageID) - 1)
+            ]
+        )
+    }
+
     func undo() {
         canvasView?.undoManager?.undo()
+        if let currentPageID {
+            undoCountByPageID[currentPageID, default: 0] += 1
+            eventLogger.log(
+                .undoInvoked,
+                document: document,
+                pageID: currentPageID,
+                sessionID: sessionID,
+                payload: [
+                    "source": .string("toolbar")
+                ]
+            )
+        }
         commitCurrentCanvasToCache()
         saveCurrentPageDebounced()
     }
 
     func redo() {
         canvasView?.undoManager?.redo()
+        if let currentPageID {
+            redoCountByPageID[currentPageID, default: 0] += 1
+            eventLogger.log(
+                .redoInvoked,
+                document: document,
+                pageID: currentPageID,
+                sessionID: sessionID,
+                payload: [
+                    "source": .string("toolbar")
+                ]
+            )
+        }
         commitCurrentCanvasToCache()
         saveCurrentPageDebounced()
     }
 
+    func currentTool() -> PKTool {
+        switch selectedTool {
+        case .pen:
+            return PKInkingTool(.pen, color: uiColorForColorID(selectedColorID), width: CGFloat(strokeWidth))
+        case .highlighter:
+            let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
+            return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 2))
+        case .eraser:
+            return PKEraserTool(.vector)
+        case .lasso:
+            return PKLassoTool()
+        }
+    }
+
+    func currentDrawingPolicy() -> PKCanvasViewDrawingPolicy {
+        isPencilOnlyInputEnabled ? .pencilOnly : .anyInput
+    }
+
+    func uiColorForColorID(_ id: Int) -> UIColor {
+        annotationColors.first(where: { $0.id == id })?.uiColor ?? .black
+    }
+
     func saveImmediately() {
         commitCurrentCanvasToCache()
+        recordPageExit()
         persistTasks.values.forEach { $0.cancel() }
         persistTasks.removeAll()
         let dirtyIDs = Array(dirtyPageIDs)
@@ -183,6 +461,21 @@ final class BlankNoteEditorViewModel: ObservableObject {
             }
             saveContentSnapshot()
         }
+    }
+
+    func closeDocument() {
+        saveImmediately()
+        guard didLogDocumentOpen else { return }
+        eventLogger.log(
+            .documentClosed,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "close_reason": .string("editor_disappear")
+            ]
+        )
+        didLogDocumentOpen = false
     }
 
     private func saveCurrentPageDebounced() {
@@ -223,6 +516,32 @@ final class BlankNoteEditorViewModel: ObservableObject {
             dirtyPageIDs.remove(pageID)
             updatePageTimestamp(pageID)
             saveContentSnapshot()
+            let stats = drawingStats(for: drawing)
+            let pageIndex = pages.firstIndex(where: { $0.id == pageID }) ?? max(currentPageNumber - 1, 0)
+            eventLogger.log(
+                .strokeBatchCommitted,
+                document: document,
+                pageID: pageID,
+                sessionID: sessionID,
+                payload: [
+                    "page_index": .integer(pageIndex),
+                    "stroke_count_total": .integer(stats.strokeCount),
+                    "ink_length_estimate": .double(stats.inkLengthEstimate),
+                    "highlight_coverage": .double(stats.highlightCoverage),
+                    "erase_ratio": .double(stats.eraseRatio),
+                    "tool": .string(selectedTool.rawValue)
+                ]
+            )
+            eventLogger.log(
+                .canvasSaved,
+                document: document,
+                pageID: pageID,
+                sessionID: sessionID,
+                payload: [
+                    "page_index": .integer(pageIndex),
+                    "save_reason": .string(force ? "force" : "debounce")
+                ]
+            )
             await refreshThumbnail(for: pageID, drawingData: drawingData)
         } catch {
             errorMessage = "필기 저장 실패: \(error.localizedDescription)"
@@ -346,7 +665,14 @@ final class BlankNoteEditorViewModel: ObservableObject {
         isApplyingLoadedDrawing = true
         canvasView.drawing = drawing
         isApplyingLoadedDrawing = false
+        applyCanvasConfiguration()
         refreshUndoRedoState()
+    }
+
+    private func applyCanvasConfiguration() {
+        guard let canvasView else { return }
+        canvasView.tool = currentTool()
+        canvasView.drawingPolicy = currentDrawingPolicy()
     }
 
     private func refreshUndoRedoState() {
@@ -368,6 +694,122 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 errorMessage = "노트 메타데이터 저장 실패: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func currentDrawing(for pageID: UUID) -> PKDrawing {
+        if currentPageID == pageID, let canvasView {
+            return canvasView.drawing
+        }
+        return drawingCache[pageID] ?? PKDrawing()
+    }
+
+    private func drawingStats(for drawing: PKDrawing) -> AnalysisDrawingStats {
+        let strokeCount = drawing.strokes.count
+        let inkLengthEstimate = drawing.strokes.reduce(0.0) { partialResult, stroke in
+            let bounds = stroke.renderBounds
+            return partialResult + Double(bounds.width + bounds.height)
+        }
+        let highlightCoverage = selectedTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
+        return AnalysisDrawingStats(
+            strokeCount: strokeCount,
+            inkLengthEstimate: inkLengthEstimate,
+            eraseRatio: 0,
+            highlightCoverage: highlightCoverage
+        )
+    }
+
+    private func currentPageState(for pageID: UUID) -> [String] {
+        var state: [String] = []
+        if bookmarkedPageIDs.contains(pageID) {
+            state.append("bookmarked")
+        }
+        if dirtyPageIDs.contains(pageID) {
+            state.append("dirty-local")
+        }
+        if currentDrawing(for: pageID).strokes.isEmpty == false {
+            state.append("annotated")
+        }
+        return state
+    }
+
+    private func currentDwellMilliseconds(for pageID: UUID) -> Int {
+        var totalSeconds = dwellSecondsByPageID[pageID, default: 0]
+        if currentPageID == pageID {
+            totalSeconds += Date().timeIntervalSince(pageEntryStartedAt)
+        }
+        return Int(totalSeconds * 1000)
+    }
+
+    private func currentForegroundEditMilliseconds(for drawing: PKDrawing) -> Int {
+        let sessionSeconds = Date().timeIntervalSince(sessionStartedAt)
+        let activityRatio = min(Double(drawing.strokes.count) / 80.0, 1.0)
+        return Int(sessionSeconds * activityRatio * 1000)
+    }
+
+    private func recordPageExit() {
+        guard let currentPageID else { return }
+        let elapsed = Date().timeIntervalSince(pageEntryStartedAt)
+        dwellSecondsByPageID[currentPageID, default: 0] += Date().timeIntervalSince(pageEntryStartedAt)
+        eventLogger.log(
+            .pageExit,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "page_index": .integer(pageNumber(for: currentPageID) - 1),
+                "exit_reason": .string("page_change"),
+                "elapsed_ms": .integer(Int(elapsed * 1000))
+            ]
+        )
+        pageEntryStartedAt = Date()
+    }
+
+    private func recordPageVisit(_ pageID: UUID) {
+        pageEntryStartedAt = Date()
+        revisitCountByPageID[pageID, default: 0] += 1
+        pageNavigationHistory.append(pageID)
+        if pageNavigationHistory.count > 10 {
+            pageNavigationHistory.removeFirst(pageNavigationHistory.count - 10)
+        }
+        eventLogger.log(
+            .pageEnter,
+            document: document,
+            pageID: pageID,
+            sessionID: sessionID,
+            payload: [
+                "page_index": .integer(pageNumber(for: pageID) - 1),
+                "entry_source": .string("editor")
+            ]
+        )
+    }
+
+    private func logDocumentOpenedIfNeeded() {
+        guard !didLogDocumentOpen else { return }
+        didLogDocumentOpen = true
+        eventLogger.log(
+            .documentOpened,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "entry_source": .string("library")
+            ]
+        )
+    }
+
+    private func navigationPathLabels() -> [String] {
+        pageNavigationHistory.compactMap { pageID in
+            guard let index = pages.firstIndex(where: { $0.id == pageID }) else { return nil }
+            return "page-\(index + 1)"
+        }
+    }
+
+    private func persistBookmarks() {
+        userDefaults.set(bookmarkedPageIDs.map(\.uuidString).sorted(), forKey: bookmarkStorageKey)
+    }
+
+    private var bookmarkStorageKey: String {
+        "pharnote.bookmarks.\(document.id.uuidString)"
     }
 
     private var documentURL: URL {

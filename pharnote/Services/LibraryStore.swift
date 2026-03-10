@@ -1,4 +1,52 @@
 import Foundation
+import PDFKit
+
+struct PharnodeDashboardSnapshot: Codable, Hashable {
+    let version: Int
+    let generatedAt: Date
+    let materials: [PharnodeDashboardMaterialProgress]
+}
+
+struct PharnodeDashboardMaterialProgress: Codable, Hashable, Identifiable {
+    let documentId: UUID
+    let documentTitle: String
+    let documentType: PharDocument.DocumentType
+    let provider: String?
+    let subject: String?
+    let canonicalTitle: String?
+    let currentPage: Int?
+    let totalPages: Int?
+    let furthestPage: Int?
+    let completionRatio: Double?
+    let lastStudiedAt: Date?
+    let currentSection: String?
+    let nextSection: String?
+    let completedSectionCount: Int?
+    let totalSectionCount: Int?
+    let sectionHeadline: String?
+    let sectionSubheadline: String?
+    let sections: [PharnodeDashboardSectionProgress]
+
+    var id: UUID { documentId }
+
+    var percentComplete: Int {
+        Int(((completionRatio ?? 0) * 100).rounded())
+    }
+}
+
+struct PharnodeDashboardSectionProgress: Codable, Hashable, Identifiable {
+    let title: String
+    let startPage: Int
+    let endPage: Int
+    let status: String
+    let completionRatio: Double
+
+    var id: String { "\(title)-\(startPage)-\(endPage)" }
+
+    var percentComplete: Int {
+        Int((completionRatio * 100).rounded())
+    }
+}
 
 final class LibraryStore {
     enum StoreError: LocalizedError {
@@ -22,6 +70,7 @@ final class LibraryStore {
 
     private let fileManager: FileManager
     private let indexFileName = "LibraryIndex.json"
+    private let dashboardFileName = "PharnodeDashboardSnapshot.json"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -33,6 +82,10 @@ final class LibraryStore {
 
     private var indexFileURL: URL {
         documentsDirectory.appendingPathComponent(indexFileName, isDirectory: false)
+    }
+
+    private var dashboardFileURL: URL {
+        documentsDirectory.appendingPathComponent(dashboardFileName, isDirectory: false)
     }
 
     func loadIndex() throws -> [PharDocument] {
@@ -58,6 +111,29 @@ final class LibraryStore {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(index)
         try data.write(to: indexFileURL, options: .atomic)
+        try writeDashboardSnapshot(documents, using: encoder)
+    }
+
+    func loadDashboardSnapshot() throws -> PharnodeDashboardSnapshot {
+        try ensureDocumentsDirectoryExists()
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if fileManager.fileExists(atPath: dashboardFileURL.path) {
+            let data = try Data(contentsOf: dashboardFileURL)
+            return try decoder.decode(PharnodeDashboardSnapshot.self, from: data)
+        }
+
+        return makeDashboardSnapshot(from: try loadIndex())
+    }
+
+    func loadDashboardSnapshotJSONString() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(loadDashboardSnapshot())
+        return String(decoding: data, as: UTF8.self)
     }
 
     @discardableResult
@@ -92,7 +168,11 @@ final class LibraryStore {
     }
 
     @discardableResult
-    func importPDF(from sourceURL: URL) throws -> PharDocument {
+    func importPDF(
+        from sourceURL: URL,
+        suggestedMaterial: StudyMaterialMetadata? = nil,
+        pageCountHint: Int? = nil
+    ) throws -> PharDocument {
         try ensureDocumentsDirectoryExists()
 
         guard sourceURL.pathExtension.lowercased() == "pdf" else {
@@ -134,6 +214,19 @@ final class LibraryStore {
         let title = sourceURL.deletingPathExtension().lastPathComponent.isEmpty
             ? "PDF \(id.uuidString.prefix(6))"
             : sourceURL.deletingPathExtension().lastPathComponent
+        let loadedPDFDocument = PDFDocument(url: destinationPDFURL)
+        let pdfPageCount = pageCountHint ?? loadedPDFDocument?.pageCount
+        let sections = loadedPDFDocument.map(extractSections(from:)) ?? []
+        let initialProgress = pdfPageCount.map {
+            StudyProgressSnapshot(
+                currentPage: 1,
+                totalPages: $0,
+                furthestPage: 1,
+                completionRatio: $0 > 0 ? (1.0 / Double($0)) : 0,
+                lastStudiedAt: now,
+                sections: Self.sectionSnapshots(for: 1, totalPages: $0, sections: sections)
+            )
+        }
 
         var documents = try loadIndex()
         let document = PharDocument(
@@ -142,9 +235,84 @@ final class LibraryStore {
             createdAt: now,
             updatedAt: now,
             type: .pdf,
-            path: packageURL.path
+            path: packageURL.path,
+            studyMaterial: suggestedMaterial,
+            progress: initialProgress
         )
         documents.append(document)
+        try saveIndex(documents)
+        return document
+    }
+
+    @discardableResult
+    func updateDocument(_ updatedDocument: PharDocument) throws -> PharDocument {
+        var documents = try loadIndex()
+        guard let index = documents.firstIndex(where: { $0.id == updatedDocument.id }) else {
+            try saveIndex(documents)
+            return updatedDocument
+        }
+        documents[index] = updatedDocument
+        try saveIndex(documents)
+        return updatedDocument
+    }
+
+    @discardableResult
+    func updateStudyProgress(documentID: UUID, currentPage: Int, totalPages: Int) throws -> PharDocument? {
+        var documents = try loadIndex()
+        guard let index = documents.firstIndex(where: { $0.id == documentID }) else { return nil }
+
+        let now = Date()
+        var document = documents[index]
+        let existingFurthest = document.progress?.furthestPage ?? 0
+        let nextFurthest = max(existingFurthest, currentPage)
+        let safeTotalPages = max(totalPages, 1)
+
+        document.progress = StudyProgressSnapshot(
+            currentPage: max(currentPage, 1),
+            totalPages: safeTotalPages,
+            furthestPage: max(nextFurthest, 1),
+            completionRatio: min(Double(max(nextFurthest, 1)) / Double(safeTotalPages), 1.0),
+            lastStudiedAt: now,
+            sections: Self.sectionSnapshots(
+                for: max(currentPage, 1),
+                totalPages: safeTotalPages,
+                sections: document.progress?.sections ?? Self.fallbackSections(totalPages: safeTotalPages)
+            )
+        )
+        document.updatedAt = now
+
+        documents[index] = document
+        try saveIndex(documents)
+        return document
+    }
+
+    @discardableResult
+    func updateStudySections(documentID: UUID, sections: [StudySectionProgress]) throws -> PharDocument? {
+        var documents = try loadIndex()
+        guard let index = documents.firstIndex(where: { $0.id == documentID }) else { return nil }
+
+        var document = documents[index]
+        let now = Date()
+        let totalPages = max(document.progress?.totalPages ?? sections.last?.endPage ?? 1, 1)
+        let currentPage = min(max(document.progress?.currentPage ?? 1, 1), totalPages)
+        let furthestPage = min(max(document.progress?.furthestPage ?? currentPage, 1), totalPages)
+        let safeSections = sections.isEmpty ? Self.fallbackSections(totalPages: totalPages) : sections
+
+        document.progress = StudyProgressSnapshot(
+            currentPage: currentPage,
+            totalPages: totalPages,
+            furthestPage: furthestPage,
+            completionRatio: min(Double(furthestPage) / Double(totalPages), 1.0),
+            lastStudiedAt: document.progress?.lastStudiedAt ?? now,
+            sections: Self.sectionSnapshots(
+                for: currentPage,
+                totalPages: totalPages,
+                sections: safeSections
+            )
+        )
+        document.updatedAt = now
+
+        documents[index] = document
         try saveIndex(documents)
         return document
     }
@@ -160,5 +328,173 @@ final class LibraryStore {
         if !exists {
             try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
         }
+    }
+
+    private func writeDashboardSnapshot(_ documents: [PharDocument], using encoder: JSONEncoder) throws {
+        let snapshot = makeDashboardSnapshot(from: documents)
+        let data = try encoder.encode(snapshot)
+        try data.write(to: dashboardFileURL, options: .atomic)
+    }
+
+    private func makeDashboardSnapshot(from documents: [PharDocument]) -> PharnodeDashboardSnapshot {
+        PharnodeDashboardSnapshot(
+            version: 1,
+            generatedAt: Date(),
+            materials: documents
+                .filter { $0.type == .pdf || $0.studyMaterial != nil }
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map {
+                    PharnodeDashboardMaterialProgress(
+                        documentId: $0.id,
+                        documentTitle: $0.title,
+                        documentType: $0.type,
+                        provider: $0.studyProviderTitle,
+                        subject: $0.studySubjectTitle,
+                        canonicalTitle: $0.studyMaterial?.canonicalTitle,
+                        currentPage: $0.progress?.currentPage,
+                        totalPages: $0.progress?.totalPages,
+                        furthestPage: $0.progress?.furthestPage,
+                        completionRatio: $0.progress?.completionRatio,
+                        lastStudiedAt: $0.progress?.lastStudiedAt,
+                        currentSection: $0.progress?.currentSectionTitle,
+                        nextSection: $0.progress?.nextSectionTitle,
+                        completedSectionCount: $0.progress?.completedSectionCount,
+                        totalSectionCount: $0.progress?.totalSectionCount,
+                        sectionHeadline: $0.progress?.dashboardHeadline,
+                        sectionSubheadline: $0.progress?.dashboardSubheadline,
+                        sections: ($0.progress?.sections ?? []).map {
+                            PharnodeDashboardSectionProgress(
+                                title: $0.title,
+                                startPage: $0.startPage,
+                                endPage: $0.endPage,
+                                status: $0.status.rawValue,
+                                completionRatio: $0.completionRatio
+                            )
+                        }
+                    )
+                }
+        )
+    }
+
+    private func extractSections(from document: PDFDocument) -> [StudySectionProgress] {
+        guard let outlineRoot = document.outlineRoot else {
+            return Self.fallbackSections(totalPages: document.pageCount)
+        }
+
+        var collected: [(title: String, page: Int)] = []
+
+        func walk(_ outline: PDFOutline) {
+            for childIndex in 0 ..< outline.numberOfChildren {
+                guard let child = outline.child(at: childIndex) else { continue }
+                let title = child.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !title.isEmpty, let pageIndex = outlinePageIndex(for: child, in: document) {
+                    let page = max(pageIndex + 1, 1)
+                    collected.append((title: title, page: page))
+                }
+                walk(child)
+            }
+        }
+
+        walk(outlineRoot)
+
+        let normalized = collected
+            .sorted {
+                if $0.page == $1.page {
+                    return $0.title.count > $1.title.count
+                }
+                return $0.page < $1.page
+            }
+            .reduce(into: [(title: String, page: Int)]()) { partial, item in
+                guard partial.last?.title != item.title || partial.last?.page != item.page else { return }
+                partial.append(item)
+            }
+
+        guard !normalized.isEmpty else {
+            return Self.fallbackSections(totalPages: document.pageCount)
+        }
+
+        return normalized.enumerated().map { index, item in
+            let nextPage = index + 1 < normalized.count ? normalized[index + 1].page : document.pageCount + 1
+            return StudySectionProgress(
+                id: UUID(),
+                title: item.title,
+                startPage: item.page,
+                endPage: max(min(nextPage - 1, document.pageCount), item.page),
+                status: .upcoming,
+                completionRatio: 0
+            )
+        }
+    }
+
+    private func outlinePageIndex(for outline: PDFOutline, in document: PDFDocument) -> Int? {
+        if let page = outline.destination?.page {
+            let pageIndex = document.index(for: page)
+            return pageIndex == NSNotFound ? nil : pageIndex
+        }
+
+        if let goToAction = outline.action as? PDFActionGoTo {
+            guard let page = goToAction.destination.page else { return nil }
+            let pageIndex = document.index(for: page)
+            return pageIndex == NSNotFound ? nil : pageIndex
+        }
+
+        return nil
+    }
+
+    private static func sectionSnapshots(
+        for currentPage: Int,
+        totalPages: Int,
+        sections: [StudySectionProgress]
+    ) -> [StudySectionProgress] {
+        let safeSections = sections.isEmpty ? fallbackSections(totalPages: totalPages) : sections
+        let furthestPage = max(currentPage, 1)
+
+        return safeSections.map { section in
+            let completedPages = min(max(furthestPage - section.startPage + 1, 0), max(section.endPage - section.startPage + 1, 1))
+            let pageCount = max(section.endPage - section.startPage + 1, 1)
+            let ratio = min(Double(completedPages) / Double(pageCount), 1.0)
+            let status: StudySectionStatus
+
+            if furthestPage > section.endPage {
+                status = .completed
+            } else if furthestPage >= section.startPage {
+                status = .current
+            } else {
+                status = .upcoming
+            }
+
+            return StudySectionProgress(
+                id: section.id,
+                title: section.title,
+                startPage: section.startPage,
+                endPage: section.endPage,
+                status: status,
+                completionRatio: ratio
+            )
+        }
+    }
+
+    private static func fallbackSections(totalPages: Int) -> [StudySectionProgress] {
+        let safeTotal = max(totalPages, 1)
+        let chunkSize = max(Int(ceil(Double(safeTotal) / 4.0)), 1)
+        var sections: [StudySectionProgress] = []
+        var startPage = 1
+
+        while startPage <= safeTotal {
+            let endPage = min(startPage + chunkSize - 1, safeTotal)
+            sections.append(
+                StudySectionProgress(
+                    id: UUID(),
+                    title: "Section \(sections.count + 1)",
+                    startPage: startPage,
+                    endPage: endPage,
+                    status: .upcoming,
+                    completionRatio: 0
+                )
+            )
+            startPage = endPage + 1
+        }
+
+        return sections
     }
 }

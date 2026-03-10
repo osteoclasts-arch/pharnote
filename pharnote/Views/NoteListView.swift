@@ -56,7 +56,7 @@ struct NoteListView: View {
                 }
                 .listStyle(.insetGrouped)
             }
-            .navigationTitle("pharnode")
+            .navigationTitle("pharnote")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

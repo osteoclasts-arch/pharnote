@@ -39,6 +39,19 @@
 			AA0000042F56000100AA0001 /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000142F56000100AA0001 /* NoteListView.swift */; };
 			AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000152F56000100AA0001 /* NoteDetailView.swift */; };
 			AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */; };
+			AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000172F56000100AA0001 /* AnalysisModels.swift */; };
+			AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */; };
+			AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000192F56000100AA0001 /* AnalysisCenter.swift */; };
+			AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */; };
+			AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */; };
+			AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */; };
+			AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000292F56000100AA0001 /* StudyEventLogger.swift */; };
+			AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */; };
+			AA0000322F56000100AA0001 /* StudyMaterialCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */; };
+			AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */; };
+			AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000382F56000100AA0001 /* CatalogImportPicker.swift */; };
+			AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */; };
+			AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +88,19 @@
 			AA0000142F56000100AA0001 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
 			AA0000152F56000100AA0001 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
 			AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Note+CoreDataClass.swift"; sourceTree = "<group>"; };
+			AA0000172F56000100AA0001 /* AnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisModels.swift; sourceTree = "<group>"; };
+			AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisQueueStore.swift; sourceTree = "<group>"; };
+			AA0000192F56000100AA0001 /* AnalysisCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisCenter.swift; sourceTree = "<group>"; };
+			AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnalysisEngine.swift; sourceTree = "<group>"; };
+			AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisInsightsView.swift; sourceTree = "<group>"; };
+			AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisHistoryView.swift; sourceTree = "<group>"; };
+			AA0000292F56000100AA0001 /* StudyEventLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyEventLogger.swift; sourceTree = "<group>"; };
+			AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialSupport.swift; sourceTree = "<group>"; };
+			AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = StudyMaterialCatalog.json; sourceTree = "<group>"; };
+			AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialCatalogManager.swift; sourceTree = "<group>"; };
+			AA0000382F56000100AA0001 /* CatalogImportPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogImportPicker.swift; sourceTree = "<group>"; };
+			AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeCloudSync.swift; sourceTree = "<group>"; };
+			AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeSupabaseAuth.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -125,10 +151,12 @@
 			93FC7F6A2F5474A1007D741C /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000172F56000100AA0001 /* AnalysisModels.swift */,
 				93FC7F662F5474A1007D741C /* BlankNoteContent.swift */,
 				93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */,
 				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
 				93FC7F692F5474A1007D741C /* PharDocument.swift */,
+				AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -141,9 +169,24 @@
 				path = CoreData;
 				sourceTree = "<group>";
 			};
+			AA0000342F56000100AA0001 /* Resources */ = {
+				isa = PBXGroup;
+				children = (
+					AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */,
+				);
+				path = Resources;
+				sourceTree = "<group>";
+			};
 			93FC7F722F5474A1007D741C /* Services */ = {
 				isa = PBXGroup;
 				children = (
+					AA0000192F56000100AA0001 /* AnalysisCenter.swift */,
+					AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */,
+					AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */,
+					AA0000292F56000100AA0001 /* StudyEventLogger.swift */,
+					AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */,
+					AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */,
+					AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */,
 					93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */,
 					93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */,
 					93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */,
@@ -169,7 +212,10 @@
 			93FC7F7F2F5474A1007D741C /* Views */ = {
 				isa = PBXGroup;
 				children = (
-					AA0000122F56000100AA0001 /* ContentView.swift */,
+						AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */,
+						AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */,
+						AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
+						AA0000122F56000100AA0001 /* ContentView.swift */,
 					93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */,
 					93FC7F782F5474A1007D741C /* DocumentEditorView.swift */,
 					93FC7F792F5474A1007D741C /* LibraryView.swift */,
@@ -191,6 +237,7 @@
 					AA0000212F56000100AA0001 /* CoreData */,
 					93FC7F652F5474A1007D741C /* DesignSystem */,
 					93FC7F6A2F5474A1007D741C /* Models */,
+					AA0000342F56000100AA0001 /* Resources */,
 					93FC7F722F5474A1007D741C /* Services */,
 					93FC7F762F5474A1007D741C /* ViewModels */,
 				93FC7F7F2F5474A1007D741C /* Views */,
@@ -266,6 +313,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				93FC7F9C2F5474A1007D741C /* Assets.xcassets in Resources */,
+				AA0000322F56000100AA0001 /* StudyMaterialCatalog.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,10 +327,22 @@
 					AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
 					AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,
 					AA0000022F56000100AA0001 /* ContentView.swift in Sources */,
+					AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */,
 					AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */,
 					AA0000042F56000100AA0001 /* NoteListView.swift in Sources */,
-					AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
-					93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */,
+					AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */,
+					AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */,
+						AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */,
+						AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */,
+						AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */,
+						AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */,
+						AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */,
+						AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
+						AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */,
+						AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */,
+						AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */,
+						AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */,
+						93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */,
 					93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */,
 					93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */,
 				93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */,
@@ -441,7 +501,7 @@
 					CURRENT_PROJECT_VERSION = 1;
 					ENABLE_PREVIEWS = YES;
 					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = pharnode;
+					INFOPLIST_KEY_CFBundleDisplayName = pharnote;
 					INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -473,7 +533,7 @@
 					CURRENT_PROJECT_VERSION = 1;
 					ENABLE_PREVIEWS = YES;
 					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = pharnode;
+					INFOPLIST_KEY_CFBundleDisplayName = pharnote;
 					INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -7,6 +7,12 @@ import UIKit
 
 @MainActor
 final class PDFEditorViewModel: ObservableObject {
+    struct SectionDraft: Identifiable, Hashable {
+        let id: UUID
+        var title: String
+        var startPage: Int
+    }
+
     enum AnnotationTool: String, CaseIterable, Identifiable {
         case pen = "펜"
         case highlighter = "형광펜"
@@ -35,6 +41,17 @@ final class PDFEditorViewModel: ObservableObject {
         }
     }
 
+    struct AnalysisPreview {
+        let pageNumber: Int
+        let totalPages: Int
+        let overlayStrokeCount: Int
+        let isBookmarked: Bool
+        let hasUnsavedChanges: Bool
+        let updatedAt: Date
+        let currentSearchMatches: Int
+        let inputModeLabel: String
+    }
+
     @Published private(set) var pageCount: Int = 0
     @Published private(set) var currentPageIndex: Int = 0
     @Published private(set) var thumbnails: [Int: UIImage] = [:]
@@ -54,6 +71,8 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var canCut: Bool = false
     @Published private(set) var canPaste: Bool = false
     @Published private(set) var canDelete: Bool = false
+    @Published private(set) var bookmarkedPageIndices: Set<Int> = []
+    @Published private(set) var storedProgressSnapshot: StudyProgressSnapshot?
     @Published var errorMessage: String?
 
     let document: PharDocument
@@ -69,16 +88,45 @@ final class PDFEditorViewModel: ObservableObject {
     private var pdfDocument: PDFDocument?
     private let thumbnailGenerator = PDFThumbnailGenerator()
     private let overlayStore = PDFOverlayStore()
+    private let eventLogger: StudyEventLogger
+    private let libraryStore: LibraryStore
+    private let userDefaults: UserDefaults
     private var thumbnailGenerationTask: Task<Void, Never>?
     private var overlaySaveTasks: [Int: Task<Void, Never>] = [:]
     private var dirtyOverlayPages: Set<Int> = []
     private var overlayDrawingCache: [Int: PKDrawing] = [:]
+    private var pageLastEditedAt: [Int: Date] = [:]
     private weak var activeOverlayCanvas: PencilPassthroughCanvasView?
     private var didLoad = false
+    private var didLogDocumentOpen = false
     private let thumbnailSize = CGSize(width: 86, height: 112)
+    private let sessionID = UUID()
+    private let sessionStartedAt = Date()
+    private var pageEntryStartedAt = Date()
+    private var dwellSecondsByPageIndex: [Int: TimeInterval] = [:]
+    private var revisitCountByPageIndex: [Int: Int] = [:]
+    private var toolUsageCounts: [AnnotationTool: Int] = [.pen: 1]
+    private var undoCountByPageIndex: [Int: Int] = [:]
+    private var redoCountByPageIndex: [Int: Int] = [:]
+    private var lassoActionCountByPageIndex: [Int: Int] = [:]
+    private var copyActionCountByPageIndex: [Int: Int] = [:]
+    private var pasteActionCountByPageIndex: [Int: Int] = [:]
+    private var pageNavigationHistory: [Int] = []
 
-    init(document: PharDocument) {
+    init(
+        document: PharDocument,
+        eventLogger: StudyEventLogger? = nil,
+        libraryStore: LibraryStore? = nil,
+        userDefaults: UserDefaults = .standard
+    ) {
         self.document = document
+        self.eventLogger = eventLogger ?? StudyEventLogger.shared
+        self.libraryStore = libraryStore ?? LibraryStore()
+        self.userDefaults = userDefaults
+        self.storedProgressSnapshot = document.progress
+        self.bookmarkedPageIndices = Set(
+            (userDefaults.array(forKey: Self.bookmarkDefaultsKey(for: document.id)) as? [Int]) ?? []
+        )
     }
 
     func attachPDFView(_ pdfView: PDFView) {
@@ -106,11 +154,16 @@ final class PDFEditorViewModel: ObservableObject {
             pageCount = loadedDocument.pageCount
             currentPageIndex = 0
             pageJumpInput = "1"
+            trimBookmarksToLoadedPageCount()
+            logDocumentOpenedIfNeeded()
 
             if let pdfView {
                 pdfView.document = loadedDocument
                 goToPage(index: 0)
             }
+
+            recordPageVisit(0)
+            persistStudyProgress()
 
             clearPDFTextSearch(resetQuery: false)
 
@@ -125,11 +178,16 @@ final class PDFEditorViewModel: ObservableObject {
         let index = pdfDocument.index(for: currentPage)
         guard index != NSNotFound else { return }
         let previousPageIndex = currentPageIndex
+        if previousPageIndex != index {
+            recordPageExit()
+        }
         currentPageIndex = index
         pageJumpInput = "\(index + 1)"
 
         if previousPageIndex != index {
             saveOverlayPageImmediately(previousPageIndex)
+            recordPageVisit(index)
+            persistStudyProgress()
         }
         refreshEditActionAvailability()
     }
@@ -163,7 +221,43 @@ final class PDFEditorViewModel: ObservableObject {
     func stopTasks() {
         thumbnailGenerationTask?.cancel()
         thumbnailGenerationTask = nil
+        recordPageExit()
         saveAllOverlayPagesImmediately()
+    }
+
+    func closeDocument() {
+        stopTasks()
+        persistStudyProgress()
+        guard didLogDocumentOpen else { return }
+        eventLogger.log(
+            .documentClosed,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "close_reason": .string("editor_disappear")
+            ]
+        )
+        didLogDocumentOpen = false
+    }
+
+    private func persistStudyProgress() {
+        guard pageCount > 0 else { return }
+        let currentPage = max(currentPageIndex + 1, 1)
+        let totalPages = max(pageCount, 1)
+
+        Task(priority: .utility) { [document, libraryStore] in
+            let updatedDocument = try? libraryStore.updateStudyProgress(
+                documentID: document.id,
+                currentPage: currentPage,
+                totalPages: totalPages
+            )
+            if let updatedProgress = updatedDocument?.progress {
+                await MainActor.run {
+                    self.storedProgressSnapshot = updatedProgress
+                }
+            }
+        }
     }
 
     var canGoPrevious: Bool {
@@ -172,6 +266,172 @@ final class PDFEditorViewModel: ObservableObject {
 
     var canGoNext: Bool {
         currentPageIndex + 1 < pageCount
+    }
+
+    var currentPageNumber: Int {
+        max(currentPageIndex + 1, 1)
+    }
+
+    var currentPageOverlayStrokeCount: Int {
+        activeOverlayCanvas?.drawing.strokes.count ?? overlayDrawingCache[currentPageIndex]?.strokes.count ?? 0
+    }
+
+    var currentPageHasUnsavedChanges: Bool {
+        dirtyOverlayPages.contains(currentPageIndex)
+    }
+
+    var isCurrentPageBookmarked: Bool {
+        bookmarkedPageIndices.contains(currentPageIndex)
+    }
+
+    var currentPageUpdatedAt: Date {
+        pageLastEditedAt[currentPageIndex] ?? document.updatedAt
+    }
+
+    var currentPageSearchMatchCount: Int {
+        pdfTextSearchResults.reduce(into: 0) { count, result in
+            if result.pageIndex == currentPageIndex {
+                count += 1
+            }
+        }
+    }
+
+    var inputModeLabel: String {
+        isPencilOnlyInputEnabled ? "Apple Pencil only" : "Touch annotation enabled"
+    }
+
+    var analysisPreview: AnalysisPreview? {
+        guard pageCount > 0 else { return nil }
+        return AnalysisPreview(
+            pageNumber: currentPageNumber,
+            totalPages: max(pageCount, 1),
+            overlayStrokeCount: currentPageOverlayStrokeCount,
+            isBookmarked: isCurrentPageBookmarked,
+            hasUnsavedChanges: currentPageHasUnsavedChanges,
+            updatedAt: currentPageUpdatedAt,
+            currentSearchMatches: currentPageSearchMatchCount,
+            inputModeLabel: inputModeLabel
+        )
+    }
+
+    var currentAnalysisPageID: UUID? {
+        guard pageCount > 0 else { return nil }
+        return UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex)
+    }
+
+    var sectionProgressHeadline: String? {
+        currentProgressSnapshot.sectionProgressLabel
+    }
+
+    var sectionProgressSubheadline: String? {
+        currentProgressSnapshot.dashboardSubheadline
+    }
+
+    var currentSectionTitle: String? {
+        currentProgressSnapshot.currentSectionTitle
+    }
+
+    var nextSectionTitle: String? {
+        currentProgressSnapshot.nextSectionTitle
+    }
+
+    var completedSectionCount: Int {
+        currentProgressSnapshot.completedSectionCount
+    }
+
+    var totalSectionCount: Int {
+        currentProgressSnapshot.totalSectionCount
+    }
+
+    var sectionDrafts: [SectionDraft] {
+        let sourceSections = currentProgressSnapshot.sections.isEmpty
+            ? [StudySectionProgress(id: UUID(), title: "단원 1", startPage: 1, endPage: max(pageCount, 1), status: .current, completionRatio: 0)]
+            : currentProgressSnapshot.sections
+
+        return sourceSections
+            .sorted { $0.startPage < $1.startPage }
+            .enumerated()
+            .map { index, section in
+                SectionDraft(
+                    id: section.id,
+                    title: section.title.isEmpty ? "단원 \(index + 1)" : section.title,
+                    startPage: section.startPage
+                )
+            }
+    }
+
+    func suggestedNewSectionDraft() -> SectionDraft {
+        let existingStarts = Set(sectionDrafts.map(\.startPage))
+        var proposedStart = currentPageNumber
+        while existingStarts.contains(proposedStart) && proposedStart < max(pageCount, 1) {
+            proposedStart += 1
+        }
+        if existingStarts.contains(proposedStart) {
+            proposedStart = max(1, max(pageCount, 1))
+        }
+        return SectionDraft(
+            id: UUID(),
+            title: "단원 \(sectionDrafts.count + 1)",
+            startPage: proposedStart
+        )
+    }
+
+    func saveSectionDrafts(_ drafts: [SectionDraft]) async -> Bool {
+        let normalizedSections = normalizedSections(from: drafts)
+
+        do {
+            if let updatedDocument = try libraryStore.updateStudySections(documentID: document.id, sections: normalizedSections) {
+                storedProgressSnapshot = updatedDocument.progress
+            }
+            return true
+        } catch {
+            errorMessage = "단원 매핑 저장 실패: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    var analysisSource: PDFPageAnalysisSource? {
+        guard pageCount > 0 else { return nil }
+
+        let pageID = UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex)
+        let previousPageIds = currentPageIndex > 0
+            ? [UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex - 1)]
+            : []
+        let nextPageIds = currentPageIndex + 1 < pageCount
+            ? [UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex + 1)]
+            : []
+        let drawing = currentOverlayDrawing()
+
+        return PDFPageAnalysisSource(
+            document: document,
+            pageId: pageID,
+            pageIndex: currentPageIndex,
+            pageCount: pageCount,
+            previousPageIds: previousPageIds,
+            nextPageIds: nextPageIds,
+            pageState: currentPageState(),
+            previewImageData: thumbnails[currentPageIndex]?.pngData(),
+            drawingData: drawing.strokes.isEmpty ? nil : drawing.dataRepresentation(),
+            drawingStats: drawingStats(for: drawing),
+            pdfTextBlocks: currentPDFPageText().map { [AnalysisTextBlock(kind: "pdf-text", text: $0, pageIndex: currentPageIndex)] } ?? [],
+            manualTags: [],
+            bookmarks: isCurrentPageBookmarked ? ["page-bookmark"] : [],
+            sessionId: sessionID,
+            dwellMs: currentDwellMilliseconds(for: currentPageIndex),
+            foregroundEditsMs: currentForegroundEditMilliseconds(for: drawing),
+            revisitCount: revisitCountByPageIndex[currentPageIndex, default: 0],
+            toolUsage: toolUsageCounts
+                .map { AnalysisToolUsage(tool: $0.key.rawValue, count: $0.value) }
+                .sorted { $0.tool < $1.tool },
+            lassoActions: lassoActionCountByPageIndex[currentPageIndex, default: 0],
+            copyActions: copyActionCountByPageIndex[currentPageIndex, default: 0],
+            pasteActions: pasteActionCountByPageIndex[currentPageIndex, default: 0],
+            undoCount: undoCountByPageIndex[currentPageIndex, default: 0],
+            redoCount: redoCountByPageIndex[currentPageIndex, default: 0],
+            zoomEventCount: 0,
+            navigationPath: pageNavigationHistory.map { "page-\($0 + 1)" },
+            sourceFingerprint: resolvePDFFileName()
+        )
     }
 
     var canGoToPreviousPDFTextResult: Bool {
@@ -188,6 +448,24 @@ final class PDFEditorViewModel: ObservableObject {
         selectedTool == .pen || selectedTool == .highlighter
     }
 
+    func selectTool(_ tool: AnnotationTool) {
+        selectedTool = tool
+        toolUsageCounts[tool, default: 0] += 1
+        if tool == .lasso {
+            lassoActionCountByPageIndex[currentPageIndex, default: 0] += 1
+        }
+        eventLogger.log(
+            .annotationToolSelected,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "tool": .string(tool.rawValue),
+                "source": .string("toolbar")
+            ]
+        )
+    }
+
     func uiColorForColorID(_ id: Int) -> UIColor {
         annotationColors.first(where: { $0.id == id })?.uiColor ?? .black
     }
@@ -200,9 +478,54 @@ final class PDFEditorViewModel: ObservableObject {
         selectedColorID = colorID
     }
 
+    func selectStrokeWidth(_ width: Double) {
+        strokeWidth = width
+    }
+
     func togglePencilOnlyInput() {
         isPencilOnlyInputEnabled.toggle()
         refreshEditActionAvailability()
+        eventLogger.log(
+            .inputModeChanged,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "allows_finger_drawing": .bool(!isPencilOnlyInputEnabled)
+            ]
+        )
+    }
+
+    func toggleCurrentPageBookmark() {
+        var updatedBookmarks = bookmarkedPageIndices
+        let isBookmarked: Bool
+        if updatedBookmarks.contains(currentPageIndex) {
+            updatedBookmarks.remove(currentPageIndex)
+            isBookmarked = false
+        } else {
+            updatedBookmarks.insert(currentPageIndex)
+            isBookmarked = true
+        }
+        bookmarkedPageIndices = updatedBookmarks
+        persistBookmarks()
+        eventLogger.log(
+            .pageBookmarkToggled,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "bookmarked": .bool(isBookmarked),
+                "page_index": .integer(currentPageIndex)
+            ]
+        )
+    }
+
+    func isPageBookmarked(_ pageIndex: Int) -> Bool {
+        bookmarkedPageIndices.contains(pageIndex)
+    }
+
+    func isPageDirty(_ pageIndex: Int) -> Bool {
+        dirtyOverlayPages.contains(pageIndex)
     }
 
     func currentTool() -> PKTool {
@@ -246,6 +569,8 @@ final class PDFEditorViewModel: ObservableObject {
     func overlayDrawingDidChange(pageIndex: Int, drawing: PKDrawing) {
         overlayDrawingCache[pageIndex] = drawing
         dirtyOverlayPages.insert(pageIndex)
+        pageLastEditedAt[pageIndex] = Date()
+        objectWillChange.send()
         scheduleOverlaySave(pageIndex: pageIndex)
         refreshEditActionAvailability()
     }
@@ -264,6 +589,7 @@ final class PDFEditorViewModel: ObservableObject {
 
     func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
         activeOverlayCanvas = canvas
+        objectWillChange.send()
         refreshEditActionAvailability()
     }
 
@@ -271,6 +597,16 @@ final class PDFEditorViewModel: ObservableObject {
         guard let canvas = activeOverlayCanvas else { return }
         canvas.becomeFirstResponder()
         canvas.undoManager?.undo()
+        undoCountByPageIndex[currentPageIndex, default: 0] += 1
+        eventLogger.log(
+            .undoInvoked,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "source": .string("toolbar")
+            ]
+        )
         markCurrentPageDirtyFromCanvas()
     }
 
@@ -278,6 +614,16 @@ final class PDFEditorViewModel: ObservableObject {
         guard let canvas = activeOverlayCanvas else { return }
         canvas.becomeFirstResponder()
         canvas.undoManager?.redo()
+        redoCountByPageIndex[currentPageIndex, default: 0] += 1
+        eventLogger.log(
+            .redoInvoked,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "source": .string("toolbar")
+            ]
+        )
         markCurrentPageDirtyFromCanvas()
     }
 
@@ -285,6 +631,7 @@ final class PDFEditorViewModel: ObservableObject {
         guard selectedTool == .lasso, let canvas = activeOverlayCanvas else { return }
         canvas.becomeFirstResponder()
         canvas.copy(nil)
+        copyActionCountByPageIndex[currentPageIndex, default: 0] += 1
         refreshEditActionAvailability()
     }
 
@@ -292,6 +639,7 @@ final class PDFEditorViewModel: ObservableObject {
         guard selectedTool == .lasso, let canvas = activeOverlayCanvas else { return }
         canvas.becomeFirstResponder()
         canvas.cut(nil)
+        copyActionCountByPageIndex[currentPageIndex, default: 0] += 1
         markCurrentPageDirtyFromCanvas()
     }
 
@@ -299,6 +647,7 @@ final class PDFEditorViewModel: ObservableObject {
         guard let canvas = activeOverlayCanvas else { return }
         canvas.becomeFirstResponder()
         canvas.paste(nil)
+        pasteActionCountByPageIndex[currentPageIndex, default: 0] += 1
         markCurrentPageDirtyFromCanvas()
     }
 
@@ -320,7 +669,7 @@ final class PDFEditorViewModel: ObservableObject {
 
         let selections = pdfDocument.findString(query, withOptions: [.caseInsensitive, .diacriticInsensitive])
         let results: [PDFTextSearchResult] = selections.compactMap { selection in
-            guard let page = (selection.pages.first as? PDFPage) else { return nil }
+            guard let page = selection.pages.first else { return nil }
             let pageIndex = pdfDocument.index(for: page)
             guard pageIndex != NSNotFound else { return nil }
             return PDFTextSearchResult(
@@ -458,6 +807,34 @@ final class PDFEditorViewModel: ObservableObject {
                 pageIndex: pageIndex
             )
             dirtyOverlayPages.remove(pageIndex)
+            pageLastEditedAt[pageIndex] = Date()
+            let stats = drawingStats(for: drawing)
+            let pageID = UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex)
+            eventLogger.log(
+                .strokeBatchCommitted,
+                document: document,
+                pageID: pageID,
+                sessionID: sessionID,
+                payload: [
+                    "page_index": .integer(pageIndex),
+                    "stroke_count_total": .integer(stats.strokeCount),
+                    "ink_length_estimate": .double(stats.inkLengthEstimate),
+                    "highlight_coverage": .double(stats.highlightCoverage),
+                    "erase_ratio": .double(stats.eraseRatio),
+                    "tool": .string(selectedTool.rawValue)
+                ]
+            )
+            eventLogger.log(
+                .canvasSaved,
+                document: document,
+                pageID: pageID,
+                sessionID: sessionID,
+                payload: [
+                    "page_index": .integer(pageIndex),
+                    "save_reason": .string(force ? "force" : "debounce")
+                ]
+            )
+            objectWillChange.send()
         } catch {
             errorMessage = "PDF 필기 저장 실패: \(error.localizedDescription)"
         }
@@ -467,6 +844,8 @@ final class PDFEditorViewModel: ObservableObject {
         guard let canvas = activeOverlayCanvas else { return }
         overlayDrawingCache[currentPageIndex] = canvas.drawing
         dirtyOverlayPages.insert(currentPageIndex)
+        pageLastEditedAt[currentPageIndex] = Date()
+        objectWillChange.send()
         scheduleOverlaySave(pageIndex: currentPageIndex)
         refreshEditActionAvailability()
     }
@@ -526,7 +905,232 @@ final class PDFEditorViewModel: ObservableObject {
         return String(baseText.prefix(80)) + "..."
     }
 
+    private func currentOverlayDrawing() -> PKDrawing {
+        if let activeOverlayCanvas {
+            return activeOverlayCanvas.drawing
+        }
+        return overlayDrawingCache[currentPageIndex] ?? PKDrawing()
+    }
+
+    private func currentPDFPageText() -> String? {
+        guard let pdfDocument, let page = pdfDocument.page(at: currentPageIndex) else { return nil }
+        let text = page.string?
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    private var currentProgressSnapshot: StudyProgressSnapshot {
+        let baseProgress = storedProgressSnapshot ?? document.progress
+        let totalPages = max(pageCount, baseProgress?.totalPages ?? 1)
+        let currentPage = currentPageNumber
+        let furthestPage = max(baseProgress?.furthestPage ?? currentPage, currentPage)
+
+        return StudyProgressSnapshot(
+            currentPage: currentPage,
+            totalPages: totalPages,
+            furthestPage: furthestPage,
+            completionRatio: min(Double(furthestPage) / Double(totalPages), 1.0),
+            lastStudiedAt: baseProgress?.lastStudiedAt ?? Date(),
+            sections: resolvedSectionSnapshots(currentPage: currentPage, furthestPage: furthestPage)
+        )
+    }
+
+    private func resolvedSectionSnapshots(currentPage: Int, furthestPage: Int) -> [StudySectionProgress] {
+        let sections = (storedProgressSnapshot ?? document.progress)?.sections ?? []
+        guard !sections.isEmpty else { return [] }
+
+        return sections.map { section in
+            let completedPages = min(max(furthestPage - section.startPage + 1, 0), section.pageCount)
+            let ratio = min(Double(completedPages) / Double(section.pageCount), 1.0)
+            let status: StudySectionStatus
+
+            if currentPage > section.endPage {
+                status = .completed
+            } else if section.contains(page: currentPage) {
+                status = .current
+            } else {
+                status = .upcoming
+            }
+
+            return StudySectionProgress(
+                id: section.id,
+                title: section.title,
+                startPage: section.startPage,
+                endPage: section.endPage,
+                status: status,
+                completionRatio: ratio
+            )
+        }
+    }
+
+    private func normalizedSections(from drafts: [SectionDraft]) -> [StudySectionProgress] {
+        let totalPages = max(pageCount, 1)
+        let cleanedDrafts = drafts
+            .map { draft in
+                SectionDraft(
+                    id: draft.id,
+                    title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    startPage: min(max(draft.startPage, 1), totalPages)
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.startPage == rhs.startPage {
+                    return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                }
+                return lhs.startPage < rhs.startPage
+            }
+
+        var uniqueDrafts: [SectionDraft] = []
+        var lastStartPage = 0
+
+        for draft in cleanedDrafts {
+            let nextStartPage = min(max(draft.startPage, lastStartPage + 1), totalPages)
+            guard nextStartPage <= totalPages else { continue }
+            uniqueDrafts.append(
+                SectionDraft(
+                    id: draft.id,
+                    title: draft.title.isEmpty ? "단원 \(uniqueDrafts.count + 1)" : draft.title,
+                    startPage: nextStartPage
+                )
+            )
+            lastStartPage = nextStartPage
+        }
+
+        if uniqueDrafts.isEmpty {
+            uniqueDrafts = [SectionDraft(id: UUID(), title: "단원 1", startPage: 1)]
+        }
+
+        return uniqueDrafts.enumerated().map { index, draft in
+            let nextStartPage = index + 1 < uniqueDrafts.count ? uniqueDrafts[index + 1].startPage : totalPages + 1
+            return StudySectionProgress(
+                id: draft.id,
+                title: draft.title,
+                startPage: draft.startPage,
+                endPage: max(min(nextStartPage - 1, totalPages), draft.startPage),
+                status: .upcoming,
+                completionRatio: 0
+            )
+        }
+    }
+
+    private func currentPageState() -> [String] {
+        var state: [String] = []
+        if isCurrentPageBookmarked {
+            state.append("bookmarked")
+        }
+        if currentPageHasUnsavedChanges {
+            state.append("dirty-local")
+        }
+        if currentPageOverlayStrokeCount > 0 {
+            state.append("annotated")
+        }
+        if currentPageSearchMatchCount > 0 {
+            state.append("search-hit")
+        }
+        return state
+    }
+
+    private func drawingStats(for drawing: PKDrawing) -> AnalysisDrawingStats {
+        let strokeCount = drawing.strokes.count
+        let inkLengthEstimate = drawing.strokes.reduce(0.0) { partialResult, stroke in
+            let bounds = stroke.renderBounds
+            return partialResult + Double(bounds.width + bounds.height)
+        }
+        let highlightCoverage = selectedTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
+        return AnalysisDrawingStats(
+            strokeCount: strokeCount,
+            inkLengthEstimate: inkLengthEstimate,
+            eraseRatio: 0,
+            highlightCoverage: highlightCoverage
+        )
+    }
+
+    private func currentDwellMilliseconds(for pageIndex: Int) -> Int {
+        var totalSeconds = dwellSecondsByPageIndex[pageIndex, default: 0]
+        if currentPageIndex == pageIndex {
+            totalSeconds += Date().timeIntervalSince(pageEntryStartedAt)
+        }
+        return Int(totalSeconds * 1000)
+    }
+
+    private func currentForegroundEditMilliseconds(for drawing: PKDrawing) -> Int {
+        let sessionSeconds = Date().timeIntervalSince(sessionStartedAt)
+        let activityRatio = min(Double(drawing.strokes.count) / 80.0, 1.0)
+        return Int(sessionSeconds * activityRatio * 1000)
+    }
+
+    private func recordPageExit() {
+        let elapsed = Date().timeIntervalSince(pageEntryStartedAt)
+        dwellSecondsByPageIndex[currentPageIndex, default: 0] += Date().timeIntervalSince(pageEntryStartedAt)
+        eventLogger.log(
+            .pageExit,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "page_index": .integer(currentPageIndex),
+                "exit_reason": .string("page_change"),
+                "elapsed_ms": .integer(Int(elapsed * 1000))
+            ]
+        )
+        pageEntryStartedAt = Date()
+    }
+
+    private func recordPageVisit(_ pageIndex: Int) {
+        pageEntryStartedAt = Date()
+        revisitCountByPageIndex[pageIndex, default: 0] += 1
+        pageNavigationHistory.append(pageIndex)
+        if pageNavigationHistory.count > 10 {
+            pageNavigationHistory.removeFirst(pageNavigationHistory.count - 10)
+        }
+        eventLogger.log(
+            .pageEnter,
+            document: document,
+            pageID: UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex),
+            sessionID: sessionID,
+            payload: [
+                "page_index": .integer(pageIndex),
+                "entry_source": .string("editor")
+            ]
+        )
+    }
+
+    private func logDocumentOpenedIfNeeded() {
+        guard !didLogDocumentOpen else { return }
+        didLogDocumentOpen = true
+        eventLogger.log(
+            .documentOpened,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "entry_source": .string("library")
+            ]
+        )
+    }
+
+    private func resolvePDFFileName() -> String? {
+        (try? resolvePDFURL()).map(\.lastPathComponent)
+    }
+
+    private func trimBookmarksToLoadedPageCount() {
+        let filtered = bookmarkedPageIndices.filter { $0 >= 0 && $0 < pageCount }
+        guard filtered != bookmarkedPageIndices else { return }
+        bookmarkedPageIndices = filtered
+        persistBookmarks()
+    }
+
+    private func persistBookmarks() {
+        userDefaults.set(Array(bookmarkedPageIndices).sorted(), forKey: Self.bookmarkDefaultsKey(for: document.id))
+    }
+
     private var documentURL: URL {
         URL(fileURLWithPath: document.path, isDirectory: true)
+    }
+
+    private static func bookmarkDefaultsKey(for documentID: UUID) -> String {
+        "pharnote.pdf.bookmarks.\(documentID.uuidString)"
     }
 }

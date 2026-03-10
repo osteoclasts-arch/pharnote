@@ -1,0 +1,236 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "sdij-books-korean",
+      "canonicalTitle": "시대인재북스 국어",
+      "provider": "sdijBooks",
+      "subject": "korean",
+      "aliases": ["시대인재북스 국어", "시대인재 국어", "sdij 국어", "시대인재북스 국어 n제"]
+    },
+    {
+      "id": "sdij-books-math",
+      "canonicalTitle": "시대인재북스 수학",
+      "provider": "sdijBooks",
+      "subject": "math",
+      "aliases": ["시대인재북스 수학", "시대인재 수학", "sdij 수학", "시대인재북스 수학 n제"]
+    },
+    {
+      "id": "sdij-books-english",
+      "canonicalTitle": "시대인재북스 영어",
+      "provider": "sdijBooks",
+      "subject": "english",
+      "aliases": ["시대인재북스 영어", "시대인재 영어", "sdij 영어"]
+    },
+    {
+      "id": "sdij-books-physics",
+      "canonicalTitle": "시대인재북스 물리",
+      "provider": "sdijBooks",
+      "subject": "physics",
+      "aliases": ["시대인재북스 물리", "시대인재 물리", "시대인재북스 물리학"]
+    },
+    {
+      "id": "sdij-books-chemistry",
+      "canonicalTitle": "시대인재북스 화학",
+      "provider": "sdijBooks",
+      "subject": "chemistry",
+      "aliases": ["시대인재북스 화학", "시대인재 화학"]
+    },
+    {
+      "id": "sdij-books-biology",
+      "canonicalTitle": "시대인재북스 생명과학",
+      "provider": "sdijBooks",
+      "subject": "biology",
+      "aliases": ["시대인재북스 생명과학", "시대인재 생명과학", "시대인재 생명"]
+    },
+    {
+      "id": "sdij-books-earth",
+      "canonicalTitle": "시대인재북스 지구과학",
+      "provider": "sdijBooks",
+      "subject": "earthScience",
+      "aliases": ["시대인재북스 지구과학", "시대인재 지구과학", "시대인재 지과"]
+    },
+    {
+      "id": "sdij-lecture-korean",
+      "canonicalTitle": "시대인재 현강 국어",
+      "provider": "sdijLecture",
+      "subject": "korean",
+      "aliases": ["시대인재 현강 국어", "시대인재 현강자료 국어", "시대인재 현장 강의 국어"]
+    },
+    {
+      "id": "sdij-lecture-math",
+      "canonicalTitle": "시대인재 현강 수학",
+      "provider": "sdijLecture",
+      "subject": "math",
+      "aliases": ["시대인재 현강 수학", "시대인재 현강자료 수학", "시대인재 현장 강의 수학"]
+    },
+    {
+      "id": "sdij-lecture-science",
+      "canonicalTitle": "시대인재 현강 과탐",
+      "provider": "sdijLecture",
+      "subject": "biology",
+      "aliases": ["시대인재 현강 과탐", "시대인재 현강 생명", "시대인재 현강 화학", "시대인재 현강 물리", "시대인재 현강 지구과학"]
+    },
+    {
+      "id": "orbi-books-korean",
+      "canonicalTitle": "오르비북스 국어",
+      "provider": "orbiBooks",
+      "subject": "korean",
+      "aliases": ["오르비북스 국어", "orbi books 국어", "오르비 국어"]
+    },
+    {
+      "id": "orbi-books-math",
+      "canonicalTitle": "오르비북스 수학",
+      "provider": "orbiBooks",
+      "subject": "math",
+      "aliases": ["오르비북스 수학", "orbi books 수학", "오르비 수학"]
+    },
+    {
+      "id": "orbi-books-english",
+      "canonicalTitle": "오르비북스 영어",
+      "provider": "orbiBooks",
+      "subject": "english",
+      "aliases": ["오르비북스 영어", "오르비 영어"]
+    },
+    {
+      "id": "orbi-books-science",
+      "canonicalTitle": "오르비북스 과탐",
+      "provider": "orbiBooks",
+      "subject": "chemistry",
+      "aliases": ["오르비북스 과탐", "오르비북스 물리", "오르비북스 화학", "오르비북스 생명과학", "오르비북스 지구과학"]
+    },
+    {
+      "id": "ebs-korean",
+      "canonicalTitle": "EBS 국어",
+      "provider": "ebs",
+      "subject": "korean",
+      "aliases": ["ebs 국어", "수능특강 국어", "수능완성 국어", "ebsi 국어"]
+    },
+    {
+      "id": "ebs-math",
+      "canonicalTitle": "EBS 수학",
+      "provider": "ebs",
+      "subject": "math",
+      "aliases": ["ebs 수학", "수능특강 수학", "수능완성 수학", "ebsi 수학"]
+    },
+    {
+      "id": "ebs-english",
+      "canonicalTitle": "EBS 영어",
+      "provider": "ebs",
+      "subject": "english",
+      "aliases": ["ebs 영어", "수능특강 영어", "수능완성 영어", "ebsi 영어"]
+    },
+    {
+      "id": "ebs-social",
+      "canonicalTitle": "EBS 사탐",
+      "provider": "ebs",
+      "subject": "socialInquiry",
+      "aliases": ["ebs 사탐", "수능특강 사회탐구", "수능완성 사회탐구"]
+    },
+    {
+      "id": "ebs-science",
+      "canonicalTitle": "EBS 과탐",
+      "provider": "ebs",
+      "subject": "physics",
+      "aliases": ["ebs 과탐", "수능특강 과학탐구", "수능완성 과학탐구"]
+    },
+    {
+      "id": "megastudy-korean",
+      "canonicalTitle": "메가스터디 국어",
+      "provider": "megastudy",
+      "subject": "korean",
+      "aliases": ["메가스터디 국어", "megastudy 국어", "메가 국어"]
+    },
+    {
+      "id": "megastudy-math",
+      "canonicalTitle": "메가스터디 수학",
+      "provider": "megastudy",
+      "subject": "math",
+      "aliases": ["메가스터디 수학", "megastudy 수학", "메가 수학"]
+    },
+    {
+      "id": "megastudy-english",
+      "canonicalTitle": "메가스터디 영어",
+      "provider": "megastudy",
+      "subject": "english",
+      "aliases": ["메가스터디 영어", "megastudy 영어", "메가 영어"]
+    },
+    {
+      "id": "daesung-korean",
+      "canonicalTitle": "대성마이맥 국어",
+      "provider": "daesung",
+      "subject": "korean",
+      "aliases": ["대성마이맥 국어", "대성 국어", "mimac 국어"]
+    },
+    {
+      "id": "daesung-math",
+      "canonicalTitle": "대성마이맥 수학",
+      "provider": "daesung",
+      "subject": "math",
+      "aliases": ["대성마이맥 수학", "대성 수학", "mimac 수학"]
+    },
+    {
+      "id": "daesung-english",
+      "canonicalTitle": "대성마이맥 영어",
+      "provider": "daesung",
+      "subject": "english",
+      "aliases": ["대성마이맥 영어", "대성 영어", "mimac 영어"]
+    },
+    {
+      "id": "etoos-korean",
+      "canonicalTitle": "이투스 국어",
+      "provider": "etoos",
+      "subject": "korean",
+      "aliases": ["이투스 국어", "etoos 국어"]
+    },
+    {
+      "id": "etoos-math",
+      "canonicalTitle": "이투스 수학",
+      "provider": "etoos",
+      "subject": "math",
+      "aliases": ["이투스 수학", "etoos 수학"]
+    },
+    {
+      "id": "etoos-english",
+      "canonicalTitle": "이투스 영어",
+      "provider": "etoos",
+      "subject": "english",
+      "aliases": ["이투스 영어", "etoos 영어"]
+    },
+    {
+      "id": "generic-social-inquiry",
+      "canonicalTitle": "사회탐구 교재",
+      "provider": "other",
+      "subject": "socialInquiry",
+      "aliases": ["사탐", "사회탐구", "생활과윤리", "윤리와사상", "사회문화", "한국지리", "세계지리", "정치와법", "경제", "동아시아사", "세계사"]
+    },
+    {
+      "id": "generic-physics",
+      "canonicalTitle": "물리 교재",
+      "provider": "other",
+      "subject": "physics",
+      "aliases": ["물리", "물리1", "물리2", "역학", "전자기"]
+    },
+    {
+      "id": "generic-chemistry",
+      "canonicalTitle": "화학 교재",
+      "provider": "other",
+      "subject": "chemistry",
+      "aliases": ["화학", "화학1", "화학2"]
+    },
+    {
+      "id": "generic-biology",
+      "canonicalTitle": "생명과학 교재",
+      "provider": "other",
+      "subject": "biology",
+      "aliases": ["생명과학", "생명", "생물", "생명과학1", "생명과학2"]
+    },
+    {
+      "id": "generic-earth-science",
+      "canonicalTitle": "지구과학 교재",
+      "provider": "other",
+      "subject": "earthScience",
+      "aliases": ["지구과학", "지과", "지구과학1", "지구과학2"]
+    }
+  ]
+}
