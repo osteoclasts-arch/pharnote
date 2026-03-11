@@ -2,16 +2,24 @@ import SwiftUI
 import UIKit
 
 struct PDFDocumentEditorView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @StateObject private var viewModel: PDFEditorViewModel
-    @State private var isBottomPanelExpanded = true
+    @State private var isBottomPanelExpanded = false
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
     @State private var isShowingSectionEditor = false
+    @State private var isShowingShareSheet = false
+    @State private var workspaceChips: [WritingWorkspaceDocumentChip] = []
 
-    init(document: PharDocument) {
-        _viewModel = StateObject(wrappedValue: PDFEditorViewModel(document: document))
+    init(document: PharDocument, initialPageKey: String? = nil) {
+        _viewModel = StateObject(
+            wrappedValue: PDFEditorViewModel(
+                document: document,
+                initialPageKey: initialPageKey
+            )
+        )
     }
 
     var body: some View {
@@ -26,23 +34,12 @@ struct PDFDocumentEditorView: View {
         .background(PharTheme.ColorToken.appBackground.ignoresSafeArea())
         .animation(PharTheme.AnimationToken.toolbarVisibility, value: isBottomPanelExpanded)
         .animation(PharTheme.AnimationToken.pageTransition, value: viewModel.currentPageIndex)
-        .navigationTitle(viewModel.document.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                PharToolbarIconButton(
-                    systemName: isBottomPanelExpanded ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset",
-                    accessibilityLabel: isBottomPanelExpanded ? "하단 패널 접기" : "하단 패널 펼치기",
-                    isSelected: isBottomPanelExpanded
-                ) {
-                    withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                        isBottomPanelExpanded.toggle()
-                    }
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             viewModel.loadPDFIfNeeded()
+            if workspaceChips.isEmpty {
+                workspaceChips = WritingWorkspaceDocumentChip.makeChips(currentDocument: viewModel.document)
+            }
         }
         .onDisappear {
             viewModel.closeDocument()
@@ -61,6 +58,9 @@ struct PDFDocumentEditorView: View {
         .sheet(isPresented: $isShowingSectionEditor) {
             PDFSectionMappingSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $isShowingShareSheet) {
+            WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
@@ -75,7 +75,7 @@ struct PDFDocumentEditorView: View {
 
     private var editorCanvas: some View {
         ZStack {
-            PharTheme.ColorToken.canvasBackground.ignoresSafeArea()
+            WritingChromePalette.paper.ignoresSafeArea()
 
             RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
                 .fill(
@@ -107,16 +107,216 @@ struct PDFDocumentEditorView: View {
                 .padding(PharTheme.Spacing.medium)
                 .allowsHitTesting(false)
 
-            VStack(spacing: PharTheme.Spacing.medium) {
-                workspaceStatusHeader
-                    .padding(.top, PharTheme.Spacing.large)
-                    .padding(.horizontal, PharTheme.Spacing.large)
+            VStack(spacing: 10) {
+                WritingDocumentChipStrip(chips: workspaceChips)
+                chromeToolbar
+                if viewModel.selectedTool == .lasso {
+                    chromeAnalyzeCallout
+                }
+                if viewModel.isEditingInkTool {
+                    chromeInkPalette
+                }
+                if viewModel.selectedTool == .lasso {
+                    chromeSelectionBar
+                }
+            }
+            .padding(.top, 18)
+            .padding(.horizontal, 28)
 
-                Spacer(minLength: 0)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    WritingShareFAB {
+                        isShowingShareSheet = true
+                    }
+                    .padding(.trailing, 28)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+    }
 
-                floatingToolDock
-                    .padding(.horizontal, PharTheme.Spacing.large)
-                    .padding(.bottom, isBottomPanelExpanded ? PharTheme.Spacing.small : PharTheme.Spacing.large)
+    private var chromeToolbar: some View {
+        WritingChromeCapsule {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    WritingChromeIconButton(systemName: "house", accentTint: true) {
+                        viewModel.saveAllOverlayPagesImmediately()
+                        dismiss()
+                    }
+
+                    WritingChromeIconButton(systemName: "plus.square", accentTint: true) {
+                        isShowingSectionEditor = true
+                    }
+
+                    WritingToolbarDivider()
+
+                    toolChromeButton(.pen, icon: "pencil.tip")
+                    toolChromeButton(.highlighter, icon: "highlighter")
+                    toolChromeButton(.eraser, icon: "eraser")
+                    toolChromeButton(.lasso, icon: "lasso")
+
+                    WritingChromePlaceholderIcon(systemName: "paintbrush")
+                    WritingChromePlaceholderIcon(systemName: "textformat")
+                    WritingChromePlaceholderIcon(systemName: "message")
+                    WritingChromePlaceholderIcon(systemName: "photo.badge.plus")
+                    WritingChromePlaceholderIcon(systemName: "paperclip")
+                    WritingChromePlaceholderIcon(systemName: "square.grid.2x2")
+
+                    if viewModel.selectedTool == .lasso {
+                        WritingChromeIconButton(
+                            systemName: "waveform.path.ecg.text",
+                            accentTint: true,
+                            isSelected: true,
+                            isEnabled: viewModel.analysisSource != nil
+                        ) {
+                            isShowingAnalyzeSheet = true
+                        }
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: viewModel.isCurrentPageBookmarked ? "bookmark.fill" : "bookmark",
+                        isSelected: viewModel.isCurrentPageBookmarked
+                    ) {
+                        viewModel.toggleCurrentPageBookmark()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.backward", accentTint: true, isEnabled: viewModel.canUndo) {
+                        viewModel.undo()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.forward", accentTint: true, isEnabled: viewModel.canRedo) {
+                        viewModel.redo()
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: "sidebar.right",
+                        accentTint: true,
+                        isSelected: isBottomPanelExpanded
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isBottomPanelExpanded.toggle()
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private var chromeAnalyzeCallout: some View {
+        WritingAnalyzeHintBubble(text: "분석 받고 싶은 문제를 태깅하세요!")
+    }
+
+    private var chromeInkPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                WritingStrokePresetButton(width: 2, isSelected: viewModel.strokeWidth == 2) {
+                    viewModel.selectStrokeWidth(2)
+                }
+                WritingStrokePresetButton(width: 5, isSelected: viewModel.strokeWidth == 5) {
+                    viewModel.selectStrokeWidth(5)
+                }
+                WritingStrokePresetButton(width: 9, isSelected: viewModel.strokeWidth == 9) {
+                    viewModel.selectStrokeWidth(9)
+                }
+
+                WritingToolbarDivider()
+
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                Button {
+                    viewModel.updateSelectedColor(1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(WritingChromePalette.chromeBorder)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.72))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: 508)
+    }
+
+    private var chromeSelectionBar: some View {
+        WritingChromeCapsule(fill: .white) {
+            HStack(spacing: 10) {
+                WritingAccentActionButton(
+                    title: "분석하기",
+                    systemName: "waveform.path.ecg.text",
+                    isEnabled: viewModel.analysisSource != nil
+                ) {
+                    isShowingAnalyzeSheet = true
+                }
+
+                selectionPill("복사", systemName: "doc.on.doc", isEnabled: viewModel.canCopy) {
+                    viewModel.copySelection()
+                }
+                selectionPill("잘라내기", systemName: "scissors", isEnabled: viewModel.canCut) {
+                    viewModel.cutSelection()
+                }
+                selectionPill("붙여넣기", systemName: "doc.on.clipboard", isEnabled: viewModel.canPaste) {
+                    viewModel.pasteSelection()
+                }
+                selectionPill("삭제", systemName: "trash", isEnabled: viewModel.canDelete) {
+                    viewModel.deleteSelection()
+                }
+            }
+        }
+    }
+
+    private func selectionPill(_ title: String, systemName: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(WritingChromePalette.ink)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(WritingChromePalette.paper)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(WritingChromePalette.chipBorder, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.38)
+    }
+
+    private func toolChromeButton(_ tool: PDFEditorViewModel.AnnotationTool, icon: String) -> some View {
+        WritingChromeIconButton(
+            systemName: icon,
+            isSelected: viewModel.selectedTool == tool
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.selectTool(tool)
+            }
+        }
+    }
+
+    private func colorSwatchButton(_ colorID: Int) -> some View {
+        WritingColorSwatchButton(
+            color: viewModel.swiftUIColorForColorID(colorID),
+            isSelected: viewModel.selectedColorID == colorID
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.updateSelectedColor(colorID)
             }
         }
     }
@@ -709,6 +909,8 @@ private struct PDFAnalyzePreviewSheet: View {
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStudyIntent: AnalysisStudyIntent = .problemSolving
+    @State private var ocrSummary: OCRPreviewSummary?
+    @State private var isLoadingOCRSummary = false
 
     private var currentResult: AnalysisResult? {
         guard let pageId = viewModel.currentAnalysisPageID else { return nil }
@@ -768,6 +970,10 @@ private struct PDFAnalyzePreviewSheet: View {
                                 PDFPreviewRow(title: "최근 수정", value: preview.updatedAt.formatted(date: .abbreviated, time: .shortened))
                             }
                         }
+                        OCRPreviewCard(summary: ocrSummary, isLoading: isLoadingOCRSummary)
+                            .task(id: source.pageId) {
+                                await loadOCRSummary(for: source)
+                            }
                     }
 
                     PharSurfaceCard {
@@ -852,6 +1058,12 @@ private struct PDFAnalyzePreviewSheet: View {
         let preview = source.previewImageData == nil ? "preview 없음" : "preview 포함"
         let drawing = source.drawingData == nil ? "drawing 없음" : "drawing 포함"
         return "\(preview), \(drawing)"
+    }
+
+    private func loadOCRSummary(for source: PDFPageAnalysisSource) async {
+        isLoadingOCRSummary = true
+        ocrSummary = await analysisCenter.ocrPreview(for: source)
+        isLoadingOCRSummary = false
     }
 }
 

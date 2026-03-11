@@ -1,15 +1,23 @@
 import SwiftUI
 
 struct BlankNoteEditorView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @StateObject private var viewModel: BlankNoteEditorViewModel
-    @State private var isBottomPanelExpanded = true
+    @State private var isBottomPanelExpanded = false
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
+    @State private var isShowingShareSheet = false
+    @State private var workspaceChips: [WritingWorkspaceDocumentChip] = []
 
-    init(document: PharDocument) {
-        _viewModel = StateObject(wrappedValue: BlankNoteEditorViewModel(document: document))
+    init(document: PharDocument, initialPageKey: String? = nil) {
+        _viewModel = StateObject(
+            wrappedValue: BlankNoteEditorViewModel(
+                document: document,
+                initialPageKey: initialPageKey
+            )
+        )
     }
 
     var body: some View {
@@ -24,39 +32,12 @@ struct BlankNoteEditorView: View {
         .background(PharTheme.ColorToken.appBackground.ignoresSafeArea())
         .animation(PharTheme.AnimationToken.toolbarVisibility, value: isBottomPanelExpanded)
         .animation(PharTheme.AnimationToken.pageTransition, value: viewModel.currentPageID)
-        .navigationTitle(viewModel.document.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                PharToolbarIconButton(
-                    systemName: "plus.square.on.square",
-                    accessibilityLabel: "페이지 추가"
-                ) {
-                    viewModel.addPage()
-                }
-
-                PharToolbarIconButton(
-                    systemName: "trash",
-                    accessibilityLabel: "현재 페이지 삭제",
-                    isEnabled: viewModel.canDeletePage,
-                    isDestructive: true
-                ) {
-                    viewModel.deleteCurrentPage()
-                }
-
-                PharToolbarIconButton(
-                    systemName: isBottomPanelExpanded ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset",
-                    accessibilityLabel: isBottomPanelExpanded ? "하단 패널 접기" : "하단 패널 펼치기",
-                    isSelected: isBottomPanelExpanded
-                ) {
-                    withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                        isBottomPanelExpanded.toggle()
-                    }
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             viewModel.loadInitialContentIfNeeded()
+            if workspaceChips.isEmpty {
+                workspaceChips = WritingWorkspaceDocumentChip.makeChips(currentDocument: viewModel.document)
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
@@ -72,6 +53,9 @@ struct BlankNoteEditorView: View {
         .sheet(isPresented: $isShowingAnalyzeSheet) {
             BlankNoteAnalyzePreviewSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $isShowingShareSheet) {
+            WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
@@ -85,40 +69,218 @@ struct BlankNoteEditorView: View {
     }
 
     private var editorCanvas: some View {
-        ZStack {
-            PharTheme.ColorToken.canvasBackground.ignoresSafeArea()
+        GeometryReader { geometry in
+            let pageWidth = min(772, max(640, geometry.size.width - 110))
+            let pageHeight = pageWidth * 1.34
 
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                .fill(PharTheme.ColorToken.canvasBackground)
-                .overlay(alignment: .topLeading) {
-                    CanvasPaperDecor()
+            ZStack(alignment: .top) {
+                WritingChromePalette.paper.ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 28) {
+                        editorPage(width: pageWidth, height: pageHeight)
+
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.white.opacity(0.78))
+                            .frame(width: pageWidth, height: 170)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(Color.black.opacity(0.03), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 166)
+                    .padding(.bottom, 120)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                        .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
+
+                VStack(spacing: 10) {
+                    WritingDocumentChipStrip(chips: workspaceChips)
+                    chromeToolbar
+                    if viewModel.selectedTool == .lasso {
+                        chromeAnalyzeCallout
+                    }
+                    if viewModel.isEditingInkTool {
+                        chromeInkPalette
+                    }
                 }
-                .padding(PharTheme.Spacing.medium)
+                .padding(.top, 18)
+                .padding(.horizontal, 28)
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        WritingShareFAB {
+                            isShowingShareSheet = true
+                        }
+                        .padding(.trailing, 28)
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+        }
+    }
+
+    private func editorPage(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(WritingChromePalette.canvas)
+                .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
 
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
-                .padding(PharTheme.Spacing.medium)
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
 
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
-                .padding(PharTheme.Spacing.medium)
                 .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height)
+    }
 
-            VStack(spacing: PharTheme.Spacing.medium) {
-                workspaceStatusHeader
-                    .padding(.top, PharTheme.Spacing.large)
-                    .padding(.horizontal, PharTheme.Spacing.large)
+    private var chromeToolbar: some View {
+        WritingChromeCapsule {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    WritingChromeIconButton(systemName: "house", accentTint: true) {
+                        viewModel.saveImmediately()
+                        dismiss()
+                    }
 
-                Spacer(minLength: 0)
+                    WritingChromeIconButton(systemName: "plus.square", accentTint: true) {
+                        viewModel.addPage()
+                    }
 
-                floatingToolDock
-                    .padding(.horizontal, PharTheme.Spacing.large)
-                    .padding(.bottom, isBottomPanelExpanded ? PharTheme.Spacing.small : PharTheme.Spacing.large)
+                    WritingToolbarDivider()
+
+                    toolChromeButton(.pen, icon: "pencil.tip")
+                    toolChromeButton(.highlighter, icon: "highlighter")
+                    toolChromeButton(.eraser, icon: "eraser")
+                    toolChromeButton(.lasso, icon: "lasso")
+
+                    WritingChromePlaceholderIcon(systemName: "paintbrush")
+                    WritingChromePlaceholderIcon(systemName: "textformat")
+                    WritingChromePlaceholderIcon(systemName: "message")
+                    WritingChromePlaceholderIcon(systemName: "photo.badge.plus")
+                    WritingChromePlaceholderIcon(systemName: "paperclip")
+                    WritingChromePlaceholderIcon(systemName: "square.grid.2x2")
+
+                    if viewModel.selectedTool == .lasso {
+                        WritingChromeIconButton(
+                            systemName: "waveform.path.ecg.text",
+                            accentTint: true,
+                            isSelected: true,
+                            isEnabled: viewModel.analysisSource != nil
+                        ) {
+                            isShowingAnalyzeSheet = true
+                        }
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: viewModel.isCurrentPageBookmarked ? "bookmark.fill" : "bookmark",
+                        isSelected: viewModel.isCurrentPageBookmarked
+                    ) {
+                        viewModel.toggleCurrentPageBookmark()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.backward", accentTint: true, isEnabled: viewModel.canUndo) {
+                        viewModel.undo()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.forward", accentTint: true, isEnabled: viewModel.canRedo) {
+                        viewModel.redo()
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: "sidebar.right",
+                        accentTint: true,
+                        isSelected: isBottomPanelExpanded
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isBottomPanelExpanded.toggle()
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private var chromeAnalyzeCallout: some View {
+        VStack(spacing: 10) {
+            WritingAnalyzeHintBubble(text: "분석 받고 싶은 문제를 태깅하세요!")
+
+            WritingAccentActionButton(
+                title: "분석하기",
+                systemName: "waveform.path.ecg.text",
+                isEnabled: viewModel.analysisSource != nil
+            ) {
+                isShowingAnalyzeSheet = true
+            }
+        }
+    }
+
+    private var chromeInkPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                WritingStrokePresetButton(width: 2, isSelected: viewModel.strokeWidth == 2) {
+                    viewModel.selectStrokeWidth(2)
+                }
+                WritingStrokePresetButton(width: 5, isSelected: viewModel.strokeWidth == 5) {
+                    viewModel.selectStrokeWidth(5)
+                }
+                WritingStrokePresetButton(width: 9, isSelected: viewModel.strokeWidth == 9) {
+                    viewModel.selectStrokeWidth(9)
+                }
+
+                WritingToolbarDivider()
+
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                Button {
+                    viewModel.updateSelectedColor(1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(WritingChromePalette.chromeBorder)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.72))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: 508)
+    }
+
+    private func toolChromeButton(_ tool: BlankNoteEditorViewModel.AnnotationTool, icon: String) -> some View {
+        WritingChromeIconButton(
+            systemName: icon,
+            isSelected: viewModel.selectedTool == tool
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.selectTool(tool)
+            }
+        }
+    }
+
+    private func colorSwatchButton(_ colorID: Int) -> some View {
+        WritingColorSwatchButton(
+            color: Color(uiColor: viewModel.uiColorForColorID(colorID)),
+            isSelected: viewModel.selectedColorID == colorID
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.updateSelectedColor(colorID)
             }
         }
     }
@@ -475,6 +637,8 @@ private struct BlankNoteAnalyzePreviewSheet: View {
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStudyIntent: AnalysisStudyIntent = .summary
+    @State private var ocrSummary: OCRPreviewSummary?
+    @State private var isLoadingOCRSummary = false
 
     private var currentResult: AnalysisResult? {
         guard let pageId = viewModel.currentAnalysisPageID else { return nil }
@@ -531,6 +695,10 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                                 PreviewRow(title: "번들 자산", value: bundleAssetSummary(for: source))
                             }
                         }
+                        OCRPreviewCard(summary: ocrSummary, isLoading: isLoadingOCRSummary)
+                            .task(id: source.pageId) {
+                                await loadOCRSummary(for: source)
+                            }
                     }
 
                     PharSurfaceCard {
@@ -616,6 +784,12 @@ private struct BlankNoteAnalyzePreviewSheet: View {
         let drawing = source.drawingData == nil ? "drawing 없음" : "drawing 포함"
         return "\(preview), \(drawing)"
     }
+
+    private func loadOCRSummary(for source: BlankNoteAnalysisSource) async {
+        isLoadingOCRSummary = true
+        ocrSummary = await analysisCenter.ocrPreview(for: source)
+        isLoadingOCRSummary = false
+    }
 }
 
 private struct PreviewRow: View {
@@ -631,6 +805,70 @@ private struct PreviewRow: View {
             Text(value)
                 .font(PharTypography.bodyStrong)
                 .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+        }
+    }
+}
+
+struct OCRPreviewCard: View {
+    let summary: OCRPreviewSummary?
+    let isLoading: Bool
+
+    var body: some View {
+        PharSurfaceCard {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                Text("OCR 미리보기")
+                    .font(PharTypography.cardTitle)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                if isLoading {
+                    HStack(spacing: PharTheme.Spacing.small) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("OCR 결과를 준비하는 중입니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+                } else if let summary {
+                    PreviewRow(title: "인식 블록", value: "\(summary.recognizedBlockCount)")
+                    PreviewRow(title: "손글씨 블록", value: "\(summary.handwritingBlockCount)")
+                    PreviewRow(title: "인식 문자 수", value: "\(summary.recognizedCharacterCount)")
+                    PreviewRow(title: "수식 신호", value: summary.hasMathSignal ? "강함" : "약함")
+
+                    if !summary.problemCandidates.isEmpty {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                            Text("문제 후보")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                            ForEach(summary.problemCandidates, id: \.self) { candidate in
+                                Text(candidate)
+                                    .font(PharTypography.caption)
+                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.top, PharTheme.Spacing.xSmall)
+                    }
+
+                    if !summary.topLines.isEmpty {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                            Text("대표 OCR 텍스트")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                            ForEach(summary.topLines, id: \.self) { line in
+                                Text(line)
+                                    .font(PharTypography.caption)
+                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.top, PharTheme.Spacing.xSmall)
+                    }
+                } else {
+                    Text("아직 OCR 결과가 없습니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                }
+            }
         }
     }
 }
