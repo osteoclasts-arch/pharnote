@@ -1,6 +1,7 @@
 import PDFKit
 import PencilKit
 import SwiftUI
+import UIKit
 
 struct PDFKitView: UIViewRepresentable {
     @ObservedObject var viewModel: PDFEditorViewModel
@@ -11,6 +12,7 @@ struct PDFKitView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
+        pdfView.delegate = context.coordinator
         pdfView.pageOverlayViewProvider = context.coordinator
         context.coordinator.startObservingPageChanges(of: pdfView)
         viewModel.attachPDFView(pdfView)
@@ -23,10 +25,11 @@ struct PDFKitView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: PDFView, coordinator: Coordinator) {
         coordinator.stopObservingPageChanges()
+        uiView.delegate = nil
         uiView.pageOverlayViewProvider = nil
     }
 
-    final class Coordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasViewDelegate, PDFViewDelegate {
         private let viewModel: PDFEditorViewModel
         private var pageChangeObserver: NSObjectProtocol?
         private var pageCanvases: [Int: PencilPassthroughCanvasView] = [:]
@@ -86,6 +89,13 @@ struct PDFKitView: UIViewRepresentable {
             canvas.backgroundColor = .clear
             canvas.isOpaque = false
             canvas.delegate = self
+            canvas.onSmartShapeApplied = { [weak self, weak canvas] _ in
+                guard let self, let canvas else { return }
+                self.viewModel.overlayDrawingDidChange(pageIndex: pageIndex, drawing: canvas.drawing)
+            }
+            canvas.onInteractionDidEnd = { [weak self] _ in
+                self?.viewModel.refreshCanvasInteractionState()
+            }
             configureCanvas(canvas)
 
             pageCanvases[pageIndex] = canvas
@@ -119,7 +129,18 @@ struct PDFKitView: UIViewRepresentable {
             pageCanvases.values.forEach { configureCanvas($0) }
         }
 
+        func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
+            if let pageIndex = viewModel.pageIndex(forLinkURL: url) {
+                viewModel.goToPage(index: pageIndex)
+                return
+            }
+
+            guard UIApplication.shared.canOpenURL(url) else { return }
+            UIApplication.shared.open(url)
+        }
+
         private func configureCanvas(_ canvas: PencilPassthroughCanvasView) {
+            canvas.isUserInteractionEnabled = !viewModel.isReadOnlyMode
             canvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing()
             canvas.drawingPolicy = viewModel.currentDrawingPolicy()
             canvas.tool = viewModel.currentTool()

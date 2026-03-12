@@ -7,13 +7,18 @@ xcuserdata/
 
 # Build outputs
 DerivedData/
+.derived-ios-*/
 build/
+dist/
 *.ipa
 
 # Swift Package Manager
 .build/
 .swiftpm/
 Package.resolved
+
+# Node / web MVP
+node_modules/
 
 # CocoaPods
 Pods/

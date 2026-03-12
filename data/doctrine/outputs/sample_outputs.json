@@ -1,0 +1,338 @@
+{
+  "doctrine_examples": [
+    {
+      "action": "조건을 분리 전개하지 말고 공통 변수 기준으로 재정렬한다",
+      "approval_status": "auto_approved",
+      "condition": "여러 조건이 동일한 변수 또는 객체에 결합된다",
+      "doctrine_id": "doc_0001",
+      "evidence_summary": [
+        "problem_seed:조건: 여러 조건이 동일한 변수 또는 객체에 결합된다 / 행동: 조건을 분리 전개하지 말고 공통 변수 기준으로 재정렬한다",
+        "community:조건을 따로 전개하지 말고 하나의 함수에 걸린 제약으로 묶어라."
+      ],
+      "merge_evidence": [],
+      "scores": {
+        "evidence_score": 1.0,
+        "overall_score": 0.944,
+        "problem_alignment_score": 1.0,
+        "reusability_score": 0.9125,
+        "source_diversity_score": 0.75,
+        "specificity_score": 1.0
+      },
+      "source_types": [
+        "community",
+        "founder",
+        "problem_seed"
+      ],
+      "supported_problem_ids": [
+        "2024_06_mock_common_q15",
+        "2025_09_mock_common_q14",
+        "2026_csat_common_q18"
+      ],
+      "supporting_candidate_ids": [
+        "cand_0001",
+        "cand_0018",
+        "cand_0035",
+        "cand_0061",
+        "cand_0062",
+        "cand_0072",
+        "cand_0073"
+      ],
+      "taxonomy_codes": [
+        "condition_binding"
+      ]
+    },
+    {
+      "action": "치환과 정리 과정에서도 함수의 입력-출력 역할을 분명히 유지한다",
+      "approval_status": "review_needed",
+      "condition": "함수 입력과 출력의 역할이 섞이면 변환이 무너진다",
+      "doctrine_id": "doc_0002",
+      "evidence_summary": [
+        "problem_seed:조건: 함수 입력과 출력의 역할이 섞이면 변환이 무너진다 / 행동: 치환과 정리 과정에서도 함수의 입력-출력 역할을 분명히 유지한다"
+      ],
+      "merge_evidence": [],
+      "scores": {
+        "evidence_score": 0.566667,
+        "overall_score": 0.758667,
+        "problem_alignment_score": 1.0,
+        "reusability_score": 0.829167,
+        "source_diversity_score": 0.25,
+        "specificity_score": 1.0
+      },
+      "source_types": [
+        "problem_seed"
+      ],
+      "supported_problem_ids": [
+        "2024_06_mock_common_q15",
+        "2024_csat_common_q21",
+        "2025_09_mock_common_q14"
+      ],
+      "supporting_candidate_ids": [
+        "cand_0002",
+        "cand_0019",
+        "cand_0049"
+      ],
+      "taxonomy_codes": [
+        "function_role_preservation"
+      ]
+    }
+  ],
+  "payload_examples": [
+    {
+      "common_missed_doctrines": [
+        {
+          "action": "조건을 조각내지 말고 공통 대상 기준으로 묶어서 본다",
+          "condition": "같은 대상의 조건을 따로 따라가면 구조를 잃는다",
+          "doctrine_id": "doc_0007",
+          "evidence_summary": "함수 f(x)에 대하여 다음 조건을 만족시킨다. 그래프와 조건을; 으므로 먼저 공통 변수 기준으로 묶는다. 그래프의 대칭 구조를 먼저",
+          "taxonomy_code": "condition_fragmentation"
+        },
+        {
+          "action": "변형 전후에 입력-출력 역할이 보존되는지 표시한다",
+          "condition": "함수식 정리 중 입력과 출력이 섞이면 해석이 무너진다",
+          "doctrine_id": "doc_0008",
+          "evidence_summary": "함수 f(x)에 대하여 다음 조건을",
+          "taxonomy_code": "function_role_collapse"
+        },
+        {
+          "action": "결론을 얻은 뒤 원래 조건 집합으로 다시 대조한다",
+          "condition": "마지막 한 줄만 맞다고 해서 원문 조건까지 맞는 것은 아니다",
+          "doctrine_id": null,
+          "evidence_summary": "관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프 조건 함수의",
+          "taxonomy_code": "local_success_false_finish"
+        },
+        {
+          "action": "선택지는 구조를 고정한 뒤 검산 단계에서만 본다",
+          "condition": "선택지를 먼저 보면 전략이 선택지 모양에 끌린다",
+          "doctrine_id": "doc_0010",
+          "evidence_summary": "식을 하나의 관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프; 함수 f(x)에 걸려 있으므로 먼저 공통 변수 기준으로 묶는다. 그",
+          "taxonomy_code": "option_anchoring"
+        },
+        {
+          "action": "전개 전에 대칭·증감·특수값 여부를 먼저 점검한다",
+          "condition": "핵심 구조가 안 잡힌 상태의 전개는 비용만 키운다",
+          "doctrine_id": "doc_0011",
+          "evidence_summary": "함수 f(x)에 걸려 있으므로 먼저 공통 변수 기준으로 묶는다. 그",
+          "taxonomy_code": "premature_expansion"
+        },
+        {
+          "action": "매 단계에서 지금 구한 양이 문제의 목표와 직접 연결되는지 확인한다",
+          "condition": "중간량이 최종 목표량처럼 보이면 계산이 새기 쉽다",
+          "doctrine_id": "doc_0012",
+          "evidence_summary": "중간량이 최종 목표량처럼 보이면 계산이 새기 쉽다",
+          "taxonomy_code": "target_drift"
+        },
+        {
+          "action": "시각 요소를 식보다 먼저 읽고 관계를 언어화한다",
+          "condition": "그래프나 도형을 장식처럼 보면 핵심 정보를 놓친다",
+          "doctrine_id": "doc_0013",
+          "evidence_summary": "대하여 다음 조건을 만족시킨다. 그래프와 조건을 함께 고려할 때 f(1; 구조를 먼저 읽고 식을 하나의 관계로 압축한 뒤 선지를 교차 검산한",
+          "taxonomy_code": "visual_ignoring"
+        },
+        {
+          "action": "구조를 확보한 뒤 선택지와 핵심 조건을 교차 검산한다",
+          "condition": "객관식은 선택지를 이용한 역검산이 가능하다",
+          "doctrine_id": null,
+          "evidence_summary": "식을 하나의 관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프; 하나의 관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프 조건 함",
+          "taxonomy_code": "choice_crosscheck"
+        },
+        {
+          "action": "최종 후보가 정의역과 범위 제약을 만족하는지 확인한다",
+          "condition": "정의역·범위 제약이 답의 가능성을 바로 줄인다",
+          "doctrine_id": null,
+          "evidence_summary": "f(x)에 대하여 다음 조건을 만족시킨다. 그래프와 조건을 함께 고",
+          "taxonomy_code": "domain_range_check"
+        },
+        {
+          "action": "마지막 후보를 원래 조건 전체에 다시 넣어 검증한다",
+          "condition": "변형 과정이 길수록 원문 조건과의 불일치가 생길 수 있다",
+          "doctrine_id": null,
+          "evidence_summary": "변형 과정이 길수록 원문 조건과의 불일치가 생길 수 있다",
+          "taxonomy_code": "original_condition_recheck"
+        },
+        {
+          "action": "경계값이나 대표 특수값을 넣어 결과의 방향을 점검한다",
+          "condition": "특수값 대입이 구조 오류를 빠르게 드러낼 수 있다",
+          "doctrine_id": null,
+          "evidence_summary": "특수값 대입이 구조 오류를 빠르게 드러낼 수 있다",
+          "taxonomy_code": "special_value_sanity_check"
+        }
+      ],
+      "problem_id": "2024_06_mock_common_q15",
+      "recommended_doctrine_ids": [
+        "doc_0010",
+        "doc_0001",
+        "doc_0006",
+        "doc_0008"
+      ],
+      "required_doctrines": [
+        {
+          "action": "조건을 분리 전개하지 말고 공통 변수 기준으로 재정렬한다",
+          "condition": "여러 조건이 동일한 변수 또는 객체에 결합된다",
+          "doctrine_id": "doc_0001",
+          "evidence_summary": "함수 f(x)에 대하여 다음 조건을 만족시킨다. 그래프와 조건을; 으므로 먼저 공통 변수 기준으로 묶는다. 그래프의 대칭 구조를 먼저",
+          "taxonomy_code": "condition_binding"
+        },
+        {
+          "action": "치환과 정리 과정에서도 함수의 입력-출력 역할을 분명히 유지한다",
+          "condition": "함수 입력과 출력의 역할이 섞이면 변환이 무너진다",
+          "doctrine_id": "doc_0002",
+          "evidence_summary": "함수 f(x)에 대하여 다음 조건을; 함수 f(x)에 대하여 다음 조건을 만족시",
+          "taxonomy_code": "function_role_preservation"
+        },
+        {
+          "action": "핵심 구조를 고정한 뒤에만 선택지를 검산 도구로 사용한다",
+          "condition": "객관식 선택지가 전략 비용을 줄여 줄 수 있다",
+          "doctrine_id": "doc_0003",
+          "evidence_summary": "식을 하나의 관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프; 관계로 압축한 뒤 선지를 교차 검산한다. 함수 그래프 조건 함수의",
+          "taxonomy_code": "option_usage"
+        },
+        {
+          "action": "공식 대입 전에 식과 조건이 만드는 구조를 먼저 식별한다",
+          "condition": "표면 계산보다 먼저 봐야 할 관계 구조가 있다",
+          "doctrine_id": null,
+          "evidence_summary": "기준으로 묶는다. 그래프의 대칭 구조를 먼저 읽고 식을 하나의 관계로; 구조를 먼저 읽고 식을 하나의 관계로 압축한 뒤 선지를 교차 검산한",
+          "taxonomy_code": "structure_recognition"
+        },
+        {
+          "action": "전개 전에 문제의 목표량과 직접 연결되는 관계를 먼저 고정한다",
+          "condition": "중간 계산이 많아질수록 최종 목표량이 흐려질 수 있다",
+          "doctrine_id": "doc_0005",
+          "evidence_summary": "건을 함께 고려할 때 f(1)의 값을 구하시오. 1 2 3 4 5; 함께 고려할 때 f(1)의 값을 구하시오. 1 2 3 4 5 여러 조",
+          "taxonomy_code": "target_quantity_fixing"
+        },
+        {
+          "action": "시각 요소에서 지배 관계를 추출한 뒤 식으로 연결한다",
+          "condition": "그래프·도형·표에 계산보다 먼저 읽어야 할 관계가 있다",
+          "doctrine_id": "doc_0006",
+          "evidence_summary": "대하여 다음 조건을 만족시킨다. 그래프와 조건을 함께 고려할 때 f(1; 구조를 먼저 읽고 식을 하나의 관계로 압축한 뒤 선지를 교차 검산한",
+          "taxonomy_code": "visual_relation_extraction"
+        }
+      ]
+    },
+    {
+      "common_missed_doctrines": [
+        {
+          "action": "조건을 조각내지 말고 공통 대상 기준으로 묶어서 본다",
+          "condition": "같은 대상의 조건을 따로 따라가면 구조를 잃는다",
+          "doctrine_id": "doc_0007",
+          "evidence_summary": "두 조건이 하나의 함수 g(x)에 동시에; 오. -1 0 1 2 3 조건을 따로 전개하지 말고 하나의 함수에 걸",
+          "taxonomy_code": "condition_fragmentation"
+        },
+        {
+          "action": "변형 전후에 입력-출력 역할이 보존되는지 표시한다",
+          "condition": "함수식 정리 중 입력과 출력이 섞이면 해석이 무너진다",
+          "doctrine_id": "doc_0008",
+          "evidence_summary": "두 조건이 하나의 함수 g(x)에 동시에 주어진다. 보; 걸린 제약으로 묶는다. 함수의 입력과 출력 역할을 보존하면서 표현을",
+          "taxonomy_code": "function_role_collapse"
+        },
+        {
+          "action": "선택지는 구조를 고정한 뒤 검산 단계에서만 본다",
+          "condition": "선택지를 먼저 보면 전략이 선택지 모양에 끌린다",
+          "doctrine_id": "doc_0010",
+          "evidence_summary": "선택지를 먼저 보면 전략이 선택지 모양에 끌린다",
+          "taxonomy_code": "option_anchoring"
+        },
+        {
+          "action": "전개 전에 대칭·증감·특수값 여부를 먼저 점검한다",
+          "condition": "핵심 구조가 안 잡힌 상태의 전개는 비용만 키운다",
+          "doctrine_id": "doc_0011",
+          "evidence_summary": "-1 0 1 2 3 조건을 따로 전개하지 말고 하나의 함수에 걸린 제",
+          "taxonomy_code": "premature_expansion"
+        },
+        {
+          "action": "매 단계에서 지금 구한 양이 문제의 목표와 직접 연결되는지 확인한다",
+          "condition": "중간량이 최종 목표량처럼 보이면 계산이 새기 쉽다",
+          "doctrine_id": "doc_0012",
+          "evidence_summary": "동시에 주어진다. 보기와 식을 연결하여 g(2)의 값을 구하시오.",
+          "taxonomy_code": "target_drift"
+        },
+        {
+          "action": "시각 요소를 식보다 먼저 읽고 관계를 언어화한다",
+          "condition": "그래프나 도형을 장식처럼 보면 핵심 정보를 놓친다",
+          "doctrine_id": "doc_0013",
+          "evidence_summary": "그래프나 도형을 장식처럼 보면 핵심 정보를 놓친다",
+          "taxonomy_code": "visual_ignoring"
+        },
+        {
+          "action": "구조를 확보한 뒤 선택지와 핵심 조건을 교차 검산한다",
+          "condition": "객관식은 선택지를 이용한 역검산이 가능하다",
+          "doctrine_id": null,
+          "evidence_summary": "하면서 표현을 옮기고 마지막에는 선택지와 원래 조건을 함께 확인한다.",
+          "taxonomy_code": "choice_crosscheck"
+        },
+        {
+          "action": "최종 후보가 정의역과 범위 제약을 만족하는지 확인한다",
+          "condition": "정의역·범위 제약이 답의 가능성을 바로 줄인다",
+          "doctrine_id": null,
+          "evidence_summary": "개하지 말고 하나의 함수에 걸린 제약으로 묶는다. 함수의 입력과 출력",
+          "taxonomy_code": "domain_range_check"
+        },
+        {
+          "action": "마지막 후보를 원래 조건 전체에 다시 넣어 검증한다",
+          "condition": "변형 과정이 길수록 원문 조건과의 불일치가 생길 수 있다",
+          "doctrine_id": null,
+          "evidence_summary": "현을 옮기고 마지막에는 선택지와 원래 조건을 함께 확인한다. 함수 조건 치",
+          "taxonomy_code": "original_condition_recheck"
+        },
+        {
+          "action": "경계값이나 대표 특수값을 넣어 결과의 방향을 점검한다",
+          "condition": "특수값 대입이 구조 오류를 빠르게 드러낼 수 있다",
+          "doctrine_id": null,
+          "evidence_summary": "특수값 대입이 구조 오류를 빠르게 드러낼 수 있다",
+          "taxonomy_code": "special_value_sanity_check"
+        }
+      ],
+      "problem_id": "2025_09_mock_common_q14",
+      "recommended_doctrine_ids": [
+        "doc_0010",
+        "doc_0001",
+        "doc_0006",
+        "doc_0008"
+      ],
+      "required_doctrines": [
+        {
+          "action": "조건을 분리 전개하지 말고 공통 변수 기준으로 재정렬한다",
+          "condition": "여러 조건이 동일한 변수 또는 객체에 결합된다",
+          "doctrine_id": "doc_0001",
+          "evidence_summary": "두 조건이 하나의 함수 g(x)에 동시에; 고 하나의 함수에 걸린 제약으로 묶는다. 함수의 입력과 출력 역할을",
+          "taxonomy_code": "condition_binding"
+        },
+        {
+          "action": "치환과 정리 과정에서도 함수의 입력-출력 역할을 분명히 유지한다",
+          "condition": "함수 입력과 출력의 역할이 섞이면 변환이 무너진다",
+          "doctrine_id": "doc_0002",
+          "evidence_summary": "두 조건이 하나의 함수 g(x)에 동시에 주어진다. 보; 두 조건이 하나의 함수 g(x)에 동시에 주어진다. 보기와",
+          "taxonomy_code": "function_role_preservation"
+        },
+        {
+          "action": "핵심 구조를 고정한 뒤에만 선택지를 검산 도구로 사용한다",
+          "condition": "객관식 선택지가 전략 비용을 줄여 줄 수 있다",
+          "doctrine_id": "doc_0003",
+          "evidence_summary": "하면서 표현을 옮기고 마지막에는 선택지와 원래 조건을 함께 확인한다.",
+          "taxonomy_code": "option_usage"
+        },
+        {
+          "action": "문장 조건을 계산 가능한 표현으로 한 번에 번역한다",
+          "condition": "문장 조건과 수식 표현이 따로 놀면 풀이가 흔들린다",
+          "doctrine_id": null,
+          "evidence_summary": "x)에 동시에 주어진다. 보기와 식을 연결하여 g(2)의 값을 구하; 입력과 출력 역할을 보존하면서 표현을 옮기고 마지막에는 선택지와 원",
+          "taxonomy_code": "representation_translation"
+        },
+        {
+          "action": "전개 전에 문제의 목표량과 직접 연결되는 관계를 먼저 고정한다",
+          "condition": "중간 계산이 많아질수록 최종 목표량이 흐려질 수 있다",
+          "doctrine_id": "doc_0005",
+          "evidence_summary": "보기와 식을 연결하여 g(2)의 값을 구하시오. -1 0 1 2 3; 식을 연결하여 g(2)의 값을 구하시오. -1 0 1 2 3 조건을",
+          "taxonomy_code": "target_quantity_fixing"
+        },
+        {
+          "action": "시각 요소에서 지배 관계를 추출한 뒤 식으로 연결한다",
+          "condition": "그래프·도형·표에 계산보다 먼저 읽어야 할 관계가 있다",
+          "doctrine_id": "doc_0006",
+          "evidence_summary": "입력과 출력 역할을 보존하면서 표현을 옮기고 마지막에는 선택지와",
+          "taxonomy_code": "visual_relation_extraction"
+        }
+      ]
+    }
+  ]
+}

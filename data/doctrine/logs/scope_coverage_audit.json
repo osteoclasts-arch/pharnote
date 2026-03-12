@@ -1,0 +1,142 @@
+{
+  "actual_problem_count_by_common_section_detection_rule": {
+    "metadata:paper_section": 4
+  },
+  "actual_problem_count_by_exam_type": {
+    "6월 모의평가": 1,
+    "9월 모의평가": 1,
+    "수능": 2
+  },
+  "actual_problem_count_by_four_point_detection_rule": {
+    "metadata:points": 4
+  },
+  "actual_problem_count_by_question_number": {
+    "14": 1,
+    "15": 1,
+    "18": 1,
+    "21": 1
+  },
+  "actual_problem_count_by_year": {
+    "2024": 2,
+    "2025": 1,
+    "2026": 1
+  },
+  "coverage_alerts": [],
+  "coverage_ok": true,
+  "expected_scope_definition": "Academic years 2024, 2025, 2026; exam types 수능, 6월 모의평가, 9월 모의평가; subject 수학; common_only=True; points in [4].",
+  "inspection_summary": {
+    "backend": "fixture",
+    "inspection_mode": "fixture",
+    "mapping_decisions": {
+      "excluded_capabilities": [
+        "choices"
+      ],
+      "resolved_fields": {
+        "answer": "answer",
+        "choices": null,
+        "common_section": null,
+        "concept_tags": null,
+        "exam_type": "exam_type",
+        "metadata": "metadata",
+        "month": "month",
+        "points": null,
+        "question_number": "question_number",
+        "record_id": "id",
+        "solution_outline": "solution",
+        "stem": "content",
+        "subject": "subject",
+        "year": "year"
+      },
+      "resolved_metadata_fields": {
+        "answer": null,
+        "choices": null,
+        "common_section": "paper_section",
+        "concept_tags": "keywords",
+        "exam_type": null,
+        "metadata": null,
+        "month": null,
+        "points": "points",
+        "question_number": null,
+        "record_id": null,
+        "solution_outline": null,
+        "stem": null,
+        "subject": null,
+        "year": null
+      },
+      "warnings": [
+        "capability_unresolved:choices"
+      ]
+    },
+    "table_name": "past_questions"
+  },
+  "payload_problem_ids": [
+    "2024_06_mock_common_q15",
+    "2024_csat_common_q21",
+    "2025_09_mock_common_q14",
+    "2026_csat_common_q18"
+  ],
+  "problems_by_stage": {
+    "clustered_problem_ids": [
+      "2024_06_mock_common_q15",
+      "2024_csat_common_q21",
+      "2025_09_mock_common_q14",
+      "2026_csat_common_q18"
+    ],
+    "normalized_candidate_problem_ids": [
+      "2024_06_mock_common_q15",
+      "2024_csat_common_q21",
+      "2025_09_mock_common_q14",
+      "2026_csat_common_q18"
+    ],
+    "payload_problem_ids": [
+      "2024_06_mock_common_q15",
+      "2024_csat_common_q21",
+      "2025_09_mock_common_q14",
+      "2026_csat_common_q18"
+    ],
+    "scoped_problem_ids": [
+      "2024_06_mock_common_q15",
+      "2024_csat_common_q21",
+      "2025_09_mock_common_q14",
+      "2026_csat_common_q18"
+    ],
+    "seeded_problem_ids": [
+      "2024_06_mock_common_q15",
+      "2024_csat_common_q21",
+      "2025_09_mock_common_q14",
+      "2026_csat_common_q18"
+    ]
+  },
+  "problems_dropped_out_at_each_stage": {
+    "clustered_to_payload": [],
+    "live_filter_drop_counts": {
+      "common_section_out_of_scope_or_unavailable": 1,
+      "points_unavailable_or_out_of_scope": 1
+    },
+    "live_filter_drop_problem_ids": {
+      "common_section_out_of_scope_or_unavailable": [
+        "pq_out_scope_elective"
+      ],
+      "points_unavailable_or_out_of_scope": [
+        "pq_out_scope_points"
+      ]
+    },
+    "normalized_to_clustered": [],
+    "scope_to_payload": [],
+    "scope_to_seed": [],
+    "seed_to_normalized": []
+  },
+  "seeded_problem_ids": [
+    "2024_06_mock_common_q15",
+    "2024_csat_common_q21",
+    "2025_09_mock_common_q14",
+    "2026_csat_common_q18"
+  ],
+  "stage_counts": {
+    "clustered_doctrine_linked_problems": 4,
+    "exported_payload_problems": 4,
+    "normalized_candidate_producing_problems": 4,
+    "scoped_problems": 4,
+    "seeded_problems": 4
+  }
+}

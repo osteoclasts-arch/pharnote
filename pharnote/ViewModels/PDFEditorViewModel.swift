@@ -52,6 +52,19 @@ final class PDFEditorViewModel: ObservableObject {
         let inputModeLabel: String
     }
 
+    struct OutlineEntry: Identifiable, Hashable {
+        enum Source: String, Hashable {
+            case pdf
+            case studySection
+        }
+
+        let id: String
+        let title: String
+        let pageIndex: Int
+        let depth: Int
+        let source: Source
+    }
+
     @Published private(set) var pageCount: Int = 0
     @Published private(set) var currentPageIndex: Int = 0
     @Published private(set) var thumbnails: [Int: UIImage] = [:]
@@ -62,9 +75,11 @@ final class PDFEditorViewModel: ObservableObject {
     @Published var selectedTool: AnnotationTool = .pen {
         didSet { refreshEditActionAvailability() }
     }
+    @Published var selectedPenStyle: WritingPenStyle = .ballpoint
     @Published var selectedColorID: Int = 0
     @Published var strokeWidth: Double = 5.0
-    @Published var isPencilOnlyInputEnabled: Bool = true
+    @Published private(set) var strokePresetConfiguration: WritingStrokePresetConfiguration
+    @Published var isPencilOnlyInputEnabled: Bool = false
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
     @Published private(set) var canCopy: Bool = false
@@ -72,7 +87,9 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var canPaste: Bool = false
     @Published private(set) var canDelete: Bool = false
     @Published private(set) var bookmarkedPageIndices: Set<Int> = []
+    @Published private(set) var outlineEntries: [OutlineEntry] = []
     @Published private(set) var storedProgressSnapshot: StudyProgressSnapshot?
+    @Published var isReadOnlyMode: Bool = false
     @Published var errorMessage: String?
 
     let document: PharDocument
@@ -91,6 +108,8 @@ final class PDFEditorViewModel: ObservableObject {
     private let eventLogger: StudyEventLogger
     private let libraryStore: LibraryStore
     private let userDefaults: UserDefaults
+    private var strokePresetConfigurationsByTool: [AnnotationTool: WritingStrokePresetConfiguration]
+    private let requestedInitialPageIndex: Int?
     private var thumbnailGenerationTask: Task<Void, Never>?
     private var overlaySaveTasks: [Int: Task<Void, Never>] = [:]
     private var dirtyOverlayPages: Set<Int> = []
@@ -115,18 +134,35 @@ final class PDFEditorViewModel: ObservableObject {
 
     init(
         document: PharDocument,
+        initialPageKey: String? = nil,
         eventLogger: StudyEventLogger? = nil,
         libraryStore: LibraryStore? = nil,
         userDefaults: UserDefaults = .standard
     ) {
+        let penPresetConfiguration = WritingStrokePresetStore.configuration(
+            toolKey: Self.strokePresetToolKey(for: .pen),
+            userDefaults: userDefaults
+        )
+        let highlighterPresetConfiguration = WritingStrokePresetStore.configuration(
+            toolKey: Self.strokePresetToolKey(for: .highlighter),
+            userDefaults: userDefaults
+        )
+
         self.document = document
         self.eventLogger = eventLogger ?? StudyEventLogger.shared
         self.libraryStore = libraryStore ?? LibraryStore()
         self.userDefaults = userDefaults
+        self.strokePresetConfigurationsByTool = [
+            .pen: penPresetConfiguration,
+            .highlighter: highlighterPresetConfiguration
+        ]
+        self._strokePresetConfiguration = Published(initialValue: penPresetConfiguration)
+        self.requestedInitialPageIndex = Self.pageIndex(from: initialPageKey)
         self.storedProgressSnapshot = document.progress
         self.bookmarkedPageIndices = Set(
             (userDefaults.array(forKey: Self.bookmarkDefaultsKey(for: document.id)) as? [Int]) ?? []
         )
+        self.strokeWidth = penPresetConfiguration.values[penPresetConfiguration.selectedIndex]
     }
 
     func attachPDFView(_ pdfView: PDFView) {
@@ -152,20 +188,22 @@ final class PDFEditorViewModel: ObservableObject {
 
             pdfDocument = loadedDocument
             pageCount = loadedDocument.pageCount
-            currentPageIndex = 0
-            pageJumpInput = "1"
+            let initialPageIndex = min(max(requestedInitialPageIndex ?? 0, 0), max(loadedDocument.pageCount - 1, 0))
+            currentPageIndex = initialPageIndex
+            pageJumpInput = "\(initialPageIndex + 1)"
             trimBookmarksToLoadedPageCount()
             logDocumentOpenedIfNeeded()
 
             if let pdfView {
                 pdfView.document = loadedDocument
-                goToPage(index: 0)
+                goToPage(index: initialPageIndex)
             }
 
-            recordPageVisit(0)
+            recordPageVisit(initialPageIndex)
             persistStudyProgress()
 
             clearPDFTextSearch(resetQuery: false)
+            rebuildOutlineEntries()
 
             generateThumbnails(from: pdfURL)
         } catch {
@@ -225,8 +263,11 @@ final class PDFEditorViewModel: ObservableObject {
         saveAllOverlayPagesImmediately()
     }
 
-    func closeDocument() {
-        stopTasks()
+    func closeDocument() async {
+        thumbnailGenerationTask?.cancel()
+        thumbnailGenerationTask = nil
+        recordPageExit()
+        await saveAllOverlayPagesImmediatelyAndWait()
         persistStudyProgress()
         guard didLogDocumentOpen else { return }
         eventLogger.log(
@@ -260,6 +301,11 @@ final class PDFEditorViewModel: ObservableObject {
         }
     }
 
+    private static func pageIndex(from pageKey: String?) -> Int? {
+        guard let pageKey, pageKey.hasPrefix("pdf-page-") else { return nil }
+        return Int(pageKey.replacingOccurrences(of: "pdf-page-", with: ""))
+    }
+
     var canGoPrevious: Bool {
         currentPageIndex > 0
     }
@@ -270,6 +316,10 @@ final class PDFEditorViewModel: ObservableObject {
 
     var currentPageNumber: Int {
         max(currentPageIndex + 1, 1)
+    }
+
+    var sortedBookmarkedPageIndices: [Int] {
+        bookmarkedPageIndices.sorted()
     }
 
     var currentPageOverlayStrokeCount: Int {
@@ -297,7 +347,10 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     var inputModeLabel: String {
-        isPencilOnlyInputEnabled ? "Apple Pencil only" : "Touch annotation enabled"
+        if isReadOnlyMode {
+            return "Read Only"
+        }
+        return isPencilOnlyInputEnabled ? "Apple Pencil only" : "Touch annotation enabled"
     }
 
     var analysisPreview: AnalysisPreview? {
@@ -317,6 +370,14 @@ final class PDFEditorViewModel: ObservableObject {
     var currentAnalysisPageID: UUID? {
         guard pageCount > 0 else { return nil }
         return UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex)
+    }
+
+    var canAnalyzeCurrentSelection: Bool {
+        analysisSource != nil && selectedTool == .lasso && (canCopy || canCut || canDelete)
+    }
+
+    var currentAnalysisScope: AnalysisScope {
+        canAnalyzeCurrentSelection ? .selection : .page
     }
 
     var sectionProgressHeadline: String? {
@@ -341,6 +402,10 @@ final class PDFEditorViewModel: ObservableObject {
 
     var totalSectionCount: Int {
         currentProgressSnapshot.totalSectionCount
+    }
+
+    var overallCompletionRatio: Double {
+        currentProgressSnapshot.completionRatio
     }
 
     var sectionDrafts: [SectionDraft] {
@@ -382,6 +447,7 @@ final class PDFEditorViewModel: ObservableObject {
         do {
             if let updatedDocument = try libraryStore.updateStudySections(documentID: document.id, sections: normalizedSections) {
                 storedProgressSnapshot = updatedDocument.progress
+                rebuildOutlineEntries()
             }
             return true
         } catch {
@@ -430,7 +496,8 @@ final class PDFEditorViewModel: ObservableObject {
             redoCount: redoCountByPageIndex[currentPageIndex, default: 0],
             zoomEventCount: 0,
             navigationPath: pageNavigationHistory.map { "page-\($0 + 1)" },
-            sourceFingerprint: resolvePDFFileName()
+            sourceFingerprint: resolvePDFFileName(),
+            postSolveReview: nil
         )
     }
 
@@ -464,6 +531,9 @@ final class PDFEditorViewModel: ObservableObject {
                 "source": .string("toolbar")
             ]
         )
+        if let inkTool = activeInkTool(for: tool) {
+            applyStrokePresetConfiguration(for: inkTool)
+        }
     }
 
     func uiColorForColorID(_ id: Int) -> UIColor {
@@ -478,8 +548,32 @@ final class PDFEditorViewModel: ObservableObject {
         selectedColorID = colorID
     }
 
+    func selectPenStyle(_ penStyle: WritingPenStyle) {
+        selectedPenStyle = penStyle
+    }
+
     func selectStrokeWidth(_ width: Double) {
-        strokeWidth = width
+        guard let inkTool = activeInkTool() else { return }
+        updateStrokePreset(width, at: strokePresetConfiguration.selectedIndex, for: inkTool)
+    }
+
+    func selectStrokePreset(at index: Int) {
+        guard let inkTool = activeInkTool() else { return }
+        guard let currentConfiguration = strokePresetConfigurationsByTool[inkTool] else { return }
+        guard index >= 0 && index < currentConfiguration.values.count else { return }
+
+        let updatedConfiguration = WritingStrokePresetConfiguration(
+            values: currentConfiguration.values,
+            selectedIndex: index
+        )
+        strokePresetConfigurationsByTool[inkTool] = updatedConfiguration
+        persistStrokePresetConfiguration(updatedConfiguration, for: inkTool)
+        applyStrokePresetConfiguration(for: inkTool)
+    }
+
+    func updateStrokePreset(_ width: Double, at index: Int) {
+        guard let inkTool = activeInkTool() else { return }
+        updateStrokePreset(width, at: index, for: inkTool)
     }
 
     func togglePencilOnlyInput() {
@@ -496,14 +590,23 @@ final class PDFEditorViewModel: ObservableObject {
         )
     }
 
+    func toggleReadOnlyMode() {
+        isReadOnlyMode.toggle()
+        refreshEditActionAvailability()
+    }
+
     func toggleCurrentPageBookmark() {
+        toggleBookmark(for: currentPageIndex)
+    }
+
+    func toggleBookmark(for pageIndex: Int) {
         var updatedBookmarks = bookmarkedPageIndices
         let isBookmarked: Bool
-        if updatedBookmarks.contains(currentPageIndex) {
-            updatedBookmarks.remove(currentPageIndex)
+        if updatedBookmarks.contains(pageIndex) {
+            updatedBookmarks.remove(pageIndex)
             isBookmarked = false
         } else {
-            updatedBookmarks.insert(currentPageIndex)
+            updatedBookmarks.insert(pageIndex)
             isBookmarked = true
         }
         bookmarkedPageIndices = updatedBookmarks
@@ -511,17 +614,70 @@ final class PDFEditorViewModel: ObservableObject {
         eventLogger.log(
             .pageBookmarkToggled,
             document: document,
-            pageID: currentAnalysisPageID,
+            pageID: UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex),
             sessionID: sessionID,
             payload: [
                 "bookmarked": .bool(isBookmarked),
-                "page_index": .integer(currentPageIndex)
+                "page_index": .integer(pageIndex)
             ]
         )
     }
 
     func isPageBookmarked(_ pageIndex: Int) -> Bool {
         bookmarkedPageIndices.contains(pageIndex)
+    }
+
+    func goToPage(pageKey: String?) {
+        guard let pageIndex = Self.pageIndex(from: pageKey) else { return }
+        goToPage(index: pageIndex)
+    }
+
+    func pageTitle(for pageIndex: Int) -> String {
+        "페이지 \(pageIndex + 1)"
+    }
+
+    func pageSectionTitle(for pageIndex: Int) -> String? {
+        let displayPage = pageIndex + 1
+        return currentProgressSnapshot.sections.first(where: { $0.contains(page: displayPage) })?.title
+    }
+
+    func pageSubtitle(for pageIndex: Int) -> String? {
+        var parts: [String] = []
+
+        if let sectionTitle = pageSectionTitle(for: pageIndex), !sectionTitle.isEmpty {
+            parts.append(sectionTitle)
+        }
+        if isPageBookmarked(pageIndex) {
+            parts.append("북마크")
+        }
+        if isPageDirty(pageIndex) {
+            parts.append("편집 중")
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    func pageIndex(forLinkURL url: URL) -> Int? {
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            if let page = components.queryItems?.first(where: { $0.name.caseInsensitiveCompare("page") == .orderedSame })?.value.flatMap(Int.init) {
+                return min(max(page - 1, 0), max(pageCount - 1, 0))
+            }
+            if let pageIndex = components.queryItems?.first(where: { $0.name.caseInsensitiveCompare("pageIndex") == .orderedSame })?.value.flatMap(Int.init) {
+                return min(max(pageIndex, 0), max(pageCount - 1, 0))
+            }
+        }
+
+        if let fragment = url.fragment?.lowercased() {
+            if let page = fragment
+                .replacingOccurrences(of: "page=", with: "")
+                .split(separator: "&")
+                .first
+                .flatMap({ Int($0) }) {
+                return min(max(page - 1, 0), max(pageCount - 1, 0))
+            }
+        }
+
+        return nil
     }
 
     func isPageDirty(_ pageIndex: Int) -> Bool {
@@ -531,7 +687,7 @@ final class PDFEditorViewModel: ObservableObject {
     func currentTool() -> PKTool {
         switch selectedTool {
         case .pen:
-            return PKInkingTool(.pen, color: uiColorForColorID(selectedColorID), width: CGFloat(strokeWidth))
+            return makePenTool()
         case .highlighter:
             let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.35)
             return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth))
@@ -547,7 +703,7 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     func allowsFingerDrawing() -> Bool {
-        !isPencilOnlyInputEnabled
+        !isReadOnlyMode && !isPencilOnlyInputEnabled
     }
 
     func loadOverlayDrawing(for pageIndex: Int) async -> PKDrawing {
@@ -576,20 +732,28 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     func saveAllOverlayPagesImmediately() {
+        Task {
+            await saveAllOverlayPagesImmediatelyAndWait()
+        }
+    }
+
+    func saveAllOverlayPagesImmediatelyAndWait() async {
         overlaySaveTasks.values.forEach { $0.cancel() }
         overlaySaveTasks.removeAll()
 
         let dirtyPages = Array(dirtyOverlayPages)
-        Task {
-            for pageIndex in dirtyPages {
-                await persistOverlayPageIfNeeded(pageIndex: pageIndex, force: true)
-            }
+        for pageIndex in dirtyPages {
+            await persistOverlayPageIfNeeded(pageIndex: pageIndex, force: true)
         }
     }
 
     func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
         activeOverlayCanvas = canvas
         objectWillChange.send()
+        refreshEditActionAvailability()
+    }
+
+    func refreshCanvasInteractionState() {
         refreshEditActionAvailability()
     }
 
@@ -727,6 +891,93 @@ final class PDFEditorViewModel: ObservableObject {
         pdfView.displaysPageBreaks = true
     }
 
+    private func rebuildOutlineEntries() {
+        let pdfEntries = flattenedOutlineEntries()
+        outlineEntries = pdfEntries.isEmpty ? fallbackOutlineEntries() : pdfEntries
+    }
+
+    private func flattenedOutlineEntries() -> [OutlineEntry] {
+        guard let pdfDocument, let outlineRoot = pdfDocument.outlineRoot else { return [] }
+
+        var entries: [OutlineEntry] = []
+
+        func visit(_ outline: PDFOutline, depth: Int) {
+            if let pageIndex = outlinePageIndex(outline, in: pdfDocument) {
+                let normalizedLabel = outline.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let title: String
+                if let normalizedLabel, !normalizedLabel.isEmpty {
+                    title = normalizedLabel
+                } else {
+                    title = pageTitle(for: pageIndex)
+                }
+                entries.append(
+                    OutlineEntry(
+                        id: "pdf-\(depth)-\(pageIndex)-\(entries.count)",
+                        title: title,
+                        pageIndex: pageIndex,
+                        depth: depth,
+                        source: .pdf
+                    )
+                )
+            }
+
+            for childIndex in 0..<outline.numberOfChildren {
+                guard let child = outline.child(at: childIndex) else { continue }
+                visit(child, depth: depth + 1)
+            }
+        }
+
+        for childIndex in 0..<outlineRoot.numberOfChildren {
+            guard let child = outlineRoot.child(at: childIndex) else { continue }
+            visit(child, depth: 0)
+        }
+
+        return entries
+    }
+
+    private func fallbackOutlineEntries() -> [OutlineEntry] {
+        currentProgressSnapshot.sections
+            .sorted { $0.startPage < $1.startPage }
+            .enumerated()
+            .map { index, section in
+                let pageIndex = min(max(section.startPage - 1, 0), max(pageCount - 1, 0))
+                return OutlineEntry(
+                    id: "section-\(section.id.uuidString)-\(index)",
+                    title: section.title.isEmpty ? pageTitle(for: pageIndex) : section.title,
+                    pageIndex: pageIndex,
+                    depth: 0,
+                    source: .studySection
+                )
+            }
+    }
+
+    private func outlinePageIndex(_ outline: PDFOutline, in document: PDFDocument) -> Int? {
+        if let destination = outline.destination, let page = destination.page {
+            let index = document.index(for: page)
+            return index == NSNotFound ? nil : index
+        }
+
+        if let action = outline.action as? PDFActionGoTo, let page = action.destination.page {
+            let index = document.index(for: page)
+            return index == NSNotFound ? nil : index
+        }
+
+        return nil
+    }
+
+    private func makePenTool() -> PKInkingTool {
+        let baseColor = uiColorForColorID(selectedColorID)
+
+        switch selectedPenStyle {
+        case .ballpoint:
+            return PKInkingTool(.pen, color: baseColor, width: CGFloat(strokeWidth))
+        case .pencil:
+            let texturedColor = baseColor.withAlphaComponent(0.88)
+            let texturedWidth = CGFloat(max(strokeWidth * 1.15, 1.8))
+            return PKInkingTool(.pencil, color: texturedColor, width: texturedWidth)
+        }
+    }
+
     private func generateThumbnails(from pdfURL: URL) {
         thumbnailGenerationTask?.cancel()
         thumbnails = [:]
@@ -834,6 +1085,10 @@ final class PDFEditorViewModel: ObservableObject {
                     "save_reason": .string(force ? "force" : "debounce")
                 ]
             )
+            SearchInfrastructure.shared.enqueueHandwritingIndexJob(
+                documentID: document.id,
+                pageKey: "pdf-page-\(pageIndex)"
+            )
             objectWillChange.send()
         } catch {
             errorMessage = "PDF 필기 저장 실패: \(error.localizedDescription)"
@@ -850,8 +1105,64 @@ final class PDFEditorViewModel: ObservableObject {
         refreshEditActionAvailability()
     }
 
+    private func activeInkTool(for tool: AnnotationTool? = nil) -> AnnotationTool? {
+        switch tool ?? selectedTool {
+        case .pen:
+            return .pen
+        case .highlighter:
+            return .highlighter
+        case .eraser, .lasso:
+            return nil
+        }
+    }
+
+    private func applyStrokePresetConfiguration(for tool: AnnotationTool) {
+        guard let configuration = strokePresetConfigurationsByTool[tool] else { return }
+        strokePresetConfiguration = configuration
+        strokeWidth = configuration.values[configuration.selectedIndex]
+        refreshEditActionAvailability()
+    }
+
+    private func updateStrokePreset(_ width: Double, at index: Int, for tool: AnnotationTool) {
+        guard var configuration = strokePresetConfigurationsByTool[tool] else { return }
+        guard index >= 0 && index < configuration.values.count else { return }
+
+        var updatedValues = configuration.values
+        updatedValues[index] = min(max(width, 1), 16)
+        configuration = WritingStrokePresetConfiguration(values: updatedValues, selectedIndex: index)
+
+        strokePresetConfigurationsByTool[tool] = configuration
+        persistStrokePresetConfiguration(configuration, for: tool)
+
+        if activeInkTool() == tool {
+            strokePresetConfiguration = configuration
+            strokeWidth = configuration.values[index]
+            refreshEditActionAvailability()
+        }
+    }
+
+    private func persistStrokePresetConfiguration(_ configuration: WritingStrokePresetConfiguration, for tool: AnnotationTool) {
+        WritingStrokePresetStore.save(
+            toolKey: Self.strokePresetToolKey(for: tool),
+            values: configuration.values,
+            selectedIndex: configuration.selectedIndex,
+            userDefaults: userDefaults
+        )
+    }
+
+    private static func strokePresetToolKey(for tool: AnnotationTool) -> String {
+        switch tool {
+        case .pen:
+            return "pen"
+        case .highlighter:
+            return "highlighter"
+        case .eraser, .lasso:
+            return "pen"
+        }
+    }
+
     private func refreshEditActionAvailability() {
-        guard let canvas = activeOverlayCanvas else {
+        guard !isReadOnlyMode, let canvas = activeOverlayCanvas else {
             canUndo = false
             canRedo = false
             canCopy = false

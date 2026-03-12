@@ -27,6 +27,15 @@ struct HandwritingIndexRecord: Identifiable, Codable {
     let engineVersion: String
 }
 
+struct HandwritingSearchHit: Identifiable, Codable, Hashable {
+    let id: UUID
+    let documentID: UUID
+    let pageKey: String
+    let indexedAt: Date
+    let snippet: String
+    let matchedText: String
+}
+
 struct SearchIndexStorageLayout {
     nonisolated static let rootDirectoryName = "SearchIndexes"
     nonisolated static let metadataDirectoryName = "Metadata"

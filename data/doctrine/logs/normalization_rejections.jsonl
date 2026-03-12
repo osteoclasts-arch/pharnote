@@ -1,0 +1,2 @@
+{"candidate_id": "cand_0037", "problem_id": "2026_csat_common_q18", "raw_text": "조건: 정의역·범위·정수 조건 같은 제한이 계속 유효하다 / 행동: 모든 변형 단계에서 활성 제한을 같이 끌고 간다", "rejection_reason": "non_operational"}
+{"candidate_id": "cand_0065", "problem_id": "2026_csat_common_q18", "raw_text": "2026 수능 18번처럼 절댓값이나 부호가 보이면 경우를 늦게 나누지 말고 기준을 먼저 적어라.", "rejection_reason": "too_item_specific"}

@@ -123,6 +123,387 @@ nonisolated struct AnalysisTextBlock: Codable, Hashable, Sendable, Identifiable 
     }
 }
 
+nonisolated struct OCRPreviewSummary: Hashable, Sendable {
+    var recognizedBlockCount: Int
+    var scannedPageBlockCount: Int
+    var handwritingBlockCount: Int
+    var recognizedCharacterCount: Int
+    var topLines: [String]
+    var problemCandidates: [String]
+    var hasMathSignal: Bool
+}
+
+nonisolated enum AnalysisReviewSubjectType: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
+    case math
+    case korean
+    case english
+    case inquiry
+    case unknown
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .math:
+            return "수학"
+        case .korean:
+            return "국어"
+        case .english:
+            return "영어"
+        case .inquiry:
+            return "탐구"
+        case .unknown:
+            return "미지정"
+        }
+    }
+
+    init(studySubject: StudySubject?) {
+        switch studySubject {
+        case .math?:
+            self = .math
+        case .korean?, .essay?:
+            self = .korean
+        case .english?:
+            self = .english
+        case .koreanHistory?, .socialInquiry?, .physics?, .chemistry?, .biology?, .earthScience?:
+            self = .inquiry
+        default:
+            self = .unknown
+        }
+    }
+}
+
+nonisolated enum AnalysisReviewStepStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case clear
+    case partial
+    case failed
+    case notTried = "not_tried"
+
+    var title: String {
+        switch self {
+        case .clear:
+            return "명확"
+        case .partial:
+            return "애매"
+        case .failed:
+            return "막힘"
+        case .notTried:
+            return "안 함"
+        }
+    }
+}
+
+nonisolated struct AnalysisReviewStepResponse: Codable, Hashable, Sendable, Identifiable {
+    var stepId: String
+    var status: AnalysisReviewStepStatus
+    var selectedOptionId: String?
+
+    var id: String { stepId }
+}
+
+nonisolated struct AnalysisPostSolveReview: Codable, Hashable, Sendable {
+    var subject: AnalysisReviewSubjectType
+    var confidenceAfter: Int?
+    var firstApproach: String?
+    var reviewPath: [AnalysisReviewStepResponse]?
+    var primaryStuckPoint: String?
+    var lassoSelectedPointIds: [String]?
+    var freeMemo: String?
+    var analyzedAt: Date
+}
+
+nonisolated struct AnalysisReviewOptionDefinition: Hashable, Sendable, Identifiable {
+    var id: String
+    var title: String
+}
+
+nonisolated struct AnalysisReviewStepDefinition: Hashable, Sendable, Identifiable {
+    var id: String
+    var title: String
+    var options: [AnalysisReviewOptionDefinition]
+}
+
+nonisolated struct AnalysisPostSolveReviewPromptSet: Hashable, Sendable {
+    var subject: AnalysisReviewSubjectType
+    var firstApproachOptions: [AnalysisReviewOptionDefinition]
+    var stepDefinitions: [AnalysisReviewStepDefinition]
+
+    func stepTitle(for stepId: String) -> String {
+        stepDefinitions.first(where: { $0.id == stepId })?.title ?? stepId.replacingOccurrences(of: "_", with: " ")
+    }
+
+    static func promptSet(for studySubject: StudySubject?) -> AnalysisPostSolveReviewPromptSet {
+        promptSet(for: AnalysisReviewSubjectType(studySubject: studySubject))
+    }
+
+    static func promptSet(for subject: AnalysisReviewSubjectType) -> AnalysisPostSolveReviewPromptSet {
+        let genericSteps = [
+            AnalysisReviewStepDefinition(
+                id: "condition_parse",
+                title: "조건 해석",
+                options: [
+                    AnalysisReviewOptionDefinition(id: "generic_find_knowns", title: "주어진 조건 먼저 정리"),
+                    AnalysisReviewOptionDefinition(id: "generic_define_target", title: "무엇을 구할지 먼저 고정"),
+                    AnalysisReviewOptionDefinition(id: "generic_mark_keyword", title: "핵심 단서 표시"),
+                    AnalysisReviewOptionDefinition(id: "generic_split_information", title: "정보를 단계별로 분리")
+                ]
+            ),
+            AnalysisReviewStepDefinition(
+                id: "strategy_choice",
+                title: "풀이 방향",
+                options: [
+                    AnalysisReviewOptionDefinition(id: "generic_recall_rule", title: "관련 개념/규칙 떠올리기"),
+                    AnalysisReviewOptionDefinition(id: "generic_choose_pattern", title: "대표 패턴 선택"),
+                    AnalysisReviewOptionDefinition(id: "generic_try_simple_case", title: "쉬운 경우부터 시도"),
+                    AnalysisReviewOptionDefinition(id: "generic_set_intermediate_goal", title: "중간 목표 먼저 세우기")
+                ]
+            ),
+            AnalysisReviewStepDefinition(
+                id: "execution",
+                title: "전개/풀이",
+                options: [
+                    AnalysisReviewOptionDefinition(id: "generic_follow_order", title: "순서대로 전개"),
+                    AnalysisReviewOptionDefinition(id: "generic_track_change", title: "변화 추적"),
+                    AnalysisReviewOptionDefinition(id: "generic_compare_choices", title: "선택지/경우 비교"),
+                    AnalysisReviewOptionDefinition(id: "generic_keep_basis", title: "근거를 옆에 남기기")
+                ]
+            ),
+            AnalysisReviewStepDefinition(
+                id: "verification",
+                title: "검산/판단",
+                options: [
+                    AnalysisReviewOptionDefinition(id: "generic_recheck_condition", title: "조건과 다시 대조"),
+                    AnalysisReviewOptionDefinition(id: "generic_check_final", title: "최종 답 모양 확인"),
+                    AnalysisReviewOptionDefinition(id: "generic_find_counterexample", title: "반례/예외 확인"),
+                    AnalysisReviewOptionDefinition(id: "generic_self_explain", title: "한 줄로 다시 설명")
+                ]
+            )
+        ]
+
+        switch subject {
+        case .math:
+            return AnalysisPostSolveReviewPromptSet(
+                subject: .math,
+                firstApproachOptions: [
+                    AnalysisReviewOptionDefinition(id: "math_list_knowns", title: "조건과 미지수부터 정리"),
+                    AnalysisReviewOptionDefinition(id: "math_recall_concept", title: "관련 공식/개념 먼저 떠올림"),
+                    AnalysisReviewOptionDefinition(id: "math_find_pattern", title: "유형/패턴부터 찾음"),
+                    AnalysisReviewOptionDefinition(id: "math_set_equation", title: "식 세우기부터 시도")
+                ],
+                stepDefinitions: [
+                    AnalysisReviewStepDefinition(
+                        id: "condition_parse",
+                        title: "조건 해석",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "math_identify_given", title: "주어진 값/조건 구분"),
+                            AnalysisReviewOptionDefinition(id: "math_define_target", title: "구할 대상을 고정"),
+                            AnalysisReviewOptionDefinition(id: "math_pick_variable", title: "변수/기호 먼저 두기"),
+                            AnalysisReviewOptionDefinition(id: "math_draw_relation", title: "관계식/도형 구조 먼저 보기")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "strategy_choice",
+                        title: "풀이 방향",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "math_recall_formula", title: "관련 공식 회상"),
+                            AnalysisReviewOptionDefinition(id: "math_try_substitution", title: "치환/변형 시도"),
+                            AnalysisReviewOptionDefinition(id: "math_case_split", title: "경우 나누기 선택"),
+                            AnalysisReviewOptionDefinition(id: "math_transform_expression", title: "식을 정리해 흐름 만들기")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "execution",
+                        title: "전개/계산",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "math_keep_equation_consistent", title: "등식 흐름 유지"),
+                            AnalysisReviewOptionDefinition(id: "math_follow_sign_change", title: "부호/계수 변화 추적"),
+                            AnalysisReviewOptionDefinition(id: "math_manage_case_flow", title: "경우별 흐름 정리"),
+                            AnalysisReviewOptionDefinition(id: "math_track_definition_use", title: "정의 적용 위치 확인")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "verification",
+                        title: "검산",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "math_check_domain", title: "정의역/조건 재확인"),
+                            AnalysisReviewOptionDefinition(id: "math_recheck_final_expression", title: "최종 식 다시 보기"),
+                            AnalysisReviewOptionDefinition(id: "math_compare_with_condition", title: "초기 조건과 대조"),
+                            AnalysisReviewOptionDefinition(id: "math_substitute_simple_case", title: "쉬운 값 대입 검산")
+                        ]
+                    )
+                ]
+            )
+        case .korean:
+            return AnalysisPostSolveReviewPromptSet(
+                subject: .korean,
+                firstApproachOptions: [
+                    AnalysisReviewOptionDefinition(id: "korean_find_prompt_keyword", title: "발문 키워드부터 확인"),
+                    AnalysisReviewOptionDefinition(id: "korean_scan_evidence", title: "근거 문장부터 찾음"),
+                    AnalysisReviewOptionDefinition(id: "korean_classify_passage", title: "글의 유형/구조 먼저 판단"),
+                    AnalysisReviewOptionDefinition(id: "korean_compare_choices_early", title: "선지부터 비교")
+                ],
+                stepDefinitions: [
+                    AnalysisReviewStepDefinition(
+                        id: "condition_parse",
+                        title: "문항 해석",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "korean_grasp_prompt", title: "무엇을 묻는지 파악"),
+                            AnalysisReviewOptionDefinition(id: "korean_mark_clue_sentence", title: "핵심 문장 표시"),
+                            AnalysisReviewOptionDefinition(id: "korean_identify_passage_role", title: "문단 역할 구분"),
+                            AnalysisReviewOptionDefinition(id: "korean_define_choice_task", title: "선지 판단 기준 고정")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "strategy_choice",
+                        title: "접근 방향",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "korean_summarize_paragraph", title: "문단별 핵심 정리"),
+                            AnalysisReviewOptionDefinition(id: "korean_compare_choices", title: "선지 대조"),
+                            AnalysisReviewOptionDefinition(id: "korean_track_core_claim", title: "중심 주장 추적"),
+                            AnalysisReviewOptionDefinition(id: "korean_locate_evidence", title: "근거 위치 먼저 고정")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "execution",
+                        title: "판단/소거",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "korean_eliminate_wrong_choice", title: "오답 선지 소거"),
+                            AnalysisReviewOptionDefinition(id: "korean_match_evidence", title: "근거와 선지 연결"),
+                            AnalysisReviewOptionDefinition(id: "korean_follow_structure", title: "구조 흐름 따라가기"),
+                            AnalysisReviewOptionDefinition(id: "korean_check_expression", title: "표현/어조 확인")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "verification",
+                        title: "최종 확인",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "korean_recheck_keyword", title: "발문 핵심어 재확인"),
+                            AnalysisReviewOptionDefinition(id: "korean_verify_choice_basis", title: "선택 근거 다시 보기"),
+                            AnalysisReviewOptionDefinition(id: "korean_review_counterexample", title: "반대 근거 점검"),
+                            AnalysisReviewOptionDefinition(id: "korean_confirm_scope", title: "범위/대상 확인")
+                        ]
+                    )
+                ]
+            )
+        case .english:
+            return AnalysisPostSolveReviewPromptSet(
+                subject: .english,
+                firstApproachOptions: [
+                    AnalysisReviewOptionDefinition(id: "english_parse_sentence", title: "문장 구조부터 파악"),
+                    AnalysisReviewOptionDefinition(id: "english_find_clue", title: "단서 문장부터 찾음"),
+                    AnalysisReviewOptionDefinition(id: "english_compare_choices", title: "선지 먼저 비교"),
+                    AnalysisReviewOptionDefinition(id: "english_identify_structure", title: "글 전개 구조 먼저 판단")
+                ],
+                stepDefinitions: [
+                    AnalysisReviewStepDefinition(
+                        id: "condition_parse",
+                        title: "문장/발문 해석",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "english_identify_task", title: "발문 요구 파악"),
+                            AnalysisReviewOptionDefinition(id: "english_split_sentence", title: "문장 성분 나누기"),
+                            AnalysisReviewOptionDefinition(id: "english_mark_connector", title: "접속/전환어 표시"),
+                            AnalysisReviewOptionDefinition(id: "english_pick_keyword", title: "핵심 단어 고정")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "strategy_choice",
+                        title: "접근 방향",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "english_clue_first", title: "근거 문장 우선"),
+                            AnalysisReviewOptionDefinition(id: "english_structure_first", title: "글 구조 우선"),
+                            AnalysisReviewOptionDefinition(id: "english_vocab_guess", title: "어휘/문맥 추론"),
+                            AnalysisReviewOptionDefinition(id: "english_choice_compare", title: "선지 비교 시작")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "execution",
+                        title: "해석/판단",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "english_match_evidence", title: "근거와 답 연결"),
+                            AnalysisReviewOptionDefinition(id: "english_remove_false_choice", title: "오답 선지 제거"),
+                            AnalysisReviewOptionDefinition(id: "english_track_reference", title: "대명사/지시어 추적"),
+                            AnalysisReviewOptionDefinition(id: "english_keep_tense_logic", title: "시제/논리 유지")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "verification",
+                        title: "최종 확인",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "english_recheck_prompt", title: "발문 재확인"),
+                            AnalysisReviewOptionDefinition(id: "english_recheck_clue", title: "근거 문장 다시 보기"),
+                            AnalysisReviewOptionDefinition(id: "english_check_choice_scope", title: "선지 범위 점검"),
+                            AnalysisReviewOptionDefinition(id: "english_self_translate", title: "핵심 문장 다시 해석")
+                        ]
+                    )
+                ]
+            )
+        case .inquiry:
+            return AnalysisPostSolveReviewPromptSet(
+                subject: .inquiry,
+                firstApproachOptions: [
+                    AnalysisReviewOptionDefinition(id: "inquiry_identify_principle", title: "관련 원리부터 떠올림"),
+                    AnalysisReviewOptionDefinition(id: "inquiry_read_graph", title: "표/그래프부터 읽음"),
+                    AnalysisReviewOptionDefinition(id: "inquiry_sort_conditions", title: "조건부터 분류"),
+                    AnalysisReviewOptionDefinition(id: "inquiry_recall_formula", title: "식/법칙 먼저 점검")
+                ],
+                stepDefinitions: [
+                    AnalysisReviewStepDefinition(
+                        id: "condition_parse",
+                        title: "자료/조건 해석",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "inquiry_identify_variable", title: "변수/축 먼저 읽기"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_mark_experiment", title: "실험 조건 구분"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_sort_units", title: "단위/기호 확인"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_pick_question_core", title: "핵심 질문 고정")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "strategy_choice",
+                        title: "해석 방향",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "inquiry_link_principle", title: "원리와 연결"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_compare_cases", title: "조건별 비교"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_extract_trend", title: "증감 경향 파악"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_eliminate_noise", title: "불필요 정보 제거")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "execution",
+                        title: "추론/계산",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "inquiry_apply_rule", title: "법칙 적용"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_follow_graph", title: "그래프 흐름 추적"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_manage_case_flow", title: "조건별 추론 정리"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_track_exception", title: "예외 상황 확인")
+                        ]
+                    ),
+                    AnalysisReviewStepDefinition(
+                        id: "verification",
+                        title: "최종 판단",
+                        options: [
+                            AnalysisReviewOptionDefinition(id: "inquiry_recheck_condition", title: "조건 다시 대조"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_recheck_unit", title: "단위/방향 검산"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_check_graph_reason", title: "자료 근거 재확인"),
+                            AnalysisReviewOptionDefinition(id: "inquiry_compare_with_fact", title: "사실과 다시 비교")
+                        ]
+                    )
+                ]
+            )
+        case .unknown:
+            return AnalysisPostSolveReviewPromptSet(
+                subject: .unknown,
+                firstApproachOptions: [
+                    AnalysisReviewOptionDefinition(id: "generic_scan_prompt", title: "문제를 끝까지 읽음"),
+                    AnalysisReviewOptionDefinition(id: "generic_find_knowns", title: "주어진 정보 정리"),
+                    AnalysisReviewOptionDefinition(id: "generic_recall_rule", title: "관련 개념 떠올림"),
+                    AnalysisReviewOptionDefinition(id: "generic_try_pattern", title: "익숙한 패턴부터 시도")
+                ],
+                stepDefinitions: genericSteps
+            )
+        }
+    }
+}
+
 nonisolated struct AnalysisBehaviorContext: Codable, Hashable, Sendable {
     var sessionId: UUID?
     var studyIntent: AnalysisStudyIntent
@@ -137,6 +518,7 @@ nonisolated struct AnalysisBehaviorContext: Codable, Hashable, Sendable {
     var redoCount: Int
     var zoomEventCount: Int
     var navigationPath: [String]
+    var postSolveReview: AnalysisPostSolveReview?
 }
 
 nonisolated struct AnalysisToolUsage: Codable, Hashable, Sendable, Identifiable {
@@ -419,6 +801,7 @@ nonisolated struct BlankNoteAnalysisSource: Sendable {
     var undoCount: Int
     var redoCount: Int
     var navigationPath: [String]
+    var postSolveReview: AnalysisPostSolveReview?
 }
 
 nonisolated struct PDFPageAnalysisSource: Sendable {
@@ -448,6 +831,7 @@ nonisolated struct PDFPageAnalysisSource: Sendable {
     var zoomEventCount: Int
     var navigationPath: [String]
     var sourceFingerprint: String?
+    var postSolveReview: AnalysisPostSolveReview?
 }
 
 nonisolated enum AnalysisBundleAssetName {

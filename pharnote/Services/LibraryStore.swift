@@ -71,13 +71,23 @@ final class LibraryStore {
     private let fileManager: FileManager
     private let indexFileName = "LibraryIndex.json"
     private let dashboardFileName = "PharnodeDashboardSnapshot.json"
+    private let ubiquityContainerIdentifier = "iCloud.nodephar.pharnote"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
     }
 
-    private var documentsDirectory: URL {
+    private var localDocumentsDirectory: URL {
         fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private var ubiquitousDocumentsDirectory: URL? {
+        fileManager.url(forUbiquityContainerIdentifier: ubiquityContainerIdentifier)?
+            .appendingPathComponent("Documents", isDirectory: true)
+    }
+
+    private var documentsDirectory: URL {
+        ubiquitousDocumentsDirectory ?? localDocumentsDirectory
     }
 
     private var indexFileURL: URL {
@@ -99,7 +109,7 @@ final class LibraryStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(LibraryIndex.self, from: data)
-        return decoded.documents
+        return decoded.documents.map { normalizeDocumentPath($0, relativeTo: documentsDirectory) }
     }
 
     func saveIndex(_ documents: [PharDocument]) throws {
@@ -318,15 +328,48 @@ final class LibraryStore {
     }
 
     private func ensureDocumentsDirectoryExists() throws {
+        if let ubiquitousDocumentsDirectory {
+            try ensureDirectoryExists(at: ubiquitousDocumentsDirectory)
+            try migrateLocalDocumentsIfNeeded(to: ubiquitousDocumentsDirectory)
+        }
+
+        try ensureDirectoryExists(at: documentsDirectory)
+    }
+
+    private func ensureDirectoryExists(at directoryURL: URL) throws {
         var isDirectory: ObjCBool = false
-        let exists = fileManager.fileExists(atPath: documentsDirectory.path, isDirectory: &isDirectory)
+        let exists = fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory)
 
         if exists && !isDirectory.boolValue {
             throw StoreError.documentsPathIsNotDirectory
         }
 
         if !exists {
-            try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        }
+    }
+
+    private func migrateLocalDocumentsIfNeeded(to destinationURL: URL) throws {
+        guard destinationURL.path != localDocumentsDirectory.path else { return }
+
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: localDocumentsDirectory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return
+        }
+
+        let localContents = try fileManager.contentsOfDirectory(
+            at: localDocumentsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+
+        guard !localContents.isEmpty else { return }
+
+        for itemURL in localContents {
+            let destinationItemURL = destinationURL.appendingPathComponent(itemURL.lastPathComponent, isDirectory: false)
+            guard !fileManager.fileExists(atPath: destinationItemURL.path) else { continue }
+            try fileManager.copyItem(at: itemURL, to: destinationItemURL)
         }
     }
 
@@ -496,5 +539,14 @@ final class LibraryStore {
         }
 
         return sections
+    }
+
+    private func normalizeDocumentPath(_ document: PharDocument, relativeTo rootURL: URL) -> PharDocument {
+        let lastPathComponent = URL(fileURLWithPath: document.path).lastPathComponent
+        guard !lastPathComponent.isEmpty else { return document }
+
+        var normalized = document
+        normalized.path = rootURL.appendingPathComponent(lastPathComponent, isDirectory: true).path
+        return normalized
     }
 }

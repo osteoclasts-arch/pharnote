@@ -1,9 +1,29 @@
+import AVFoundation
+import Combine
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 struct DocumentEditorLaunchTarget: Hashable {
     let document: PharDocument
     let initialPageKey: String?
+}
+
+enum WritingPenStyle: String, CaseIterable, Identifiable {
+    case ballpoint = "볼펜"
+    case pencil = "연필"
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .ballpoint:
+            return "pencil.tip"
+        case .pencil:
+            return "pencil.and.scribble"
+        }
+    }
 }
 
 struct DocumentEditorView: View {
@@ -29,42 +49,6 @@ struct WritingWorkspaceDocumentChip: Identifiable, Hashable {
     let id: UUID
     let title: String
     let isCurrent: Bool
-
-    static func makeChips(currentDocument: PharDocument, limit: Int = 4) -> [WritingWorkspaceDocumentChip] {
-        let recentDocuments = (try? LibraryStore().loadIndex())
-            .map { documents in
-                documents.sorted { lhs, rhs in
-                    if lhs.updatedAt == rhs.updatedAt {
-                        return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-                    }
-                    return lhs.updatedAt > rhs.updatedAt
-                }
-            } ?? []
-
-        var chips: [WritingWorkspaceDocumentChip] = [
-            WritingWorkspaceDocumentChip(
-                id: currentDocument.id,
-                title: currentDocument.title,
-                isCurrent: true
-            )
-        ]
-
-        for document in recentDocuments where document.id != currentDocument.id {
-            chips.append(
-                WritingWorkspaceDocumentChip(
-                    id: document.id,
-                    title: document.title,
-                    isCurrent: false
-                )
-            )
-
-            if chips.count == limit {
-                break
-            }
-        }
-
-        return chips
-    }
 }
 
 enum WritingChromePalette {
@@ -107,20 +91,32 @@ struct WritingChromeCapsule<Content: View>: View {
 
 struct WritingDocumentChipStrip: View {
     let chips: [WritingWorkspaceDocumentChip]
+    var onSelect: (UUID) -> Void = { _ in }
+    var onClose: (UUID) -> Void = { _ in }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(chips) { chip in
                     HStack(spacing: 10) {
-                        Text(chip.title)
-                            .font(.system(size: 18, weight: .black, design: .rounded))
-                            .foregroundStyle(chip.isCurrent ? Color.white : WritingChromePalette.ink.opacity(0.62))
-                            .lineLimit(1)
+                        Button {
+                            onSelect(chip.id)
+                        } label: {
+                            Text(chip.title)
+                                .font(.system(size: 18, weight: .black, design: .rounded))
+                                .foregroundStyle(chip.isCurrent ? Color.white : WritingChromePalette.ink.opacity(0.62))
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
 
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(chip.isCurrent ? Color.white : WritingChromePalette.ink.opacity(0.4))
+                        Button {
+                            onClose(chip.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(chip.isCurrent ? Color.white : WritingChromePalette.ink.opacity(0.4))
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 18)
                     .frame(height: 40)
@@ -195,12 +191,14 @@ struct WritingToolbarDivider: View {
 }
 
 struct WritingStrokePresetButton: View {
+    let slotIndex: Int
     let width: CGFloat
     let isSelected: Bool
     let action: () -> Void
+    var onLongPress: (() -> Void)?
 
     var body: some View {
-        Button(action: action) {
+        VStack(spacing: 3) {
             ZStack {
                 if isSelected {
                     Circle()
@@ -211,6 +209,131 @@ struct WritingStrokePresetButton: View {
                     .foregroundStyle(WritingChromePalette.ink)
             }
             .frame(width: 48, height: 32)
+
+            Text("\(slotIndex + 1)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(WritingChromePalette.ink.opacity(0.62))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture(perform: action)
+        .onLongPressGesture(minimumDuration: 0.35) {
+            onLongPress?()
+        }
+    }
+}
+
+struct WritingStrokePresetConfiguration: Equatable {
+    let values: [Double]
+    let selectedIndex: Int
+}
+
+enum WritingStrokePresetStore {
+    static let defaultValues: [Double] = [2, 5, 9]
+    static let defaultSelectedIndex = 1
+
+    static func configuration(toolKey: String, userDefaults: UserDefaults) -> WritingStrokePresetConfiguration {
+        let valuesKey = "pharnote.stroke-presets.\(toolKey).values"
+        let selectedIndexKey = "pharnote.stroke-presets.\(toolKey).selected-index"
+
+        let storedValues = userDefaults.array(forKey: valuesKey) as? [Double]
+        let normalizedValues = normalizedPresetValues(from: storedValues)
+        let storedSelectedIndex = userDefaults.integer(forKey: selectedIndexKey)
+        let normalizedSelectedIndex = min(max(storedSelectedIndex, 0), normalizedValues.count - 1)
+
+        return WritingStrokePresetConfiguration(
+            values: normalizedValues,
+            selectedIndex: normalizedSelectedIndex
+        )
+    }
+
+    static func save(
+        toolKey: String,
+        values: [Double],
+        selectedIndex: Int,
+        userDefaults: UserDefaults
+    ) {
+        let valuesKey = "pharnote.stroke-presets.\(toolKey).values"
+        let selectedIndexKey = "pharnote.stroke-presets.\(toolKey).selected-index"
+
+        let normalizedValues = normalizedPresetValues(from: values)
+        let normalizedSelectedIndex = min(max(selectedIndex, 0), normalizedValues.count - 1)
+
+        userDefaults.set(normalizedValues, forKey: valuesKey)
+        userDefaults.set(normalizedSelectedIndex, forKey: selectedIndexKey)
+    }
+
+    private static func normalizedPresetValues(from values: [Double]?) -> [Double] {
+        guard let values, values.count == defaultValues.count else {
+            return defaultValues
+        }
+        return values.map { min(max($0, 1), 16) }
+    }
+}
+
+struct WritingStrokePresetEditorView: View {
+    let slotIndex: Int
+    @Binding var width: Double
+    var range: ClosedRange<Double> = 1...16
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("굵기 프리셋 \(slotIndex + 1)")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(WritingChromePalette.ink)
+
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(WritingChromePalette.paper)
+                    .overlay(
+                        WritingStrokePresetSample(width: CGFloat(width))
+                            .foregroundStyle(WritingChromePalette.ink)
+                    )
+                    .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(String(format: "%.1f pt", width))
+                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .foregroundStyle(WritingChromePalette.ink)
+
+                    Text("길게 눌러 저장 슬롯을 열고, 슬라이더로 세밀하게 조정합니다.")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(WritingChromePalette.ink.opacity(0.64))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Slider(value: $width, in: range, step: 0.5)
+                .tint(WritingChromePalette.accent)
+        }
+        .padding(16)
+        .frame(width: 260)
+    }
+}
+
+struct WritingPenStyleButton: View {
+    let title: String
+    let systemName: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(isSelected ? Color.white : WritingChromePalette.ink)
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isSelected ? WritingChromePalette.accent : Color.white.opacity(0.72))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            isSelected ? WritingChromePalette.accent : WritingChromePalette.chromeBorder.opacity(0.55),
+                            lineWidth: 1
+                        )
+                )
         }
         .buttonStyle(.plain)
     }
@@ -326,6 +449,598 @@ struct WritingAccentActionButton: View {
     }
 }
 
+struct DocumentAudioRecording: Codable, Hashable, Identifiable {
+    let id: UUID
+    let fileName: String
+    let createdAt: Date
+    var duration: TimeInterval
+    var pageKey: String?
+    var pageLabel: String?
+
+    var displayTitle: String {
+        if let pageLabel, !pageLabel.isEmpty {
+            return pageLabel
+        }
+        return "오디오 메모"
+    }
+
+    var formattedDuration: String {
+        let totalSeconds = max(Int(duration.rounded()), 0)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    var formattedCreatedAt: String {
+        createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+final class DocumentAudioStore {
+    private struct RecordingIndex: Codable {
+        let version: Int
+        let recordings: [DocumentAudioRecording]
+    }
+
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func loadRecordings(documentURL: URL) throws -> [DocumentAudioRecording] {
+        let indexURL = metadataFileURL(for: documentURL)
+        guard fileManager.fileExists(atPath: indexURL.path) else { return [] }
+
+        let data = try Data(contentsOf: indexURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(RecordingIndex.self, from: data)
+            .recordings
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func makeRecordingURL(documentURL: URL, recordingID: UUID) throws -> URL {
+        try ensureAudioDirectoryExists(documentURL: documentURL)
+        return audioDirectoryURL(for: documentURL)
+            .appendingPathComponent("\(recordingID.uuidString.lowercased()).m4a", isDirectory: false)
+    }
+
+    func appendRecording(_ recording: DocumentAudioRecording, documentURL: URL) throws {
+        var recordings = try loadRecordings(documentURL: documentURL)
+        recordings.insert(recording, at: 0)
+        try saveRecordings(recordings, documentURL: documentURL)
+    }
+
+    func deleteRecording(_ recording: DocumentAudioRecording, documentURL: URL) throws {
+        let fileURL = audioDirectoryURL(for: documentURL).appendingPathComponent(recording.fileName, isDirectory: false)
+        if fileManager.fileExists(atPath: fileURL.path) {
+            try fileManager.removeItem(at: fileURL)
+        }
+
+        let updated = try loadRecordings(documentURL: documentURL).filter { $0.id != recording.id }
+        try saveRecordings(updated, documentURL: documentURL)
+    }
+
+    func deleteRecordingFile(named fileName: String, documentURL: URL) {
+        let fileURL = audioDirectoryURL(for: documentURL).appendingPathComponent(fileName, isDirectory: false)
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try? fileManager.removeItem(at: fileURL)
+    }
+
+    func recordingFileURL(for recording: DocumentAudioRecording, documentURL: URL) -> URL {
+        audioDirectoryURL(for: documentURL).appendingPathComponent(recording.fileName, isDirectory: false)
+    }
+
+    private func saveRecordings(_ recordings: [DocumentAudioRecording], documentURL: URL) throws {
+        try ensureAudioDirectoryExists(documentURL: documentURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(
+            RecordingIndex(version: 1, recordings: recordings.sorted { $0.createdAt > $1.createdAt })
+        )
+        try data.write(to: metadataFileURL(for: documentURL), options: .atomic)
+    }
+
+    private func ensureAudioDirectoryExists(documentURL: URL) throws {
+        let directoryURL = audioDirectoryURL(for: documentURL)
+        var isDirectory: ObjCBool = false
+        let exists = fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory)
+        if exists {
+            if isDirectory.boolValue { return }
+            try fileManager.removeItem(at: directoryURL)
+        }
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    }
+
+    private func audioDirectoryURL(for documentURL: URL) -> URL {
+        documentURL.appendingPathComponent("AudioRecordings", isDirectory: true)
+    }
+
+    private func metadataFileURL(for documentURL: URL) -> URL {
+        audioDirectoryURL(for: documentURL).appendingPathComponent("Recordings.json", isDirectory: false)
+    }
+}
+
+@MainActor
+final class DocumentAudioController: NSObject, ObservableObject {
+    struct Anchor {
+        let pageKey: String?
+        let pageLabel: String?
+    }
+
+    enum PermissionState {
+        case unknown
+        case granted
+        case denied
+    }
+
+    @Published private(set) var recordings: [DocumentAudioRecording] = []
+    @Published private(set) var isRecording: Bool = false
+    @Published private(set) var activeRecordingDuration: TimeInterval = 0
+    @Published private(set) var playingRecordingID: UUID?
+    @Published private(set) var permissionState: PermissionState = .unknown
+    @Published var errorMessage: String?
+
+    private let store: DocumentAudioStore
+    private let libraryStore: LibraryStore
+    private let anchorProvider: @MainActor () -> Anchor
+    private var document: PharDocument
+    private var recorder: AVAudioRecorder?
+    private var player: AVAudioPlayer?
+    private var activeDraft: DocumentAudioRecording?
+    private var durationTimer: Timer?
+    private var didLoad = false
+
+    init(
+        document: PharDocument,
+        store: DocumentAudioStore? = nil,
+        libraryStore: LibraryStore? = nil,
+        anchorProvider: @escaping @MainActor () -> Anchor
+    ) {
+        self.document = document
+        self.store = store ?? DocumentAudioStore()
+        self.libraryStore = libraryStore ?? LibraryStore()
+        self.anchorProvider = anchorProvider
+        super.init()
+    }
+
+    func loadRecordingsIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
+        loadRecordings()
+    }
+
+    func loadRecordings() {
+        do {
+            recordings = try store.loadRecordings(documentURL: documentURL)
+        } catch {
+            errorMessage = "오디오 목록을 불러오지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else {
+            Task {
+                await startRecording()
+            }
+        }
+    }
+
+    func togglePlayback(for recording: DocumentAudioRecording) {
+        if playingRecordingID == recording.id {
+            stopPlayback()
+        } else {
+            play(recording)
+        }
+    }
+
+    func deleteRecording(_ recording: DocumentAudioRecording) {
+        if playingRecordingID == recording.id {
+            stopPlayback()
+        }
+
+        do {
+            try store.deleteRecording(recording, documentURL: documentURL)
+            recordings.removeAll { $0.id == recording.id }
+            touchDocumentUpdatedAt()
+        } catch {
+            errorMessage = "오디오를 삭제하지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    func handleBackgroundTransition() {
+        if isRecording {
+            stopRecording()
+        }
+        if playingRecordingID != nil {
+            stopPlayback()
+        }
+    }
+
+    func tearDown() {
+        handleBackgroundTransition()
+        durationTimer?.invalidate()
+        durationTimer = nil
+    }
+
+    var activeRecordingDurationText: String {
+        let totalSeconds = max(Int(activeRecordingDuration.rounded()), 0)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func startRecording() async {
+        let allowed = await requestRecordPermissionIfNeeded()
+        guard allowed else {
+            errorMessage = "마이크 접근이 필요합니다. 설정에서 마이크 권한을 허용해 주세요."
+            return
+        }
+
+        stopPlayback()
+
+        let recordingID = UUID()
+        let anchor = anchorProvider()
+
+        do {
+            try configureSessionForRecording()
+
+            let recordingURL = try store.makeRecordingURL(documentURL: documentURL, recordingID: recordingID)
+            let recorder = try AVAudioRecorder(url: recordingURL, settings: Self.recordingSettings)
+            recorder.delegate = self
+            recorder.prepareToRecord()
+
+            guard recorder.record() else {
+                throw NSError(domain: "DocumentAudioController", code: -1, userInfo: [NSLocalizedDescriptionKey: "녹음을 시작하지 못했습니다."])
+            }
+
+            self.recorder = recorder
+            self.activeDraft = DocumentAudioRecording(
+                id: recordingID,
+                fileName: recordingURL.lastPathComponent,
+                createdAt: Date(),
+                duration: 0,
+                pageKey: anchor.pageKey,
+                pageLabel: anchor.pageLabel
+            )
+            self.isRecording = true
+            self.activeRecordingDuration = 0
+            startDurationTimer()
+        } catch {
+            store.deleteRecordingFile(named: "\(recordingID.uuidString.lowercased()).m4a", documentURL: documentURL)
+            errorMessage = "녹음을 시작하지 못했습니다: \(error.localizedDescription)"
+            deactivateSessionIfIdle()
+        }
+    }
+
+    private func stopRecording() {
+        recorder?.stop()
+    }
+
+    private func play(_ recording: DocumentAudioRecording) {
+        if isRecording {
+            stopRecording()
+        }
+
+        do {
+            try configureSessionForPlayback()
+            let url = store.recordingFileURL(for: recording, documentURL: documentURL)
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.delegate = self
+            player.prepareToPlay()
+
+            guard player.play() else {
+                throw NSError(domain: "DocumentAudioController", code: -2, userInfo: [NSLocalizedDescriptionKey: "재생을 시작하지 못했습니다."])
+            }
+
+            self.player = player
+            self.playingRecordingID = recording.id
+        } catch {
+            errorMessage = "오디오를 재생하지 못했습니다: \(error.localizedDescription)"
+            stopPlayback()
+        }
+    }
+
+    private func stopPlayback() {
+        player?.stop()
+        player = nil
+        playingRecordingID = nil
+        deactivateSessionIfIdle()
+    }
+
+    private func startDurationTimer() {
+        durationTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let recorder = self.recorder else { return }
+                self.activeRecordingDuration = recorder.currentTime
+            }
+        }
+        durationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func finishRecording(successfully flag: Bool) {
+        durationTimer?.invalidate()
+        durationTimer = nil
+
+        let recordedDuration = recorder?.currentTime ?? 0
+        recorder = nil
+        isRecording = false
+        activeRecordingDuration = 0
+
+        guard flag, var draft = activeDraft else {
+            if let failedDraft = activeDraft {
+                store.deleteRecordingFile(named: failedDraft.fileName, documentURL: documentURL)
+            }
+            activeDraft = nil
+            deactivateSessionIfIdle()
+            return
+        }
+
+        draft.duration = recordedDuration
+
+        do {
+            try store.appendRecording(draft, documentURL: documentURL)
+            recordings = try store.loadRecordings(documentURL: documentURL)
+            touchDocumentUpdatedAt()
+        } catch {
+            errorMessage = "녹음을 저장하지 못했습니다: \(error.localizedDescription)"
+            store.deleteRecordingFile(named: draft.fileName, documentURL: documentURL)
+        }
+
+        activeDraft = nil
+        deactivateSessionIfIdle()
+    }
+
+    private func requestRecordPermissionIfNeeded() async -> Bool {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                permissionState = .granted
+                return true
+            case .denied:
+                permissionState = .denied
+                return false
+            case .undetermined:
+                let granted = await withCheckedContinuation { continuation in
+                    AVAudioApplication.requestRecordPermission { isGranted in
+                        continuation.resume(returning: isGranted)
+                    }
+                }
+                permissionState = granted ? .granted : .denied
+                return granted
+            @unknown default:
+                permissionState = .denied
+                return false
+            }
+        }
+
+        let session = AVAudioSession.sharedInstance()
+        switch session.recordPermission {
+        case .granted:
+            permissionState = .granted
+            return true
+        case .denied:
+            permissionState = .denied
+            return false
+        case .undetermined:
+            let granted = await withCheckedContinuation { continuation in
+                session.requestRecordPermission { isGranted in
+                    continuation.resume(returning: isGranted)
+                }
+            }
+            permissionState = granted ? .granted : .denied
+            return granted
+        @unknown default:
+            permissionState = .denied
+            return false
+        }
+    }
+
+    private func configureSessionForRecording() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    private func configureSessionForPlayback() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default)
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    private func deactivateSessionIfIdle() {
+        guard !isRecording, player == nil else { return }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func touchDocumentUpdatedAt() {
+        var updatedDocument = document
+        updatedDocument.updatedAt = Date()
+        if let savedDocument = try? libraryStore.updateDocument(updatedDocument) {
+            document = savedDocument
+        } else {
+            document = updatedDocument
+        }
+    }
+
+    private var documentURL: URL {
+        URL(fileURLWithPath: document.path, isDirectory: true)
+    }
+
+    private static var recordingSettings: [String: Any] {
+        [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44_100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+    }
+}
+
+extension DocumentAudioController: AVAudioRecorderDelegate, AVAudioPlayerDelegate {
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.finishRecording(successfully: flag)
+        }
+    }
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.stopPlayback()
+        }
+    }
+}
+
+struct DocumentAudioPanelView: View {
+    @ObservedObject var controller: DocumentAudioController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.xxxSmall) {
+                    Text("오디오")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    Text(controller.isRecording ? "현재 문서에 음성 메모를 녹음 중입니다." : "문서별 음성 메모를 저장하고 재생할 수 있습니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+                }
+
+                Spacer(minLength: 0)
+
+                PharTagPill(
+                    text: "\(controller.recordings.count)개",
+                    tint: controller.isRecording ? PharTheme.ColorToken.accentPeach.opacity(0.24) : PharTheme.ColorToken.surfaceSecondary,
+                    foreground: PharTheme.ColorToken.inkPrimary
+                )
+            }
+
+            if controller.isRecording {
+                HStack(spacing: PharTheme.Spacing.small) {
+                    Circle()
+                        .fill(PharTheme.ColorToken.destructive)
+                        .frame(width: 10, height: 10)
+
+                    Text("녹음 중 \(controller.activeRecordingDurationText)")
+                        .font(PharTypography.bodyStrong.monospacedDigit())
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                    Spacer(minLength: 0)
+
+                    Button("정지") {
+                        controller.toggleRecording()
+                    }
+                    .buttonStyle(PharPrimaryButtonStyle())
+                }
+                .padding(.horizontal, PharTheme.Spacing.small)
+                .padding(.vertical, PharTheme.Spacing.small)
+                .background(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                        .fill(PharTheme.ColorToken.accentPeach.opacity(0.14))
+                )
+            } else if controller.recordings.isEmpty {
+                Text("아직 오디오 메모가 없습니다. 상단의 마이크 버튼으로 녹음을 시작할 수 있습니다.")
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    .padding(.horizontal, PharTheme.Spacing.small)
+                    .padding(.vertical, PharTheme.Spacing.small)
+                    .background(
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                            .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
+                    )
+            }
+
+            if !controller.recordings.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PharTheme.Spacing.small) {
+                        ForEach(controller.recordings) { recording in
+                            audioCard(for: recording)
+                        }
+                    }
+                    .padding(.vertical, PharTheme.Spacing.xxxSmall)
+                }
+            }
+        }
+    }
+
+    private func audioCard(for recording: DocumentAudioRecording) -> some View {
+        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recording.displayTitle)
+                            .font(PharTypography.bodyStrong)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                            .lineLimit(1)
+
+                        Text(recording.formattedCreatedAt)
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        controller.deleteRecording(recording)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    .accessibilityLabel("오디오 삭제")
+                }
+
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    PharTagPill(
+                        text: recording.formattedDuration,
+                        tint: PharTheme.ColorToken.surfaceTertiary,
+                        foreground: PharTheme.ColorToken.inkPrimary
+                    )
+
+                    if let pageLabel = recording.pageLabel {
+                        PharTagPill(
+                            text: pageLabel,
+                            tint: PharTheme.ColorToken.accentBlue.opacity(0.12),
+                            foreground: PharTheme.ColorToken.accentBlue
+                        )
+                    }
+                }
+
+                Button {
+                    controller.togglePlayback(for: recording)
+                } label: {
+                    Label(
+                        controller.playingRecordingID == recording.id ? "재생 중지" : "재생",
+                        systemImage: controller.playingRecordingID == recording.id ? "stop.fill" : "play.fill"
+                    )
+                }
+                .modifier(ActivePlaybackButtonStyle(isActive: controller.playingRecordingID == recording.id))
+            }
+            .frame(width: 244, alignment: .leading)
+        }
+    }
+}
+
+private struct ActivePlaybackButtonStyle: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content.buttonStyle(PharPrimaryButtonStyle())
+        } else {
+            content.buttonStyle(PharSoftButtonStyle())
+        }
+    }
+}
+
 struct WritingDocumentShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
@@ -346,5 +1061,742 @@ enum WritingDocumentShareSource {
             }
         }
         return [packageURL]
+    }
+}
+
+struct WritingSharedFileItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+enum DocumentWorkspaceAttachmentKind: String, Codable, Hashable, CaseIterable {
+    case image
+    case file
+
+    var title: String {
+        switch self {
+        case .image:
+            return "사진"
+        case .file:
+            return "파일"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .image:
+            return "photo"
+        case .file:
+            return "doc"
+        }
+    }
+}
+
+struct DocumentWorkspaceTextEntry: Codable, Hashable, Identifiable {
+    let id: UUID
+    let pageKey: String?
+    let pageLabel: String?
+    let createdAt: Date
+    var updatedAt: Date
+    var text: String
+}
+
+struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
+    let id: UUID
+    let kind: DocumentWorkspaceAttachmentKind
+    let storedFileName: String
+    let originalFileName: String
+    let pageKey: String?
+    let pageLabel: String?
+    let createdAt: Date
+    let byteCount: Int64
+
+    var displaySize: String {
+        ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+    }
+
+    var displayTitle: String {
+        originalFileName.isEmpty ? storedFileName : originalFileName
+    }
+}
+
+struct DocumentWorkspaceIndex: Codable {
+    let version: Int
+    var textEntries: [DocumentWorkspaceTextEntry]
+    var attachments: [DocumentWorkspaceAttachmentItem]
+}
+
+actor DocumentWorkspaceStore {
+    enum StoreError: LocalizedError {
+        case invalidAttachmentData
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidAttachmentData:
+                return "첨부 데이터를 읽지 못했습니다."
+            }
+        }
+    }
+
+    private let fileManager = FileManager.default
+    private let metadataFileName = "WorkspaceSupplements.json"
+    private let attachmentsDirectoryName = "WorkspaceAttachments"
+
+    private lazy var encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private lazy var decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    func load(documentURL: URL) throws -> DocumentWorkspaceIndex {
+        let metadataURL = metadataFileURL(for: documentURL)
+        guard fileManager.fileExists(atPath: metadataURL.path) else {
+            return DocumentWorkspaceIndex(version: 1, textEntries: [], attachments: [])
+        }
+
+        let data = try Data(contentsOf: metadataURL)
+        return try decoder.decode(DocumentWorkspaceIndex.self, from: data)
+    }
+
+    func save(index: DocumentWorkspaceIndex, documentURL: URL) throws {
+        try ensureAttachmentsDirectoryExists(documentURL: documentURL)
+        let data = try encoder.encode(index)
+        try data.write(to: metadataFileURL(for: documentURL), options: .atomic)
+    }
+
+    func makeAttachmentURL(
+        documentURL: URL,
+        attachmentID: UUID,
+        originalFileName: String,
+        fallbackExtension: String?
+    ) throws -> URL {
+        try ensureAttachmentsDirectoryExists(documentURL: documentURL)
+
+        let originalExtension = URL(fileURLWithPath: originalFileName).pathExtension
+        let resolvedExtension = originalExtension.isEmpty ? (fallbackExtension ?? "") : originalExtension
+        let normalizedExtension = resolvedExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = attachmentID.uuidString.lowercased()
+        let fileName = normalizedExtension.isEmpty ? baseName : "\(baseName).\(normalizedExtension)"
+        return attachmentsDirectoryURL(for: documentURL).appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    func saveAttachmentData(_ data: Data, to destinationURL: URL) throws -> Int64 {
+        guard !data.isEmpty else {
+            throw StoreError.invalidAttachmentData
+        }
+        try data.write(to: destinationURL, options: .atomic)
+        return Int64(data.count)
+    }
+
+    func importAttachment(from sourceURL: URL, to destinationURL: URL) throws -> Int64 {
+        let scopedAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if scopedAccess {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        var coordinationError: NSError?
+        var copyError: Error?
+        var copiedFileSize: Int64 = 0
+        let coordinator = NSFileCoordinator()
+
+        coordinator.coordinate(readingItemAt: sourceURL, options: [], error: &coordinationError) { coordinatedURL in
+            do {
+                try fileManager.copyItem(at: coordinatedURL, to: destinationURL)
+                let values = try coordinatedURL.resourceValues(forKeys: [.fileSizeKey, .totalFileAllocatedSizeKey])
+                if let totalAllocatedSize = values.totalFileAllocatedSize {
+                    copiedFileSize = Int64(totalAllocatedSize)
+                } else if let fileSize = values.fileSize {
+                    copiedFileSize = Int64(fileSize)
+                }
+            } catch {
+                copyError = error
+            }
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+        if let copyError {
+            throw copyError
+        }
+
+        if copiedFileSize == 0 {
+            let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
+            copiedFileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        }
+
+        return copiedFileSize
+    }
+
+    func deleteAttachment(_ attachment: DocumentWorkspaceAttachmentItem, documentURL: URL) {
+        let fileURL = attachmentFileURL(for: attachment, documentURL: documentURL)
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try? fileManager.removeItem(at: fileURL)
+    }
+
+    func attachmentFileURL(for attachment: DocumentWorkspaceAttachmentItem, documentURL: URL) -> URL {
+        attachmentsDirectoryURL(for: documentURL).appendingPathComponent(attachment.storedFileName, isDirectory: false)
+    }
+
+    private func ensureAttachmentsDirectoryExists(documentURL: URL) throws {
+        let directoryURL = attachmentsDirectoryURL(for: documentURL)
+        var isDirectory: ObjCBool = false
+        let exists = fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory)
+        if exists {
+            if isDirectory.boolValue { return }
+            try fileManager.removeItem(at: directoryURL)
+        }
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    }
+
+    private func metadataFileURL(for documentURL: URL) -> URL {
+        documentURL.appendingPathComponent(metadataFileName, isDirectory: false)
+    }
+
+    private func attachmentsDirectoryURL(for documentURL: URL) -> URL {
+        documentURL.appendingPathComponent(attachmentsDirectoryName, isDirectory: true)
+    }
+}
+
+@MainActor
+final class DocumentWorkspaceController: ObservableObject {
+    struct Anchor {
+        let pageKey: String?
+        let pageLabel: String?
+    }
+
+    @Published private(set) var textEntries: [DocumentWorkspaceTextEntry] = []
+    @Published private(set) var attachments: [DocumentWorkspaceAttachmentItem] = []
+    @Published var errorMessage: String?
+
+    private let store: DocumentWorkspaceStore
+    private let libraryStore: LibraryStore
+    private let anchorProvider: @MainActor () -> Anchor
+    private var document: PharDocument
+    private var didLoad = false
+
+    init(
+        document: PharDocument,
+        store: DocumentWorkspaceStore? = nil,
+        libraryStore: LibraryStore? = nil,
+        anchorProvider: @escaping @MainActor () -> Anchor
+    ) {
+        self.document = document
+        self.store = store ?? DocumentWorkspaceStore()
+        self.libraryStore = libraryStore ?? LibraryStore()
+        self.anchorProvider = anchorProvider
+    }
+
+    func loadIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
+        load()
+    }
+
+    func load() {
+        Task {
+            do {
+                let index = try await store.load(documentURL: documentURL)
+                textEntries = index.textEntries.sorted { $0.updatedAt > $1.updatedAt }
+                attachments = index.attachments.sorted { $0.createdAt > $1.createdAt }
+            } catch {
+                errorMessage = "페이지 보조 자료를 불러오지 못했습니다: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func addTextEntry(_ text: String) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+
+        let anchor = anchorProvider()
+        let now = Date()
+        let entry = DocumentWorkspaceTextEntry(
+            id: UUID(),
+            pageKey: anchor.pageKey,
+            pageLabel: anchor.pageLabel,
+            createdAt: now,
+            updatedAt: now,
+            text: trimmedText
+        )
+
+        textEntries.insert(entry, at: 0)
+        persistWorkspaceState()
+    }
+
+    func importImageData(_ data: Data, suggestedFileName: String?) {
+        let attachmentID = UUID()
+        let originalFileName = normalizedFileName(
+            suggestedFileName,
+            fallbackBaseName: "image-\(attachmentID.uuidString.lowercased())",
+            fallbackExtension: "jpg"
+        )
+        let anchor = anchorProvider()
+
+        Task {
+            do {
+                let destinationURL = try await store.makeAttachmentURL(
+                    documentURL: documentURL,
+                    attachmentID: attachmentID,
+                    originalFileName: originalFileName,
+                    fallbackExtension: "jpg"
+                )
+                let byteCount = try await store.saveAttachmentData(data, to: destinationURL)
+                let attachment = DocumentWorkspaceAttachmentItem(
+                    id: attachmentID,
+                    kind: .image,
+                    storedFileName: destinationURL.lastPathComponent,
+                    originalFileName: originalFileName,
+                    pageKey: anchor.pageKey,
+                    pageLabel: anchor.pageLabel,
+                    createdAt: Date(),
+                    byteCount: byteCount
+                )
+                attachments.insert(attachment, at: 0)
+                persistWorkspaceState()
+            } catch {
+                errorMessage = "사진을 첨부하지 못했습니다: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func importFile(from sourceURL: URL) {
+        let attachmentID = UUID()
+        let originalFileName = normalizedFileName(
+            sourceURL.lastPathComponent,
+            fallbackBaseName: "attachment-\(attachmentID.uuidString.lowercased())",
+            fallbackExtension: sourceURL.pathExtension
+        )
+        let anchor = anchorProvider()
+
+        Task {
+            do {
+                let destinationURL = try await store.makeAttachmentURL(
+                    documentURL: documentURL,
+                    attachmentID: attachmentID,
+                    originalFileName: originalFileName,
+                    fallbackExtension: sourceURL.pathExtension
+                )
+                let byteCount = try await store.importAttachment(from: sourceURL, to: destinationURL)
+                let attachment = DocumentWorkspaceAttachmentItem(
+                    id: attachmentID,
+                    kind: .file,
+                    storedFileName: destinationURL.lastPathComponent,
+                    originalFileName: originalFileName,
+                    pageKey: anchor.pageKey,
+                    pageLabel: anchor.pageLabel,
+                    createdAt: Date(),
+                    byteCount: byteCount
+                )
+                attachments.insert(attachment, at: 0)
+                persistWorkspaceState()
+            } catch {
+                errorMessage = "파일을 첨부하지 못했습니다: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func deleteTextEntry(_ entry: DocumentWorkspaceTextEntry) {
+        textEntries.removeAll { $0.id == entry.id }
+        persistWorkspaceState()
+    }
+
+    func deleteAttachment(_ attachment: DocumentWorkspaceAttachmentItem) {
+        attachments.removeAll { $0.id == attachment.id }
+        Task {
+            await store.deleteAttachment(attachment, documentURL: documentURL)
+        }
+        persistWorkspaceState()
+    }
+
+    func attachmentFileURL(for attachment: DocumentWorkspaceAttachmentItem) -> URL {
+        URL(fileURLWithPath: document.path, isDirectory: true)
+            .appendingPathComponent("WorkspaceAttachments", isDirectory: true)
+            .appendingPathComponent(attachment.storedFileName, isDirectory: false)
+    }
+
+    var currentPageTextEntries: [DocumentWorkspaceTextEntry] {
+        let pageKey = anchorProvider().pageKey
+        return filteredTextEntries(pageKey: pageKey)
+    }
+
+    var currentPageAttachments: [DocumentWorkspaceAttachmentItem] {
+        let pageKey = anchorProvider().pageKey
+        return filteredAttachments(pageKey: pageKey)
+    }
+
+    var currentPageHasSupplements: Bool {
+        !currentPageTextEntries.isEmpty || !currentPageAttachments.isEmpty
+    }
+
+    private func filteredTextEntries(pageKey: String?) -> [DocumentWorkspaceTextEntry] {
+        textEntries.filter { $0.pageKey == pageKey }
+    }
+
+    private func filteredAttachments(pageKey: String?) -> [DocumentWorkspaceAttachmentItem] {
+        attachments.filter { $0.pageKey == pageKey }
+    }
+
+    private func persistWorkspaceState() {
+        let index = DocumentWorkspaceIndex(version: 1, textEntries: textEntries, attachments: attachments)
+
+        Task {
+            do {
+                try await store.save(index: index, documentURL: documentURL)
+                touchDocumentUpdatedAt()
+            } catch {
+                errorMessage = "페이지 보조 자료를 저장하지 못했습니다: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func touchDocumentUpdatedAt() {
+        var updatedDocument = document
+        updatedDocument.updatedAt = Date()
+        if let savedDocument = try? libraryStore.updateDocument(updatedDocument) {
+            document = savedDocument
+        } else {
+            document = updatedDocument
+        }
+    }
+
+    private func normalizedFileName(_ proposedName: String?, fallbackBaseName: String, fallbackExtension: String) -> String {
+        let trimmedName = (proposedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        let normalizedExtension = fallbackExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedExtension.isEmpty {
+            return fallbackBaseName
+        }
+
+        return "\(fallbackBaseName).\(normalizedExtension)"
+    }
+
+    private var documentURL: URL {
+        URL(fileURLWithPath: document.path, isDirectory: true)
+    }
+}
+
+struct WritingTextComposerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String = ""
+
+    let pageLabel: String?
+    let onSave: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                if let pageLabel, !pageLabel.isEmpty {
+                    PharTagPill(
+                        text: pageLabel,
+                        tint: PharTheme.ColorToken.accentBlue.opacity(0.16),
+                        foreground: PharTheme.ColorToken.accentBlue
+                    )
+                }
+
+                TextEditor(text: $text)
+                    .font(PharTypography.body)
+                    .padding(PharTheme.Spacing.small)
+                    .frame(minHeight: 220)
+                    .background(
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                            .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                            .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
+                    )
+
+                Text("텍스트 메모는 현재 페이지에 연결되어 저장됩니다.")
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+
+                Spacer(minLength: 0)
+            }
+            .padding(PharTheme.Spacing.medium)
+            .navigationTitle("텍스트 추가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(text)
+                        dismiss()
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+struct WritingPhotoLibraryPicker: UIViewControllerRepresentable {
+    let onSelect: (Data, String?) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.selectionLimit = 1
+        configuration.filter = .images
+
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        private let onSelect: (Data, String?) -> Void
+        private let onCancel: () -> Void
+
+        init(onSelect: @escaping (Data, String?) -> Void, onCancel: @escaping () -> Void) {
+            self.onSelect = onSelect
+            self.onCancel = onCancel
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let result = results.first else {
+                onCancel()
+                return
+            }
+
+            let suggestedName = result.itemProvider.suggestedName
+            if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                result.itemProvider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    guard let data else {
+                        DispatchQueue.main.async {
+                            self.onCancel()
+                        }
+                        return
+                    }
+                    DispatchQueue.main.async {
+                        self.onSelect(data, suggestedName)
+                    }
+                }
+            } else {
+                onCancel()
+            }
+        }
+    }
+}
+
+struct WritingAttachmentFilePicker: UIViewControllerRepresentable {
+    let onSelect: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onSelect: (URL) -> Void
+        private let onCancel: () -> Void
+
+        init(onSelect: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onSelect = onSelect
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let firstURL = urls.first else {
+                onCancel()
+                return
+            }
+            onSelect(firstURL)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+
+struct DocumentWorkspaceSupplementPanelView: View {
+    @ObservedObject var controller: DocumentWorkspaceController
+    var onOpenAttachment: (DocumentWorkspaceAttachmentItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.xxxSmall) {
+                    Text("페이지 자료")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    Text("텍스트 메모와 첨부 파일을 페이지 단위로 유지합니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+                }
+
+                Spacer(minLength: 0)
+
+                PharTagPill(
+                    text: "\(controller.currentPageTextEntries.count + controller.currentPageAttachments.count)개",
+                    tint: controller.currentPageHasSupplements
+                        ? PharTheme.ColorToken.accentBlue.opacity(0.18)
+                        : PharTheme.ColorToken.surfaceSecondary,
+                    foreground: PharTheme.ColorToken.inkPrimary
+                )
+            }
+
+            if !controller.currentPageTextEntries.isEmpty {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                    Text("텍스트")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+
+                    ForEach(controller.currentPageTextEntries) { entry in
+                        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
+                            VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        if let pageLabel = entry.pageLabel {
+                                            Text(pageLabel)
+                                                .font(PharTypography.eyebrow)
+                                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                        }
+                                        Text(entry.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                                            .font(PharTypography.caption)
+                                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                                    }
+
+                                    Spacer(minLength: 0)
+
+                                    Button {
+                                        controller.deleteTextEntry(entry)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 13, weight: .semibold))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                                }
+
+                                Text(entry.text)
+                                    .font(PharTypography.body)
+                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !controller.currentPageAttachments.isEmpty {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                    Text("첨부")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+
+                    ForEach(controller.currentPageAttachments) { attachment in
+                        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
+                            HStack(spacing: PharTheme.Spacing.small) {
+                                attachmentPreview(for: attachment)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(attachment.displayTitle)
+                                        .font(PharTypography.bodyStrong)
+                                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                        .lineLimit(1)
+
+                                    HStack(spacing: PharTheme.Spacing.xSmall) {
+                                        PharTagPill(
+                                            text: attachment.kind.title,
+                                            tint: PharTheme.ColorToken.surfaceTertiary,
+                                            foreground: PharTheme.ColorToken.inkPrimary
+                                        )
+                                        PharTagPill(
+                                            text: attachment.displaySize,
+                                            tint: PharTheme.ColorToken.accentButter.opacity(0.24),
+                                            foreground: PharTheme.ColorToken.inkPrimary
+                                        )
+                                    }
+                                }
+
+                                Spacer(minLength: 0)
+
+                                VStack(spacing: PharTheme.Spacing.xxxSmall) {
+                                    Button("공유") {
+                                        onOpenAttachment(attachment)
+                                    }
+                                    .buttonStyle(PharSoftButtonStyle())
+
+                                    Button(role: .destructive) {
+                                        controller.deleteAttachment(attachment)
+                                    } label: {
+                                        Label("삭제", systemImage: "trash")
+                                    }
+                                    .buttonStyle(PharSoftButtonStyle())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !controller.currentPageHasSupplements {
+                Text("현재 페이지에 저장된 텍스트 메모나 첨부가 없습니다.")
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    .padding(.horizontal, PharTheme.Spacing.small)
+                    .padding(.vertical, PharTheme.Spacing.small)
+                    .background(
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                            .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
+                    )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentPreview(for attachment: DocumentWorkspaceAttachmentItem) -> some View {
+        if attachment.kind == .image,
+           let image = UIImage(contentsOfFile: controller.attachmentFileURL(for: attachment).path) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
+                .fill(PharTheme.ColorToken.surfaceTertiary)
+                .frame(width: 52, height: 52)
+                .overlay {
+                    Image(systemName: attachment.kind.systemImage)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                }
+        }
     }
 }

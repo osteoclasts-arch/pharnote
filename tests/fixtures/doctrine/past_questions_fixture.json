@@ -1,0 +1,104 @@
+[
+  {
+    "id": "pq_2024_06_15",
+    "subject": "수학",
+    "year": 2024,
+    "month": 6,
+    "exam_type": "6월 모의평가",
+    "question_number": 15,
+    "content": "함수 f(x)에 대하여 다음 조건을 만족시킨다. 그래프와 조건을 함께 고려할 때 f(1)의 값을 구하시오. ① 1 ② 2 ③ 3 ④ 4 ⑤ 5",
+    "answer": "3",
+    "solution": "여러 조건이 같은 함수 f(x)에 걸려 있으므로 먼저 공통 변수 기준으로 묶는다. 그래프의 대칭 구조를 먼저 읽고 식을 하나의 관계로 압축한 뒤 선지를 교차 검산한다.",
+    "metadata": {
+      "points": 4,
+      "section": "공통",
+      "keywords": ["함수", "그래프", "조건"],
+      "unit": "함수의 활용",
+      "chapter": "함수"
+    }
+  },
+  {
+    "id": "pq_2025_09_14",
+    "subject": "수학",
+    "year": 2025,
+    "month": 9,
+    "exam_type": "9월 모의평가",
+    "question_number": 14,
+    "content": "두 조건이 하나의 함수 g(x)에 동시에 주어진다. 보기와 식을 연결하여 g(2)의 값을 구하시오. ① -1 ② 0 ③ 1 ④ 2 ⑤ 3",
+    "answer": "4",
+    "solution": "조건을 따로 전개하지 말고 하나의 함수에 걸린 제약으로 묶는다. 함수의 입력과 출력 역할을 보존하면서 표현을 옮기고 마지막에는 선택지와 원래 조건을 함께 확인한다.",
+    "metadata": {
+      "points": 4,
+      "section_type": "공통",
+      "keywords": ["함수", "조건", "치환"],
+      "unit": "함수",
+      "chapter": "함수의 성질"
+    }
+  },
+  {
+    "id": "pq_2026_csat_18",
+    "subject": "수학",
+    "year": 2026,
+    "month": 11,
+    "exam_type": "수능",
+    "question_number": 18,
+    "content": "절댓값을 포함한 식이 주어져 있고 정의역은 자연수이다. 구간에 따라 식이 달라질 때 가능한 값의 개수를 구하시오. ① 1 ② 2 ③ 3 ④ 4 ⑤ 5",
+    "answer": "2",
+    "solution": "절댓값과 자연수 조건 때문에 경우를 먼저 나눠야 한다. 각 경우에서 정의역 제한을 줄마다 유지하고 마지막에는 빠진 경우가 없는지 점검한다.",
+    "metadata": {
+      "points": 4,
+      "paper_section": "공통",
+      "keywords": ["절댓값", "정의역", "경우"],
+      "unit": "수와 연산",
+      "chapter": "절댓값"
+    }
+  },
+  {
+    "id": "pq_2024_csat_21",
+    "subject": "수학",
+    "year": 2024,
+    "month": 11,
+    "exam_type": "수능",
+    "question_number": 21,
+    "content": "좌표평면 위의 그래프와 표가 함께 주어진다. 특수값을 대입하여 관계를 추론한 뒤 최솟값을 구하시오. ① 3 ② 4 ③ 5 ④ 6 ⑤ 7",
+    "answer": "5",
+    "solution": "그래프와 표를 장식처럼 보지 말고 먼저 지배 관계를 읽어야 한다. 최솟값 문제이므로 목표량을 먼저 고정하고 경계 특수값을 넣어 방향이 맞는지 확인한다.",
+    "metadata": {
+      "points": 4,
+      "is_common": true,
+      "keywords": ["그래프", "표", "최솟값"],
+      "unit": "함수의 활용",
+      "chapter": "그래프 해석"
+    }
+  },
+  {
+    "id": "pq_out_scope_points",
+    "subject": "수학",
+    "year": 2025,
+    "month": 6,
+    "exam_type": "6월 모의평가",
+    "question_number": 12,
+    "content": "범위 밖 문제",
+    "answer": "1",
+    "solution": "범위 밖",
+    "metadata": {
+      "points": 3,
+      "section": "공통"
+    }
+  },
+  {
+    "id": "pq_out_scope_elective",
+    "subject": "수학",
+    "year": 2025,
+    "month": 9,
+    "exam_type": "9월 모의평가",
+    "question_number": 27,
+    "content": "선택과목 문제",
+    "answer": "2",
+    "solution": "선택과목",
+    "metadata": {
+      "points": 4,
+      "section": "선택"
+    }
+  }
+]

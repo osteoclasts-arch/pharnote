@@ -9,16 +9,23 @@ struct PencilCanvasView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PKCanvasView {
-        let canvasView = PKCanvasView()
+        let canvasView = SmartShapeCanvasView()
         canvasView.delegate = context.coordinator
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         canvasView.alwaysBounceVertical = false
         canvasView.alwaysBounceHorizontal = false
         canvasView.contentInset = .zero
-        canvasView.minimumZoomScale = 1.0
-        canvasView.maximumZoomScale = 1.0
-        canvasView.bouncesZoom = false
+        canvasView.minimumZoomScale = 0.5
+        canvasView.maximumZoomScale = 4.0
+        canvasView.zoomScale = 1.0
+        canvasView.bouncesZoom = true
+        canvasView.onSmartShapeApplied = { [weak viewModel] _ in
+            viewModel?.canvasDidChange()
+        }
+        canvasView.onInteractionDidEnd = { [weak viewModel] _ in
+            viewModel?.refreshCanvasInteractionState()
+        }
 
         context.coordinator.setCanvasView(canvasView)
         viewModel.attachCanvasView(canvasView)
@@ -61,8 +68,31 @@ struct PencilCanvasView: UIViewRepresentable {
             guard let canvasView else { return }
             canvasView.tool = viewModel.currentTool()
             canvasView.drawingPolicy = viewModel.currentDrawingPolicy()
-            toolPicker.selectedTool = viewModel.currentTool()
+            if #available(iOS 18.0, *) {
+                toolPicker.selectedToolItem = pickerItem(for: viewModel.currentTool())
+            }
             updateToolPickerVisibility(isVisible: viewModel.isToolPickerVisible)
+        }
+
+        @available(iOS 18.0, *)
+        private func pickerItem(for tool: PKTool) -> PKToolPickerItem {
+            if let inkingTool = tool as? PKInkingTool {
+                return PKToolPickerInkingItem(
+                    type: inkingTool.inkType,
+                    color: inkingTool.color,
+                    width: inkingTool.width
+                )
+            }
+
+            if let eraserTool = tool as? PKEraserTool {
+                return PKToolPickerEraserItem(type: eraserTool.eraserType)
+            }
+
+            if tool is PKLassoTool {
+                return PKToolPickerLassoItem()
+            }
+
+            return toolPicker.selectedToolItem
         }
 
         func updateToolPickerVisibility(isVisible: Bool) {

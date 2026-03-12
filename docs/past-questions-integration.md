@@ -1,0 +1,40 @@
+# TutorHub 기출문항 DB 연동
+
+PharNote는 TutorHub의 `public.past_questions`를 read-only source of truth로 직접 조회합니다. 로컬 DB 복제나 별도 동기화는 하지 않습니다.
+
+## 설정
+
+1. TutorHub Supabase anon key와 project URL을 준비합니다.
+2. 아래 이름으로 환경변수를 넣습니다.
+   - `PAST_QUESTIONS_SUPABASE_URL`
+   - `PAST_QUESTIONS_SUPABASE_ANON_KEY`
+3. iOS 앱은 `.env`를 자동 로드하지 않으므로 둘 중 하나를 사용합니다.
+   - Xcode `Product > Scheme > Edit Scheme > Run > Arguments`에서 환경변수 추가
+   - 앱 홈의 내부 도구 `TutorHub 기출 DB`에서 URL / anon key 저장
+
+## 동작
+
+- exact lookup
+  - 입력: `subject`, `year`, `month`, `question_number`, `exam_variant`
+  - 우선순위: exact variant > `image_url` 존재 > `answer` 존재
+  - 정규화:
+    - `수학(공통)` -> `공통`
+    - `가` -> `가형`
+    - `나` -> `나형`
+    - `통합` + `1...22번` -> `공통`
+- search
+  - 대상: `content`, `answer`, `solution`, `metadata.keywords`, `metadata.unit`
+  - 결과: `topK` 기준으로 snippet과 함께 반환
+- 이미지
+  - `image_url`은 화면 렌더링과 multimodal image input 재사용을 같이 염두에 두고 그대로 유지합니다.
+
+## UI 진입점
+
+- 앱 홈 > `TutorHub 기출 DB`
+- DEBUG 빌드에서만 내부 도구가 보입니다. 숨기려면 `PHARNOTE_HIDE_INTERNAL_TOOLS=1`
+
+## 수동 검증
+
+1. exact lookup 프리셋에서 `2026 / 9 / 수학 / 22 / 공통`으로 조회
+2. 검색어를 입력하고 `topK`를 조절해 관련 기출이 반환되는지 확인
+3. 결과 카드에서 `image_url`이 실제로 렌더링되는지 확인

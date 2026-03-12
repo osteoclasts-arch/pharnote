@@ -31,8 +31,20 @@ struct LibraryView: View {
                     VStack(alignment: .leading, spacing: PharTheme.Spacing.large) {
                         heroCard
 
-                        if viewModel.filteredDocuments.isEmpty {
+                        if viewModel.totalDocumentCount == 0 {
                             emptyStateCard
+                        } else if viewModel.hasSearchQuery {
+                            if !viewModel.continueStudyingDocuments.isEmpty {
+                                continueStudyingSection
+                            }
+
+                            if !viewModel.ocrSearchResults.isEmpty {
+                                ocrSearchSection
+                            }
+
+                            if viewModel.continueStudyingDocuments.isEmpty && viewModel.ocrSearchResults.isEmpty {
+                                searchEmptyStateCard
+                            }
                         } else {
                             continueStudyingSection
                             pharnodeLoopCard
@@ -93,12 +105,13 @@ struct LibraryView: View {
                         }
                     }
                 }
-                .searchable(text: $viewModel.searchQuery, prompt: "문서 제목 검색")
-                .navigationDestination(for: PharDocument.self) { document in
-                    DocumentEditorView(document: document)
+                .searchable(text: $viewModel.searchQuery, prompt: "문서 제목 또는 OCR 텍스트 검색")
+                .navigationDestination(for: DocumentEditorLaunchTarget.self) { target in
+                    DocumentEditorView(document: target.document, initialPageKey: target.initialPageKey)
                 }
             }
         }
+        .environmentObject(viewModel)
         .navigationSplitViewStyle(.balanced)
         .background(PharTheme.GradientToken.appBackdrop)
         .alert("오류", isPresented: isErrorPresented) {
@@ -151,6 +164,12 @@ struct LibraryView: View {
         }
         .onAppear {
             viewModel.loadDocuments()
+        }
+        .onChange(of: viewModel.searchQuery) { _, _ in
+            viewModel.refreshOCRSearchResults()
+        }
+        .onChange(of: viewModel.selectedFolder) { _, _ in
+            viewModel.refreshOCRSearchResults()
         }
     }
 
@@ -304,7 +323,9 @@ struct LibraryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: PharTheme.Spacing.medium) {
                     ForEach(viewModel.continueStudyingDocuments) { document in
-                        NavigationLink(value: document) {
+                        Button {
+                            viewModel.openDocument(document)
+                        } label: {
                             FeaturedDocumentCard(document: document)
                         }
                         .buttonStyle(.plain)
@@ -328,7 +349,9 @@ struct LibraryView: View {
                     accent: PharTheme.ColorToken.accentMint
                 ) {
                     ForEach(viewModel.highlightedBlankNotes) { document in
-                        NavigationLink(value: document) {
+                        Button {
+                            viewModel.openDocument(document)
+                        } label: {
                             CompactDocumentRow(document: document)
                         }
                         .buttonStyle(.plain)
@@ -342,10 +365,38 @@ struct LibraryView: View {
                     accent: PharTheme.ColorToken.accentPeach
                 ) {
                     ForEach(viewModel.highlightedPDFs) { document in
-                        NavigationLink(value: document) {
+                        Button {
+                            viewModel.openDocument(document)
+                        } label: {
                             CompactDocumentRow(document: document)
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var ocrSearchSection: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+            sectionHeader(eyebrow: "OCR Search", title: "OCR 인식 결과")
+
+            PharSurfaceCard(fill: PharTheme.ColorToken.surfacePrimary.opacity(0.96)) {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                    Text("필기와 스캔 PDF에서 인식한 텍스트를 함께 보여줍니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+                    VStack(spacing: PharTheme.Spacing.small) {
+                        ForEach(viewModel.ocrSearchResults) { result in
+                            Button {
+                                viewModel.openOCRSearchResult(result)
+                            } label: {
+                                OCRSearchResultCard(result: result)
+                            }
+                            .buttonStyle(.plain)
+                            .hoverEffect(.highlight)
+                        }
                     }
                 }
             }
@@ -660,6 +711,27 @@ struct LibraryView: View {
         }
     }
 
+    private var searchEmptyStateCard: some View {
+        PharSurfaceCard(fill: PharTheme.ColorToken.surfacePrimary.opacity(0.96)) {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                Text("검색 결과가 없습니다")
+                    .font(PharTypography.sectionTitle)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                Text("문서 제목, 교재 메타데이터, OCR로 인식된 텍스트까지 함께 찾아봤지만 일치하는 내용이 없었습니다.")
+                    .font(PharTypography.body)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+                Button("검색 지우기") {
+                    viewModel.searchQuery = ""
+                    viewModel.refreshOCRSearchResults()
+                }
+                .buttonStyle(PharSoftButtonStyle())
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private var isErrorPresented: Binding<Bool> {
         Binding(
             get: { viewModel.errorMessage != nil },
@@ -772,6 +844,43 @@ private struct HeroMetricPill: View {
             RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
+    }
+}
+
+private struct OCRSearchResultCard: View {
+    let result: LibraryViewModel.OCRSearchResultRow
+
+    var body: some View {
+        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                    VStack(alignment: .leading, spacing: PharTheme.Spacing.xxxSmall) {
+                        Text(result.document.title)
+                            .font(PharTypography.bodyStrong)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                            .lineLimit(1)
+
+                        Text(result.pageLabel)
+                            .font(PharTypography.captionStrong)
+                            .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(result.indexedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                Text(result.snippet)
+                    .font(PharTypography.body)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -968,6 +1077,8 @@ private struct MaterialFilterChip: View {
 }
 
 private struct MaterialShelfCard: View {
+    @EnvironmentObject private var viewModel: LibraryViewModel
+
     let shelf: LibraryViewModel.MaterialShelf
 
     var body: some View {
@@ -993,7 +1104,9 @@ private struct MaterialShelfCard: View {
 
             VStack(spacing: PharTheme.Spacing.small) {
                 ForEach(Array(shelf.documents.prefix(4))) { document in
-                    NavigationLink(value: document) {
+                    Button {
+                        viewModel.openDocument(document)
+                    } label: {
                         CompactDocumentRow(document: document)
                     }
                     .buttonStyle(.plain)

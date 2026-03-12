@@ -79,6 +79,7 @@ private struct PharnoteNotesHomeView: View {
     @ObservedObject var viewModel: LibraryViewModel
 
     @State private var isShowingPDFImportPicker = false
+    @State private var isShowingPastQuestionsDebug = false
     @State private var isShowingSettings = false
     @State private var isShowingSidebar = false
     @State private var sidebarSearchQuery = ""
@@ -86,6 +87,10 @@ private struct PharnoteNotesHomeView: View {
 
     private var continueDocuments: [PharDocument] {
         Array(viewModel.filteredDocuments.prefix(8))
+    }
+
+    private var showsInternalTools: Bool {
+        PharFeatureFlags.showsInternalTools
     }
 
     var body: some View {
@@ -119,6 +124,11 @@ private struct PharnoteNotesHomeView: View {
                         )
 
                         quickActionSection
+
+                        if showsInternalTools {
+                            internalToolsSection
+                        }
+
                         continueSection
                     }
                     .frame(maxWidth: 920, alignment: .leading)
@@ -133,11 +143,8 @@ private struct PharnoteNotesHomeView: View {
                     viewModel.loadDocuments()
                     await analysisCenter.refreshQueue()
                 }
-                .navigationDestination(for: PharDocument.self) { document in
-                    DocumentEditorView(document: document)
-                }
-                .navigationDestination(for: LibraryViewModel.OCRSearchNavigationTarget.self) { target in
-                    DocumentEditorView(document: target.document, initialPageKey: target.pageKey)
+                .navigationDestination(for: DocumentEditorLaunchTarget.self) { target in
+                    DocumentEditorView(document: target.document, initialPageKey: target.initialPageKey)
                 }
                 .overlay {
                     if isShowingSidebar {
@@ -162,7 +169,7 @@ private struct PharnoteNotesHomeView: View {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
                                 isShowingSidebar = false
                             }
-                            viewModel.navigationPath.append(document)
+                            viewModel.openDocument(document)
                         },
                         onClose: {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
@@ -174,6 +181,7 @@ private struct PharnoteNotesHomeView: View {
                 }
             }
         }
+        .environmentObject(viewModel)
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
@@ -194,6 +202,9 @@ private struct PharnoteNotesHomeView: View {
                 blankNotes: viewModel.blankNoteCount,
                 pdfDocuments: viewModel.pdfCount
             )
+        }
+        .sheet(isPresented: $isShowingPastQuestionsDebug) {
+            PastQuestionsDebugView()
         }
         .sheet(item: $viewModel.pendingPDFImportSelection) { pending in
             HomeStudyMaterialImportSheet(
@@ -263,6 +274,25 @@ private struct PharnoteNotesHomeView: View {
         }
     }
 
+    private var internalToolsSection: some View {
+        HomeSurfaceCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("TutorHub 기출 DB")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+
+                Text("`public.past_questions`를 read-only로 조회하는 내부 디버그 패널입니다. exact lookup, text search, image_url 렌더링을 여기서 바로 확인할 수 있습니다.")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+
+                Button("기출 DB 열기") {
+                    isShowingPastQuestionsDebug = true
+                }
+                .buttonStyle(HomeFilledButtonStyle())
+            }
+        }
+    }
+
     private var continueSection: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 8) {
@@ -289,7 +319,7 @@ private struct PharnoteNotesHomeView: View {
                     HStack(alignment: .top, spacing: 22) {
                         ForEach(continueDocuments) { document in
                             Button {
-                                viewModel.navigationPath.append(document)
+                                viewModel.openDocument(document)
                             } label: {
                                 HomeContinueDocumentCard(document: document)
                             }
@@ -315,80 +345,8 @@ private struct PharnoteNotesHomeView: View {
 }
 
 private struct PharnoteAnalysisHomeView: View {
-    @EnvironmentObject private var analysisCenter: AnalysisCenter
-
-    private var recentEntries: [AnalysisQueueEntry] {
-        Array(analysisCenter.queueEntries.prefix(6))
-    }
-
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 30) {
-                HomeBrandBar()
-
-                HomeScreenTitle(
-                    title: "노드 분석",
-                    systemName: "chart.bar",
-                    subtitle: "최근 분석 흐름과 인사이트 결과를 빠르게 훑어봅니다."
-                )
-
-                HomeMetricRow(
-                    metrics: [
-                        HomeMetric(title: "대기", value: "\(analysisCenter.queuedCount)", tint: HomePalette.blueTint),
-                        HomeMetric(title: "완료", value: "\(analysisCenter.completedCount)", tint: HomePalette.greenTint),
-                        HomeMetric(title: "복습", value: "\(analysisCenter.pendingReviewTaskCount)", tint: HomePalette.orangeTint)
-                    ]
-                )
-
-                if let latestResult = analysisCenter.latestResult {
-                    HomeSurfaceCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("최근 인사이트")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundStyle(HomePalette.textSecondary)
-                            Text(latestResult.summary.headline)
-                                .font(.system(size: 28, weight: .black, design: .rounded))
-                                .foregroundStyle(HomePalette.textPrimary)
-                            Text(latestResult.summary.body)
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
-                                .foregroundStyle(HomePalette.textSecondary)
-                                .lineLimit(3)
-                        }
-                    }
-                }
-
-                if recentEntries.isEmpty {
-                    HomeSurfaceCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("분석 기록이 아직 없습니다")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
-                                .foregroundStyle(HomePalette.textPrimary)
-                            Text("노트나 PDF에서 분석을 한 번 실행하면 여기서 최근 흐름을 모아 볼 수 있습니다.")
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
-                                .foregroundStyle(HomePalette.textSecondary)
-                        }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(recentEntries) { entry in
-                            HomeAnalysisEntryCard(
-                                entry: entry,
-                                result: analysisCenter.result(for: entry.bundleId)
-                            )
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: 980, alignment: .leading)
-            .padding(.horizontal, 28)
-            .padding(.top, 22)
-            .padding(.bottom, 36)
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .background(HomePalette.background.ignoresSafeArea())
-        .task {
-            await analysisCenter.refreshQueue()
-        }
+        NodeAnalysisWorkspaceView()
     }
 }
 
