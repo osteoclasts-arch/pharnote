@@ -261,6 +261,9 @@ struct BlankNoteEditorView: View {
                     WritingChromeIconButton(systemName: "photo.badge.plus", accentTint: true) {
                         isShowingPhotoPicker = true
                     }
+                    WritingChromeIconButton(systemName: "doc.on.clipboard", accentTint: true) {
+                        handlePasteImageAction()
+                    }
                     WritingChromeIconButton(systemName: "paperclip", accentTint: true) {
                         isShowingFilePicker = true
                     }
@@ -705,6 +708,20 @@ struct BlankNoteEditorView: View {
     }
 
     private func handleBackAction() {
+        navigateBackPreservingCurrentTab()
+    }
+
+    private func navigateBackPreservingCurrentTab() {
+        Task {
+            isManagedTransition = true
+            audioController.tearDown()
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+            dismiss()
+        }
+    }
+
+    private func closeCurrentWorkspaceTab() {
         Task {
             isManagedTransition = true
             audioController.tearDown()
@@ -733,7 +750,7 @@ struct BlankNoteEditorView: View {
 
     private func handleWorkspaceChipClose(_ documentID: UUID) {
         guard documentID != viewModel.document.id else {
-            handleBackAction()
+            closeCurrentWorkspaceTab()
             return
         }
         libraryViewModel.closeDocumentTab(documentID)
@@ -749,6 +766,13 @@ struct BlankNoteEditorView: View {
             case .eraser, .lasso:
                 viewModel.selectTool(.pen)
             }
+        }
+    }
+
+    private func handlePasteImageAction() {
+        workspaceController.importImageFromPasteboard()
+        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+            isBottomPanelExpanded = true
         }
     }
 

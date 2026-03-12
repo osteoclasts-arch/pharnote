@@ -42,6 +42,9 @@ struct NodeAnalysisWorkspaceView: View {
                 await viewModel.ensureRecommendationsLoaded()
             }
         }
+        .onAppear {
+            viewModel.refreshConfigurationFields()
+        }
     }
 
     private var headerCard: some View {
@@ -89,8 +92,8 @@ struct NodeAnalysisWorkspaceView: View {
         VStack(alignment: .leading, spacing: PharTheme.Spacing.large) {
             if !viewModel.hasConfiguration {
                 NodeAnalysisInfoCard(
-                    title: "기출 DB 연결 정보가 없습니다",
-                    detail: "먼저 `PAST_QUESTIONS_SUPABASE_URL`과 `PAST_QUESTIONS_SUPABASE_ANON_KEY`를 설정하거나 내부 디버그 패널에서 저장해 주세요.",
+                    title: "기출 검색 준비 중",
+                    detail: "앱의 기출 DB 설정이 아직 반영되지 않았습니다. 제품 빌드에서는 번들 설정으로 자동 연결되고, DEBUG 빌드에서는 내부 기출 DB 패널에서만 수동 설정할 수 있습니다.",
                     accent: PharTheme.ColorToken.accentPeach
                 )
             }
@@ -760,7 +763,7 @@ private struct NodeAnalysisInfoCard: View {
     let accent: Color
 
     var body: some View {
-        PharSurfaceCard(fill: accent.opacity(0.14), stroke: accent.opacity(0.22)) {
+        PharSurfaceCard(fill: accent.opacity(0.12), stroke: accent.opacity(0.22)) {
             VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
                 Text(title)
                     .font(PharTypography.cardTitle)

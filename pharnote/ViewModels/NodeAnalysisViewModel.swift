@@ -157,6 +157,10 @@ final class NodeAnalysisViewModel: ObservableObject {
         }
     }
 
+    func refreshConfigurationFields() {
+        configurationStore.reload()
+    }
+
     func lookupQuestion() async {
         lookupErrorMessage = nil
         isLookingUp = true

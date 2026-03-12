@@ -127,23 +127,46 @@ class SmartShapeCanvasView: PKCanvasView {
 }
 
 final class PencilPassthroughCanvasView: SmartShapeCanvasView {
-    var allowsFingerTouchInput: Bool = false
+    var allowsFingerTouchInput: Bool = false {
+        didSet {
+            updateAllowedTouchTypes()
+        }
+    }
 
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard !allowsFingerTouchInput else {
-            return super.hitTest(point, with: event)
+    override var isUserInteractionEnabled: Bool {
+        didSet {
+            updateAllowedTouchTypes()
+        }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        updateAllowedTouchTypes()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        updateAllowedTouchTypes()
+    }
+
+    private func updateAllowedTouchTypes() {
+        guard isUserInteractionEnabled else {
+            drawingGestureRecognizer.allowedTouchTypes = []
+            return
         }
 
-        guard let touches = event?.allTouches, !touches.isEmpty else {
-            return nil
+        var allowedTouchTypes: [NSNumber] = [
+            NSNumber(value: UITouch.TouchType.pencil.rawValue)
+        ]
+
+        if allowsFingerTouchInput {
+            allowedTouchTypes.insert(
+                NSNumber(value: UITouch.TouchType.direct.rawValue),
+                at: 0
+            )
         }
 
-        let hasPencilTouch = touches.contains(where: { $0.type == .pencil })
-        if hasPencilTouch {
-            return super.hitTest(point, with: event)
-        }
-
-        return nil
+        drawingGestureRecognizer.allowedTouchTypes = allowedTouchTypes
     }
 }
 

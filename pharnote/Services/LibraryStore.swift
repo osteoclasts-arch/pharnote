@@ -1,5 +1,6 @@
 import Foundation
 import PDFKit
+import UIKit
 
 struct PharnodeDashboardSnapshot: Codable, Hashable {
     let version: Int
@@ -52,6 +53,7 @@ final class LibraryStore {
     enum StoreError: LocalizedError {
         case documentsPathIsNotDirectory
         case invalidPDFSource
+        case invalidImageSource
 
         var errorDescription: String? {
             switch self {
@@ -59,6 +61,8 @@ final class LibraryStore {
                 return "Documents 경로가 디렉토리가 아닙니다."
             case .invalidPDFSource:
                 return "유효한 PDF 파일이 아닙니다."
+            case .invalidImageSource:
+                return "유효한 이미지 파일이 아닙니다."
             }
         }
     }
@@ -247,6 +251,75 @@ final class LibraryStore {
             type: .pdf,
             path: packageURL.path,
             studyMaterial: suggestedMaterial,
+            progress: initialProgress
+        )
+        documents.append(document)
+        try saveIndex(documents)
+        return document
+    }
+
+    @discardableResult
+    func importImageAsPDF(from sourceURL: URL) throws -> PharDocument {
+        try ensureDocumentsDirectoryExists()
+
+        let scopedAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if scopedAccess {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let now = Date()
+        let id = UUID()
+        let packageURL = documentsDirectory.appendingPathComponent("\(id.uuidString).pharnote", isDirectory: true)
+        try fileManager.createDirectory(at: packageURL, withIntermediateDirectories: false)
+
+        let destinationPDFURL = packageURL.appendingPathComponent("Original.pdf", isDirectory: false)
+
+        var coordinationError: NSError?
+        var importError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(readingItemAt: sourceURL, options: [], error: &coordinationError) { coordinatedURL in
+            do {
+                let imageData = try Data(contentsOf: coordinatedURL)
+                guard let image = UIImage(data: imageData) else {
+                    throw StoreError.invalidImageSource
+                }
+                let pdfData = makeSinglePagePDFData(from: image)
+                try pdfData.write(to: destinationPDFURL, options: .atomic)
+            } catch {
+                importError = error
+            }
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+        if let importError {
+            throw importError
+        }
+
+        let title = sourceURL.deletingPathExtension().lastPathComponent.isEmpty
+            ? "이미지 \(id.uuidString.prefix(6))"
+            : sourceURL.deletingPathExtension().lastPathComponent
+
+        let initialProgress = StudyProgressSnapshot(
+            currentPage: 1,
+            totalPages: 1,
+            furthestPage: 1,
+            completionRatio: 1,
+            lastStudiedAt: now,
+            sections: []
+        )
+
+        var documents = try loadIndex()
+        let document = PharDocument(
+            id: id,
+            title: title,
+            createdAt: now,
+            updatedAt: now,
+            type: .pdf,
+            path: packageURL.path,
             progress: initialProgress
         )
         documents.append(document)
@@ -539,6 +612,23 @@ final class LibraryStore {
         }
 
         return sections
+    }
+
+    private func makeSinglePagePDFData(from image: UIImage) -> Data {
+        let imageSize = image.size
+        let pageRect = CGRect(
+            origin: .zero,
+            size: CGSize(
+                width: max(imageSize.width, 1),
+                height: max(imageSize.height, 1)
+            )
+        )
+
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { context in
+            context.beginPage()
+            image.draw(in: pageRect)
+        }
     }
 
     private func normalizeDocumentPath(_ document: PharDocument, relativeTo rootURL: URL) -> PharDocument {

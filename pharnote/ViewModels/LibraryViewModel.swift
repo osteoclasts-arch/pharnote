@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class LibraryViewModel: ObservableObject {
@@ -233,6 +234,24 @@ final class LibraryViewModel: ObservableObject {
             pendingPDFImportSelection = PendingPDFImportSelection(document: newDocument, suggestion: suggestion)
         } catch {
             errorMessage = "PDF 가져오기 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func importDocument(from sourceURL: URL) {
+        switch importedFileKind(for: sourceURL) {
+        case .pdf:
+            importPDF(from: sourceURL)
+        case .image:
+            do {
+                let newDocument = try store.importImageAsPDF(from: sourceURL)
+                documents.insert(newDocument, at: 0)
+                refreshDashboardSnapshot()
+                openDocument(newDocument)
+            } catch {
+                errorMessage = "이미지 가져오기 실패: \(error.localizedDescription)"
+            }
+        case .unsupported:
+            errorMessage = "지원하지 않는 파일 형식입니다. PDF 또는 이미지 파일을 선택해 주세요."
         }
     }
 
@@ -536,6 +555,35 @@ final class LibraryViewModel: ObservableObject {
     private func nextBlankNoteTitle() -> String {
         let nextNumber = documents.filter { $0.type == .blankNote }.count + 1
         return "빈 노트 \(nextNumber)"
+    }
+
+    private enum ImportedFileKind {
+        case pdf
+        case image
+        case unsupported
+    }
+
+    private func importedFileKind(for sourceURL: URL) -> ImportedFileKind {
+        if let contentType = try? sourceURL.resourceValues(forKeys: [.contentTypeKey]).contentType {
+            if contentType.conforms(to: .pdf) {
+                return .pdf
+            }
+            if contentType.conforms(to: .image) {
+                return .image
+            }
+        }
+
+        let pathExtension = sourceURL.pathExtension.lowercased()
+        if let inferredType = UTType(filenameExtension: pathExtension) {
+            if inferredType.conforms(to: .pdf) {
+                return .pdf
+            }
+            if inferredType.conforms(to: .image) {
+                return .image
+            }
+        }
+
+        return .unsupported
     }
 
     private func updatedStudyMaterial(

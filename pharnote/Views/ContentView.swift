@@ -191,7 +191,7 @@ private struct PharnoteNotesHomeView: View {
             PDFImportPicker { urls in
                 isShowingPDFImportPicker = false
                 guard let firstURL = urls.first else { return }
-                viewModel.importPDF(from: firstURL)
+                viewModel.importDocument(from: firstURL)
             } onCancelled: {
                 isShowingPDFImportPicker = false
             }

@@ -24,6 +24,8 @@ final class PastQuestionsConfigurationStore: ObservableObject {
 
     static let envURLKey = "PAST_QUESTIONS_SUPABASE_URL"
     static let envAnonKey = "PAST_QUESTIONS_SUPABASE_ANON_KEY"
+    static let infoURLKey = "PAST_QUESTIONS_SUPABASE_URL"
+    static let infoAnonKey = "PAST_QUESTIONS_SUPABASE_ANON_KEY"
     private static let storedURLUserDefaultsKey = "past_questions.supabase_url"
     private static let storedAnonUserDefaultsKey = "past_questions.supabase_anon_key"
 
@@ -31,16 +33,20 @@ final class PastQuestionsConfigurationStore: ObservableObject {
 
     private let userDefaults: UserDefaults
     private let environment: [String: String]
+    private let infoDictionary: [String: Any]
 
     init(
         userDefaults: UserDefaults = .standard,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        infoDictionary: [String: Any] = Bundle.main.infoDictionary ?? [:]
     ) {
         self.userDefaults = userDefaults
         self.environment = environment
+        self.infoDictionary = infoDictionary
         self.configuration = Self.loadConfiguration(
             userDefaults: userDefaults,
             environment: environment,
+            infoDictionary: infoDictionary,
             storedURLKey: Self.storedURLUserDefaultsKey,
             storedAnonKey: Self.storedAnonUserDefaultsKey
         )
@@ -51,6 +57,11 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         let envAnonKey = environment[Self.envAnonKey]?.trimmedNonEmpty
         if envURL != nil || envAnonKey != nil {
             return "환경변수"
+        }
+        let bundleURL = Self.infoString(forKey: Self.infoURLKey, in: infoDictionary)
+        let bundleAnonKey = Self.infoString(forKey: Self.infoAnonKey, in: infoDictionary)
+        if bundleURL != nil || bundleAnonKey != nil {
+            return "앱 번들"
         }
         if configuration.isComplete {
             return "앱 저장값"
@@ -79,6 +90,7 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         configuration = Self.loadConfiguration(
             userDefaults: userDefaults,
             environment: environment,
+            infoDictionary: infoDictionary,
             storedURLKey: Self.storedURLUserDefaultsKey,
             storedAnonKey: Self.storedAnonUserDefaultsKey
         )
@@ -88,6 +100,7 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         configuration = Self.loadConfiguration(
             userDefaults: userDefaults,
             environment: environment,
+            infoDictionary: infoDictionary,
             storedURLKey: Self.storedURLUserDefaultsKey,
             storedAnonKey: Self.storedAnonUserDefaultsKey
         )
@@ -106,18 +119,29 @@ final class PastQuestionsConfigurationStore: ObservableObject {
     private static func loadConfiguration(
         userDefaults: UserDefaults,
         environment: [String: String],
+        infoDictionary: [String: Any],
         storedURLKey: String,
         storedAnonKey: String
     ) -> PastQuestionsConfiguration {
         let envURL = environment[envURLKey]?.trimmedNonEmpty
         let envAnonKey = environment[envAnonKey]?.trimmedNonEmpty
+        let bundleURL = infoString(forKey: infoURLKey, in: infoDictionary)
+        let bundleAnonKey = infoString(forKey: infoAnonKey, in: infoDictionary)
         let storedURL = userDefaults.string(forKey: storedURLKey)?.trimmedNonEmpty
         let storedAnonKey = userDefaults.string(forKey: storedAnonKey)?.trimmedNonEmpty
 
         return PastQuestionsConfiguration(
-            baseURLString: envURL ?? storedURL ?? "",
-            anonKey: envAnonKey ?? storedAnonKey ?? ""
+            baseURLString: envURL ?? bundleURL ?? storedURL ?? "",
+            anonKey: envAnonKey ?? bundleAnonKey ?? storedAnonKey ?? ""
         )
+    }
+
+    private static func infoString(forKey key: String, in dictionary: [String: Any]) -> String? {
+        guard let rawValue = dictionary[key] as? String else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.contains("$(") else { return nil }
+        return trimmed
     }
 }
 

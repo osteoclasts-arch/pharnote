@@ -5,12 +5,15 @@ PharNote는 TutorHub의 `public.past_questions`를 read-only source of truth로 
 ## 설정
 
 1. TutorHub Supabase anon key와 project URL을 준비합니다.
-2. 아래 이름으로 환경변수를 넣습니다.
+2. 아래 이름으로 값을 관리합니다.
    - `PAST_QUESTIONS_SUPABASE_URL`
    - `PAST_QUESTIONS_SUPABASE_ANON_KEY`
-3. iOS 앱은 `.env`를 자동 로드하지 않으므로 둘 중 하나를 사용합니다.
+3. 상용 앱 빌드에서는 target build setting 또는 xcconfig로 두 값을 주입합니다.
+   - 앱은 `Info.plist` 경유로 값을 읽기 때문에 사용자 화면에 연결 설정 UI가 노출되지 않습니다.
+4. 개발 중에는 아래 둘 중 하나를 사용합니다.
    - Xcode `Product > Scheme > Edit Scheme > Run > Arguments`에서 환경변수 추가
    - 앱 홈의 내부 도구 `TutorHub 기출 DB`에서 URL / anon key 저장
+5. iOS 앱은 `.env`를 자동 로드하지 않습니다.
 
 ## 동작
 

@@ -88,6 +88,13 @@ struct PDFKitView: UIViewRepresentable {
             let canvas = PencilPassthroughCanvasView()
             canvas.backgroundColor = .clear
             canvas.isOpaque = false
+            canvas.isScrollEnabled = false
+            canvas.alwaysBounceVertical = false
+            canvas.alwaysBounceHorizontal = false
+            canvas.bouncesZoom = false
+            canvas.minimumZoomScale = 1
+            canvas.maximumZoomScale = 1
+            canvas.contentInset = .zero
             canvas.delegate = self
             canvas.onSmartShapeApplied = { [weak self, weak canvas] _ in
                 guard let self, let canvas else { return }
@@ -117,6 +124,16 @@ struct PDFKitView: UIViewRepresentable {
             }
 
             return canvas
+        }
+
+        func pdfView(_ pdfView: PDFView, willDisplayOverlayView overlayView: UIView, for page: PDFPage) {
+            guard let canvas = overlayView as? PencilPassthroughCanvasView else { return }
+            let drawingGesture = canvas.drawingGestureRecognizer
+
+            conflictingPDFGestures(in: pdfView).forEach { gesture in
+                guard gesture !== drawingGesture else { return }
+                gesture.require(toFail: drawingGesture)
+            }
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -149,6 +166,26 @@ struct PDFKitView: UIViewRepresentable {
         private func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
             viewModel.setActiveOverlayCanvas(canvas)
             canvas?.becomeFirstResponder()
+        }
+
+        private func conflictingPDFGestures(in pdfView: PDFView) -> [UIGestureRecognizer] {
+            allDescendantGestureRecognizers(in: pdfView).filter { gesture in
+                guard gesture.view?.isDescendant(of: pdfView) == true else {
+                    return false
+                }
+
+                return gesture is UIPanGestureRecognizer || gesture is UIPinchGestureRecognizer
+            }
+        }
+
+        private func allDescendantGestureRecognizers(in rootView: UIView) -> [UIGestureRecognizer] {
+            var gestures = rootView.gestureRecognizers ?? []
+
+            rootView.subviews.forEach { subview in
+                gestures.append(contentsOf: allDescendantGestureRecognizers(in: subview))
+            }
+
+            return gestures
         }
     }
 }

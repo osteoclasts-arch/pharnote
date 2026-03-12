@@ -63,7 +63,7 @@ struct LibraryView: View {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         PharToolbarIconButton(
                             systemName: "square.and.arrow.down",
-                            accessibilityLabel: "PDF 가져오기"
+                            accessibilityLabel: "문서 가져오기"
                         ) {
                             isShowingPDFImportPicker = true
                         }
@@ -123,7 +123,7 @@ struct LibraryView: View {
             PDFImportPicker { urls in
                 isShowingPDFImportPicker = false
                 guard let firstURL = urls.first else { return }
-                viewModel.importPDF(from: firstURL)
+                viewModel.importDocument(from: firstURL)
             } onCancelled: {
                 isShowingPDFImportPicker = false
             }
@@ -294,7 +294,7 @@ struct LibraryView: View {
                                 Button {
                                     isShowingPDFImportPicker = true
                                 } label: {
-                                    Label("PDF 가져오기", systemImage: "square.and.arrow.down")
+                                    Label("문서 가져오기", systemImage: "square.and.arrow.down")
                                 }
                                 .buttonStyle(PharSoftButtonStyle())
                             }
@@ -637,7 +637,7 @@ struct LibraryView: View {
                                 Button {
                                     isShowingPDFImportPicker = true
                                 } label: {
-                                    Label("PDF 가져오기", systemImage: "square.and.arrow.down")
+                                    Label("문서 가져오기", systemImage: "square.and.arrow.down")
                                 }
                                 .buttonStyle(PharSoftButtonStyle())
                             }
@@ -702,7 +702,7 @@ struct LibraryView: View {
                     Button {
                         isShowingPDFImportPicker = true
                     } label: {
-                        Label("PDF 가져오기", systemImage: "square.and.arrow.down")
+                        Label("문서 가져오기", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(PharSoftButtonStyle())
                 }

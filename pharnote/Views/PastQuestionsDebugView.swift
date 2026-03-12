@@ -73,6 +73,12 @@ struct PastQuestionsDebugView: View {
             Text("iOS 앱은 `.env`를 자동 로드하지 않습니다. Xcode Run Scheme 환경변수나 이 화면의 저장값을 사용합니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            if !viewModel.isConfigured {
+                Text("연결 설정을 먼저 저장해야 exact lookup과 search 버튼이 활성화됩니다.")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
@@ -108,7 +114,7 @@ struct PastQuestionsDebugView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isRunningLookup)
+                .disabled(viewModel.isRunningLookup || !viewModel.isConfigured)
             }
         }
     }
@@ -170,7 +176,7 @@ struct PastQuestionsDebugView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isRunningSearch)
+            .disabled(viewModel.isRunningSearch || !viewModel.isConfigured)
         }
     }
 

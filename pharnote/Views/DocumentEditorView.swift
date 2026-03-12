@@ -1369,6 +1369,46 @@ final class DocumentWorkspaceController: ObservableObject {
         }
     }
 
+    func importImageFromPasteboard() {
+        if let pngData = UIPasteboard.general.data(forPasteboardType: UTType.png.identifier) {
+            importImageData(pngData, suggestedFileName: pastedImageFileName(fileExtension: "png"))
+            return
+        }
+
+        if let jpegData = UIPasteboard.general.data(forPasteboardType: UTType.jpeg.identifier) {
+            importImageData(jpegData, suggestedFileName: pastedImageFileName(fileExtension: "jpg"))
+            return
+        }
+
+        if let image = UIPasteboard.general.image, let pngData = image.pngData() {
+            importImageData(pngData, suggestedFileName: pastedImageFileName(fileExtension: "png"))
+            return
+        }
+
+        errorMessage = "클립보드에 붙여넣을 사진이 없습니다."
+    }
+
+    func importPastedImageProviders(_ providers: [NSItemProvider]) {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) else {
+            errorMessage = "붙여넣을 수 있는 사진을 찾지 못했습니다."
+            return
+        }
+
+        let suggestedName = provider.suggestedName
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, _ in
+            guard let self else { return }
+
+            Task { @MainActor in
+                guard let data else {
+                    self.errorMessage = "클립보드 사진을 읽지 못했습니다."
+                    return
+                }
+
+                self.importImageData(data, suggestedFileName: suggestedName)
+            }
+        }
+    }
+
     func importFile(from sourceURL: URL) {
         let attachmentID = UUID()
         let originalFileName = normalizedFileName(
@@ -1485,6 +1525,12 @@ final class DocumentWorkspaceController: ObservableObject {
 
     private var documentURL: URL {
         URL(fileURLWithPath: document.path, isDirectory: true)
+    }
+
+    private func pastedImageFileName(fileExtension: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        let timestamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        return "pasted-image-\(timestamp).\(fileExtension)"
     }
 }
 
