@@ -16,7 +16,6 @@ struct BlankNoteEditorView: View {
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
     @State private var editingStrokePresetIndex: Int?
-    @State private var selectedSharedFile: WritingSharedFileItem?
     @State private var isManagedTransition = false
 
     init(document: PharDocument, initialPageKey: String? = nil) {
@@ -104,9 +103,6 @@ struct BlankNoteEditorView: View {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 workspaceController.importImageData(data, suggestedFileName: fileName)
-                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                    isBottomPanelExpanded = true
-                }
             } onCancel: {
                 isShowingPhotoPicker = false
             }
@@ -121,9 +117,6 @@ struct BlankNoteEditorView: View {
             } onCancel: {
                 isShowingFilePicker = false
             }
-        }
-        .sheet(item: $selectedSharedFile) { sharedFile in
-            WritingDocumentShareSheet(items: [sharedFile.url])
         }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
@@ -180,7 +173,7 @@ struct BlankNoteEditorView: View {
                         onClose: handleWorkspaceChipClose
                     )
                     chromeToolbar
-                    if viewModel.selectedTool == .lasso {
+                    if viewModel.isToolSelected(.lasso) {
                         chromeAnalyzeCallout
                     }
                     if viewModel.isEditingInkTool {
@@ -214,6 +207,10 @@ struct BlankNoteEditorView: View {
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+
+            DocumentWorkspaceCanvasAttachmentOverlayView(controller: workspaceController)
+                .padding(18)
+                .allowsHitTesting(false)
 
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
@@ -277,7 +274,7 @@ struct BlankNoteEditorView: View {
                         }
                     }
 
-                    if viewModel.selectedTool == .lasso {
+                    if viewModel.isToolSelected(.lasso) {
                         WritingChromeIconButton(
                             systemName: "waveform.path.ecg.text",
                             accentTint: true,
@@ -335,7 +332,7 @@ struct BlankNoteEditorView: View {
     private var chromeInkPalette: some View {
         WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
             VStack(alignment: .leading, spacing: 10) {
-                if viewModel.selectedTool == .pen {
+                if viewModel.isToolSelected(.pen) {
                     HStack(spacing: 8) {
                         ForEach(WritingPenStyle.allCases) { penStyle in
                             WritingPenStyleButton(
@@ -417,7 +414,7 @@ struct BlankNoteEditorView: View {
     private func toolChromeButton(_ tool: BlankNoteEditorViewModel.AnnotationTool, icon: String) -> some View {
         WritingChromeIconButton(
             systemName: icon,
-            isSelected: viewModel.selectedTool == tool
+            isSelected: viewModel.isToolSelected(tool)
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
                 viewModel.selectTool(tool)
@@ -579,7 +576,7 @@ struct BlankNoteEditorView: View {
 
                 Spacer(minLength: 0)
 
-                Text(viewModel.selectedTool.rawValue)
+                Text(viewModel.currentToolLabel)
                     .font(PharTypography.captionStrong)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
             }
@@ -603,10 +600,6 @@ struct BlankNoteEditorView: View {
                 }
 
                 DocumentAudioPanelView(controller: audioController)
-
-                DocumentWorkspaceSupplementPanelView(controller: workspaceController) { attachment in
-                    selectedSharedFile = WritingSharedFileItem(url: workspaceController.attachmentFileURL(for: attachment))
-                }
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: PharTheme.Spacing.small) {
@@ -758,7 +751,12 @@ struct BlankNoteEditorView: View {
 
     private func handlePaintAction() {
         withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            switch viewModel.selectedTool {
+            guard let activeTool = viewModel.activeTool else {
+                viewModel.selectTool(.pen)
+                return
+            }
+
+            switch activeTool {
             case .pen:
                 viewModel.selectTool(.highlighter)
             case .highlighter:
@@ -771,9 +769,6 @@ struct BlankNoteEditorView: View {
 
     private func handlePasteImageAction() {
         workspaceController.importImageFromPasteboard()
-        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            isBottomPanelExpanded = true
-        }
     }
 
     private func dockActionButton(
@@ -804,10 +799,10 @@ struct BlankNoteEditorView: View {
                     .font(PharTypography.eyebrow)
             }
             .frame(minWidth: 58, minHeight: PharTheme.HitArea.comfortable)
-            .foregroundStyle(viewModel.selectedTool == tool ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkPrimary)
+            .foregroundStyle(viewModel.isToolSelected(tool) ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkPrimary)
             .background(
                 RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                    .fill(viewModel.selectedTool == tool ? PharTheme.ColorToken.accentBlue.opacity(0.14) : Color.clear)
+                    .fill(viewModel.isToolSelected(tool) ? PharTheme.ColorToken.accentBlue.opacity(0.14) : Color.clear)
             )
         }
         .buttonStyle(.plain)

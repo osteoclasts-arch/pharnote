@@ -1688,161 +1688,75 @@ struct WritingAttachmentFilePicker: UIViewControllerRepresentable {
     }
 }
 
-struct DocumentWorkspaceSupplementPanelView: View {
+struct DocumentWorkspaceCanvasAttachmentOverlayView: View {
     @ObservedObject var controller: DocumentWorkspaceController
-    var onOpenAttachment: (DocumentWorkspaceAttachmentItem) -> Void
+    var maxPreviewCount: Int = 2
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
-            HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xxxSmall) {
-                    Text("페이지 자료")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                    Text("텍스트 메모와 첨부 파일을 페이지 단위로 유지합니다.")
-                        .font(PharTypography.caption)
-                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+        let previewAttachments = Array(controller.currentPageAttachments.prefix(maxPreviewCount))
+
+        if !previewAttachments.isEmpty {
+            VStack(alignment: .trailing, spacing: PharTheme.Spacing.xSmall) {
+                ForEach(previewAttachments) { attachment in
+                    canvasAttachmentCard(for: attachment)
                 }
 
-                Spacer(minLength: 0)
-
-                PharTagPill(
-                    text: "\(controller.currentPageTextEntries.count + controller.currentPageAttachments.count)개",
-                    tint: controller.currentPageHasSupplements
-                        ? PharTheme.ColorToken.accentBlue.opacity(0.18)
-                        : PharTheme.ColorToken.surfaceSecondary,
-                    foreground: PharTheme.ColorToken.inkPrimary
-                )
-            }
-
-            if !controller.currentPageTextEntries.isEmpty {
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("텍스트")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.subtleText)
-
-                    ForEach(controller.currentPageTextEntries) { entry in
-                        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
-                            VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        if let pageLabel = entry.pageLabel {
-                                            Text(pageLabel)
-                                                .font(PharTypography.eyebrow)
-                                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
-                                        }
-                                        Text(entry.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                                            .font(PharTypography.caption)
-                                            .foregroundStyle(PharTheme.ColorToken.subtleText)
-                                    }
-
-                                    Spacer(minLength: 0)
-
-                                    Button {
-                                        controller.deleteTextEntry(entry)
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 13, weight: .semibold))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(PharTheme.ColorToken.subtleText)
-                                }
-
-                                Text(entry.text)
-                                    .font(PharTypography.body)
-                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                                    .multilineTextAlignment(.leading)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !controller.currentPageAttachments.isEmpty {
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("첨부")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.subtleText)
-
-                    ForEach(controller.currentPageAttachments) { attachment in
-                        PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
-                            HStack(spacing: PharTheme.Spacing.small) {
-                                attachmentPreview(for: attachment)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(attachment.displayTitle)
-                                        .font(PharTypography.bodyStrong)
-                                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                                        .lineLimit(1)
-
-                                    HStack(spacing: PharTheme.Spacing.xSmall) {
-                                        PharTagPill(
-                                            text: attachment.kind.title,
-                                            tint: PharTheme.ColorToken.surfaceTertiary,
-                                            foreground: PharTheme.ColorToken.inkPrimary
-                                        )
-                                        PharTagPill(
-                                            text: attachment.displaySize,
-                                            tint: PharTheme.ColorToken.accentButter.opacity(0.24),
-                                            foreground: PharTheme.ColorToken.inkPrimary
-                                        )
-                                    }
-                                }
-
-                                Spacer(minLength: 0)
-
-                                VStack(spacing: PharTheme.Spacing.xxxSmall) {
-                                    Button("공유") {
-                                        onOpenAttachment(attachment)
-                                    }
-                                    .buttonStyle(PharSoftButtonStyle())
-
-                                    Button(role: .destructive) {
-                                        controller.deleteAttachment(attachment)
-                                    } label: {
-                                        Label("삭제", systemImage: "trash")
-                                    }
-                                    .buttonStyle(PharSoftButtonStyle())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !controller.currentPageHasSupplements {
-                Text("현재 페이지에 저장된 텍스트 메모나 첨부가 없습니다.")
-                    .font(PharTypography.caption)
-                    .foregroundStyle(PharTheme.ColorToken.subtleText)
-                    .padding(.horizontal, PharTheme.Spacing.small)
-                    .padding(.vertical, PharTheme.Spacing.small)
-                    .background(
-                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                            .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
+                if controller.currentPageAttachments.count > maxPreviewCount {
+                    PharTagPill(
+                        text: "+\(controller.currentPageAttachments.count - maxPreviewCount)",
+                        tint: PharTheme.ColorToken.surfacePrimary.opacity(0.94),
+                        foreground: PharTheme.ColorToken.inkPrimary
                     )
+                }
             }
+            .padding(PharTheme.Spacing.small)
         }
     }
 
     @ViewBuilder
-    private func attachmentPreview(for attachment: DocumentWorkspaceAttachmentItem) -> some View {
-        if attachment.kind == .image,
-           let image = UIImage(contentsOfFile: controller.attachmentFileURL(for: attachment).path) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous))
-        } else {
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
-                .fill(PharTheme.ColorToken.surfaceTertiary)
-                .frame(width: 52, height: 52)
-                .overlay {
-                    Image(systemName: attachment.kind.systemImage)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                }
+    private func canvasAttachmentCard(for attachment: DocumentWorkspaceAttachmentItem) -> some View {
+        HStack(spacing: PharTheme.Spacing.xSmall) {
+            if attachment.kind == .image,
+               let image = UIImage(contentsOfFile: controller.attachmentFileURL(for: attachment).path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 82, height: 82)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
+                    .fill(PharTheme.ColorToken.surfaceTertiary)
+                    .frame(width: 82, height: 82)
+                    .overlay {
+                        Image(systemName: attachment.kind.systemImage)
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(attachment.displayTitle)
+                    .font(PharTypography.captionStrong)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    .lineLimit(1)
+
+                Text(attachment.displaySize)
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 110, alignment: .leading)
         }
+        .padding(PharTheme.Spacing.xSmall)
+        .background(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .fill(PharTheme.ColorToken.surfacePrimary.opacity(0.94))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .stroke(PharTheme.ColorToken.border.opacity(0.36), lineWidth: 1)
+        )
+        .shadow(color: PharTheme.ColorToken.overlayShadow.opacity(0.35), radius: 10, x: 0, y: 6)
     }
 }

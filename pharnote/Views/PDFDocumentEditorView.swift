@@ -54,7 +54,6 @@ struct PDFDocumentEditorView: View {
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
     @State private var editingStrokePresetIndex: Int?
-    @State private var selectedSharedFile: WritingSharedFileItem?
     @State private var isManagedTransition = false
 
     init(document: PharDocument, initialPageKey: String? = nil) {
@@ -138,9 +137,6 @@ struct PDFDocumentEditorView: View {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 workspaceController.importImageData(data, suggestedFileName: fileName)
-                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                    isSidebarExpanded = true
-                }
             } onCancel: {
                 isShowingPhotoPicker = false
             }
@@ -155,9 +151,6 @@ struct PDFDocumentEditorView: View {
             } onCancel: {
                 isShowingFilePicker = false
             }
-        }
-        .sheet(item: $selectedSharedFile) { sharedFile in
-            WritingDocumentShareSheet(items: [sharedFile.url])
         }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
@@ -222,13 +215,13 @@ struct PDFDocumentEditorView: View {
                     onClose: handleWorkspaceChipClose
                 )
                 chromeToolbar
-                if viewModel.selectedTool == .lasso && !viewModel.isReadOnlyMode {
+                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                     chromeAnalyzeCallout
                 }
                 if viewModel.isEditingInkTool && !viewModel.isReadOnlyMode {
                     chromeInkPalette
                 }
-                if viewModel.selectedTool == .lasso && !viewModel.isReadOnlyMode {
+                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                     chromeSelectionBar
                 }
             }
@@ -249,6 +242,9 @@ struct PDFDocumentEditorView: View {
             VStack {
                 Spacer()
                 HStack {
+                    DocumentWorkspaceCanvasAttachmentOverlayView(controller: workspaceController)
+                        .allowsHitTesting(false)
+
                     Spacer()
                     WritingShareFAB {
                         isShowingShareSheet = true
@@ -324,7 +320,7 @@ struct PDFDocumentEditorView: View {
                         }
                     }
 
-                    if viewModel.selectedTool == .lasso && !viewModel.isReadOnlyMode {
+                    if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                         WritingChromeIconButton(
                             systemName: "waveform.path.ecg.text",
                             accentTint: true,
@@ -372,7 +368,7 @@ struct PDFDocumentEditorView: View {
     private var chromeInkPalette: some View {
         WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
             VStack(alignment: .leading, spacing: 10) {
-                if viewModel.selectedTool == .pen {
+                if viewModel.isToolSelected(.pen) {
                     HStack(spacing: 8) {
                         ForEach(WritingPenStyle.allCases) { penStyle in
                             WritingPenStyleButton(
@@ -502,7 +498,7 @@ struct PDFDocumentEditorView: View {
     private func toolChromeButton(_ tool: PDFEditorViewModel.AnnotationTool, icon: String, isEnabled: Bool = true) -> some View {
         WritingChromeIconButton(
             systemName: icon,
-            isSelected: viewModel.selectedTool == tool,
+            isSelected: viewModel.isToolSelected(tool),
             isEnabled: isEnabled
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
@@ -718,13 +714,6 @@ struct PDFDocumentEditorView: View {
                         }
                     }
                 }
-
-                workspacePanelSection {
-                    DocumentWorkspaceSupplementPanelView(controller: workspaceController) { attachment in
-                        selectedSharedFile = WritingSharedFileItem(url: workspaceController.attachmentFileURL(for: attachment))
-                    }
-                }
-
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: PharTheme.Spacing.xSmall) {
                         ForEach(PDFWorkspaceSidebarMode.allCases) { mode in
@@ -996,14 +985,14 @@ struct PDFDocumentEditorView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if viewModel.selectedTool == .lasso {
+            if viewModel.isToolSelected(.lasso) {
                 selectionActionsBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             mainToolDock
         }
-        .animation(PharTheme.AnimationToken.toolbarVisibility, value: viewModel.selectedTool)
+        .animation(PharTheme.AnimationToken.toolbarVisibility, value: viewModel.currentToolLabel)
     }
 
     private var mainToolDock: some View {
@@ -1082,7 +1071,7 @@ struct PDFDocumentEditorView: View {
 
                 Spacer(minLength: 0)
 
-                Text(viewModel.selectedTool.rawValue)
+                Text(viewModel.currentToolLabel)
                     .font(PharTypography.captionStrong)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
             }
@@ -1369,7 +1358,7 @@ struct PDFDocumentEditorView: View {
         }
         .buttonStyle(
             PharToolbarButtonStyle(
-                isSelected: viewModel.selectedTool == tool,
+                isSelected: viewModel.isToolSelected(tool),
                 isDestructive: false
             )
         )
@@ -1529,7 +1518,12 @@ struct PDFDocumentEditorView: View {
 
     private func handlePaintAction() {
         withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            switch viewModel.selectedTool {
+            guard let activeTool = viewModel.activeTool else {
+                viewModel.selectTool(.pen)
+                return
+            }
+
+            switch activeTool {
             case .pen:
                 viewModel.selectTool(.highlighter)
             case .highlighter:
@@ -1542,9 +1536,6 @@ struct PDFDocumentEditorView: View {
 
     private func handlePasteImageAction() {
         workspaceController.importImageFromPasteboard()
-        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            isSidebarExpanded = true
-        }
     }
 }
 

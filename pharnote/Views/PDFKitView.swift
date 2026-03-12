@@ -21,6 +21,7 @@ struct PDFKitView: UIViewRepresentable {
 
     func updateUIView(_ uiView: PDFView, context: Context) {
         context.coordinator.updateCanvasConfigurations()
+        context.coordinator.updatePDFInteractionMode(of: uiView)
     }
 
     static func dismantleUIView(_ uiView: PDFView, coordinator: Coordinator) {
@@ -146,6 +147,24 @@ struct PDFKitView: UIViewRepresentable {
             pageCanvases.values.forEach { configureCanvas($0) }
         }
 
+        func updatePDFInteractionMode(of pdfView: PDFView) {
+            let allowsNavigation = viewModel.allowsPDFNavigation
+
+            descendantScrollViews(in: pdfView).forEach { scrollView in
+                guard !(scrollView is PKCanvasView) else { return }
+
+                scrollView.isScrollEnabled = allowsNavigation
+                scrollView.panGestureRecognizer.isEnabled = allowsNavigation
+                scrollView.panGestureRecognizer.allowedTouchTypes = allowsNavigation
+                    ? [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+                    : []
+                scrollView.pinchGestureRecognizer?.isEnabled = allowsNavigation
+                scrollView.pinchGestureRecognizer?.allowedTouchTypes = allowsNavigation
+                    ? [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+                    : []
+            }
+        }
+
         func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
             if let pageIndex = viewModel.pageIndex(forLinkURL: url) {
                 viewModel.goToPage(index: pageIndex)
@@ -157,10 +176,13 @@ struct PDFKitView: UIViewRepresentable {
         }
 
         private func configureCanvas(_ canvas: PencilPassthroughCanvasView) {
-            canvas.isUserInteractionEnabled = !viewModel.isReadOnlyMode
+            canvas.isUserInteractionEnabled = viewModel.isCanvasInputEnabled
             canvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing()
             canvas.drawingPolicy = viewModel.currentDrawingPolicy()
             canvas.tool = viewModel.currentTool()
+            if #available(iOS 18.0, *) {
+                canvas.isDrawingEnabled = viewModel.isCanvasInputEnabled
+            }
         }
 
         private func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
@@ -186,6 +208,19 @@ struct PDFKitView: UIViewRepresentable {
             }
 
             return gestures
+        }
+
+        private func descendantScrollViews(in rootView: UIView) -> [UIScrollView] {
+            var scrollViews: [UIScrollView] = []
+
+            rootView.subviews.forEach { subview in
+                if let scrollView = subview as? UIScrollView {
+                    scrollViews.append(scrollView)
+                }
+                scrollViews.append(contentsOf: descendantScrollViews(in: subview))
+            }
+
+            return scrollViews
         }
     }
 }

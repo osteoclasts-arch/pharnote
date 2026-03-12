@@ -68,6 +68,10 @@ struct PencilCanvasView: UIViewRepresentable {
             guard let canvasView else { return }
             canvasView.tool = viewModel.currentTool()
             canvasView.drawingPolicy = viewModel.currentDrawingPolicy()
+            canvasView.isUserInteractionEnabled = viewModel.isCanvasInputEnabled
+            if #available(iOS 18.0, *) {
+                canvasView.isDrawingEnabled = viewModel.isCanvasInputEnabled
+            }
             if #available(iOS 18.0, *) {
                 toolPicker.selectedToolItem = pickerItem(for: viewModel.currentTool())
             }

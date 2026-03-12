@@ -27,6 +27,8 @@ final class NodeAnalysisViewModel: ObservableObject {
     @Published private(set) var recommendationHits: [PastQuestionSearchHit] = []
     @Published private(set) var recommendationMessage: String?
     @Published private(set) var isLoadingRecommendations = false
+    @Published private(set) var configuration: PastQuestionsConfiguration
+    @Published private(set) var configurationSourceLabel: String
 
     private let configurationStore: PastQuestionsConfigurationStore
     private let questionsService: PastQuestionsService
@@ -34,15 +36,21 @@ final class NodeAnalysisViewModel: ObservableObject {
     private var solveTimer: Timer?
     private var solveStartedAt: Date?
     private var explicitlyMarkedStuckStepID: String?
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         configurationStore: PastQuestionsConfigurationStore? = nil,
         questionsService: PastQuestionsService = .shared,
         weaknessStore: NodeAnalysisStore = NodeAnalysisStore()
     ) {
-        self.configurationStore = configurationStore ?? .shared
+        let resolvedConfigurationStore = configurationStore ?? .shared
+        self.configurationStore = resolvedConfigurationStore
         self.questionsService = questionsService
         self.weaknessStore = weaknessStore
+        self.configuration = resolvedConfigurationStore.configuration
+        self.configurationSourceLabel = resolvedConfigurationStore.configurationSourceLabel
+
+        bindConfigurationStore()
 
         Task {
             await loadWeaknessRecords()
@@ -58,11 +66,7 @@ final class NodeAnalysisViewModel: ObservableObject {
     }
 
     var hasConfiguration: Bool {
-        configurationStore.configuration.isComplete
-    }
-
-    var configurationSourceLabel: String {
-        configurationStore.configurationSourceLabel
+        configuration.isComplete
     }
 
     var selectedWeaknessRecord: NodeAnalysisWeaknessRecord? {
@@ -159,6 +163,8 @@ final class NodeAnalysisViewModel: ObservableObject {
 
     func refreshConfigurationFields() {
         configurationStore.reload()
+        configuration = configurationStore.configuration
+        configurationSourceLabel = configurationStore.configurationSourceLabel
     }
 
     func lookupQuestion() async {
@@ -184,7 +190,7 @@ final class NodeAnalysisViewModel: ObservableObject {
                     questionNumber: questionNumber,
                     examVariant: lookupVariant.requestValue
                 ),
-                configuration: configurationStore.configuration
+                configuration: configuration
             )
 
             lookupResponse = response
@@ -202,6 +208,16 @@ final class NodeAnalysisViewModel: ObservableObject {
             sessionPhase = .idle
             lookupErrorMessage = error.localizedDescription
         }
+    }
+
+    private func bindConfigurationStore() {
+        configurationStore.$configuration
+            .sink { [weak self] configuration in
+                guard let self else { return }
+                self.configuration = configuration
+                self.configurationSourceLabel = self.configurationStore.configurationSourceLabel
+            }
+            .store(in: &cancellables)
     }
 
     func startSolving() {
@@ -321,7 +337,6 @@ final class NodeAnalysisViewModel: ObservableObject {
         defer { isLoadingRecommendations = false }
 
         do {
-            let configuration = configurationStore.configuration
             let queryCandidates = recommendationQueryCandidates(for: weakness)
             var matchedItems: [PastQuestionSearchHit] = []
             var matchedQuery: String?

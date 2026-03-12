@@ -30,6 +30,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     @Published var isToolPickerVisible: Bool = false
     @Published var selectedTool: AnnotationTool = .pen
+    @Published var isToolSelectionActive: Bool = false
     @Published var selectedPenStyle: WritingPenStyle = .ballpoint
     @Published var selectedColorID: Int = 0
     @Published var strokeWidth: Double = 5.0
@@ -256,8 +257,25 @@ final class BlankNoteEditorViewModel: ObservableObject {
         pages.count > 1
     }
 
+    var activeTool: AnnotationTool? {
+        isToolSelectionActive ? selectedTool : nil
+    }
+
+    var isCanvasInputEnabled: Bool {
+        isToolSelectionActive
+    }
+
     var isEditingInkTool: Bool {
-        selectedTool == .pen || selectedTool == .highlighter
+        guard let activeTool else { return false }
+        return activeTool == .pen || activeTool == .highlighter
+    }
+
+    var currentToolLabel: String {
+        activeTool?.rawValue ?? "스크롤"
+    }
+
+    func isToolSelected(_ tool: AnnotationTool) -> Bool {
+        activeTool == tool
     }
 
     var currentPageNumber: Int {
@@ -304,7 +322,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     var canAnalyzeCurrentSelection: Bool {
-        analysisSource != nil && selectedTool == .lasso && canAnalyzeSelection
+        analysisSource != nil && activeTool == .lasso && canAnalyzeSelection
     }
 
     var currentAnalysisScope: AnalysisScope {
@@ -366,7 +384,15 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func selectTool(_ tool: AnnotationTool) {
+        if selectedTool == tool && isToolSelectionActive {
+            isToolSelectionActive = false
+            applyCanvasConfiguration()
+            refreshUndoRedoState()
+            return
+        }
+
         selectedTool = tool
+        isToolSelectionActive = true
         toolUsageCounts[tool, default: 0] += 1
         if tool == .lasso, let currentPageID {
             lassoActionCountByPageID[currentPageID, default: 0] += 1
@@ -758,6 +784,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
         guard let canvasView else { return }
         canvasView.tool = currentTool()
         canvasView.drawingPolicy = currentDrawingPolicy()
+        canvasView.isUserInteractionEnabled = isCanvasInputEnabled
+        if #available(iOS 18.0, *) {
+            canvasView.isDrawingEnabled = isCanvasInputEnabled
+        }
     }
 
     private func refreshUndoRedoState() {
@@ -767,7 +797,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     private func refreshSelectionAvailability() {
-        guard selectedTool == .lasso, let canvasView else {
+        guard activeTool == .lasso, let canvasView else {
             canAnalyzeSelection = false
             return
         }
@@ -885,7 +915,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             let bounds = stroke.renderBounds
             return partialResult + Double(bounds.width + bounds.height)
         }
-        let highlightCoverage = selectedTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
+        let highlightCoverage = activeTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
         return AnalysisDrawingStats(
             strokeCount: strokeCount,
             inkLengthEstimate: inkLengthEstimate,
