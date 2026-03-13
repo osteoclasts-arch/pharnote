@@ -15,6 +15,7 @@ struct BlankNoteEditorView: View {
     @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
+    @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
 
@@ -109,9 +110,37 @@ struct BlankNoteEditorView: View {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 viewModel.deactivateToolSelection()
-                workspaceController.importImageData(data, suggestedFileName: fileName)
+                DispatchQueue.main.async {
+                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
+                    imageEditorContext = WritingImageEditorContext(
+                        draft: draft,
+                        attachmentID: nil,
+                        basePlacement: nil
+                    )
+                }
             } onCancel: {
                 isShowingPhotoPicker = false
+            }
+        }
+        .fullScreenCover(item: $imageEditorContext) { context in
+            WritingImageInsertionEditorSheet(
+                draft: context.draft,
+                basePlacement: context.basePlacement
+            ) { data, fileName, placement in
+                if let attachmentID = context.attachmentID {
+                    workspaceController.replaceImageAttachmentData(
+                        id: attachmentID,
+                        data: data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                } else {
+                    workspaceController.importImageData(
+                        data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                }
             }
         }
         .sheet(isPresented: $isShowingFilePicker) {
@@ -174,11 +203,14 @@ struct BlankNoteEditorView: View {
                 }
 
                 VStack(spacing: 10) {
-                    WritingDocumentChipStrip(
-                        chips: workspaceChips,
-                        onSelect: handleWorkspaceChipSelection,
-                        onClose: handleWorkspaceChipClose
-                    )
+                    HStack(alignment: .center, spacing: 12) {
+                        backToHomeButton
+                        WritingDocumentChipStrip(
+                            chips: workspaceChips,
+                            onSelect: handleWorkspaceChipSelection,
+                            onClose: handleWorkspaceChipClose
+                        )
+                    }
                     chromeToolbar
                     if viewModel.isToolSelected(.lasso) {
                         chromeAnalyzeCallout
@@ -215,7 +247,10 @@ struct BlankNoteEditorView: View {
                 controller: workspaceController,
                 pageKey: viewModel.currentPageID?.uuidString.lowercased(),
                 allowsInteraction: !viewModel.isCanvasInputEnabled
-            )
+            ) { attachmentID in
+                viewModel.deactivateToolSelection()
+                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
+            }
 
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
@@ -322,6 +357,32 @@ struct BlankNoteEditorView: View {
                 .padding(.horizontal, 2)
             }
         }
+    }
+
+    private var backToHomeButton: some View {
+        Button {
+            handleBackAction()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                Text("홈")
+            }
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(WritingChromePalette.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.94))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(WritingChromePalette.chromeBorder, lineWidth: 1.2)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("홈으로 돌아가기")
     }
 
     private var chromeAnalyzeCallout: some View {
@@ -778,7 +839,12 @@ struct BlankNoteEditorView: View {
 
     private func handlePasteImageAction() {
         viewModel.deactivateToolSelection()
-        workspaceController.importImageFromPasteboard()
+        guard let draft = workspaceController.pastedImageDraft() else { return }
+        imageEditorContext = WritingImageEditorContext(
+            draft: draft,
+            attachmentID: nil,
+            basePlacement: nil
+        )
     }
 
     private func dockActionButton(
@@ -911,6 +977,7 @@ private struct BlankNoteAnalyzePreviewSheet: View {
     @State private var ocrSummary: OCRPreviewSummary?
     @State private var isLoadingOCRSummary = false
     @State private var reviewDraft: AnalysisPostSolveReviewDraft
+    @State private var isReviewFlowComplete = false
 
     init(viewModel: BlankNoteEditorViewModel) {
         self.viewModel = viewModel
@@ -964,7 +1031,10 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         }
                     }
 
-                    AnalysisPostSolveReviewSection(draft: $reviewDraft)
+                    AnalysisPostSolveReviewSection(
+                        draft: $reviewDraft,
+                        isComplete: $isReviewFlowComplete
+                    )
 
                     if let preview = viewModel.analysisPreview, let source = viewModel.analysisSource {
                         PharSurfaceCard {
@@ -1024,6 +1094,12 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         .foregroundStyle(PharTheme.ColorToken.inkSecondary)
                     }
 
+                    if !isReviewFlowComplete {
+                        Text("확신도부터 단계별 복기를 마치면 분석 번들 적재가 열립니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+
                     Button {
                         Task {
                             guard var source = viewModel.analysisSource else { return }
@@ -1044,7 +1120,11 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         }
                     }
                     .buttonStyle(PharPrimaryButtonStyle())
-                    .disabled(analysisCenter.isEnqueuing || viewModel.analysisSource == nil)
+                    .disabled(
+                        analysisCenter.isEnqueuing
+                            || viewModel.analysisSource == nil
+                            || !isReviewFlowComplete
+                    )
 
                     Spacer(minLength: 0)
                 }
@@ -1157,216 +1237,530 @@ struct OCRPreviewCard: View {
     }
 }
 
-struct AnalysisPostSolveReviewDraft {
-    let promptSet: AnalysisPostSolveReviewPromptSet
-    var confidenceAfter: Double
-    var firstApproachID: String?
-    var stepStatuses: [String: AnalysisReviewStepStatus]
-    var stepOptionSelections: [String: String]
-    var primaryStuckPointID: String?
-    var freeMemo: String
-
-    init(subject: StudySubject?) {
-        let promptSet = AnalysisPostSolveReviewPromptSet.promptSet(for: subject)
-        self.promptSet = promptSet
-        self.confidenceAfter = 60
-        self.firstApproachID = nil
-        self.stepStatuses = Dictionary(
-            uniqueKeysWithValues: promptSet.stepDefinitions.map { ($0.id, .notTried) }
-        )
-        self.stepOptionSelections = [:]
-        self.primaryStuckPointID = nil
-        self.freeMemo = ""
-    }
-
-    func stepStatus(for stepId: String) -> AnalysisReviewStepStatus {
-        stepStatuses[stepId] ?? .notTried
-    }
-
-    mutating func setStepStatus(_ status: AnalysisReviewStepStatus, for stepId: String) {
-        stepStatuses[stepId] = status
-        if status == .notTried {
-            stepOptionSelections.removeValue(forKey: stepId)
-        }
-    }
-
-    func selectedOptionID(for stepId: String) -> String? {
-        stepOptionSelections[stepId]
-    }
-
-    mutating func setSelectedOptionID(_ optionID: String?, for stepId: String) {
-        stepOptionSelections[stepId] = optionID
-    }
-
-    var preferredStuckSteps: [AnalysisReviewStepDefinition] {
-        let filtered = promptSet.stepDefinitions.filter {
-            let status = stepStatus(for: $0.id)
-            return status == .failed || status == .partial
-        }
-        return filtered.isEmpty ? promptSet.stepDefinitions : filtered
-    }
-
-    func makePayload(analyzedAt: Date = Date()) -> AnalysisPostSolveReview {
-        let reviewPath = promptSet.stepDefinitions.map { step in
-            AnalysisReviewStepResponse(
-                stepId: step.id,
-                status: stepStatus(for: step.id),
-                selectedOptionId: selectedOptionID(for: step.id)
-            )
-        }
-        let trimmedMemo = freeMemo.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackStuck = reviewPath.first(where: { $0.status == .failed })?.stepId
-            ?? reviewPath.first(where: { $0.status == .partial })?.stepId
-
-        return AnalysisPostSolveReview(
-            subject: promptSet.subject,
-            confidenceAfter: Int(confidenceAfter.rounded()),
-            firstApproach: firstApproachID,
-            reviewPath: reviewPath,
-            primaryStuckPoint: primaryStuckPointID ?? fallbackStuck,
-            lassoSelectedPointIds: nil,
-            freeMemo: trimmedMemo.isEmpty ? nil : trimmedMemo,
-            analyzedAt: analyzedAt
-        )
-    }
+private enum AnalysisPostSolveReviewFlowStage: Equatable {
+    case confidence
+    case firstApproach
+    case step(Int)
+    case stuckPoint
+    case memo
+    case complete
 }
 
 struct AnalysisPostSolveReviewSection: View {
     @Binding var draft: AnalysisPostSolveReviewDraft
+    @Binding var isComplete: Bool
+    @State private var reviewStage: AnalysisPostSolveReviewFlowStage = .confidence
+    @State private var answeredStepIDs: Set<String> = []
+
+    init(draft: Binding<AnalysisPostSolveReviewDraft>, isComplete: Binding<Bool>) {
+        _draft = draft
+        _isComplete = isComplete
+    }
 
     var body: some View {
         PharSurfaceCard {
             VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("풀이 직후 리뷰")
-                        .font(PharTypography.cardTitle)
-                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                    Text("\(draft.promptSet.subject.title) 문항 기준으로 스스로의 풀이 흐름을 짧게 남깁니다. 올가미로 잡은 위치 신호는 기존 분석과 함께 유지됩니다.")
-                        .font(PharTypography.caption)
-                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
+                    VStack(alignment: .leading, spacing: PharTheme.Spacing.xxSmall) {
+                        Text("풀이 직후 복기")
+                            .font(PharTypography.cardTitle)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        Text(progressLabel)
+                            .font(PharTypography.captionStrong)
+                            .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    PharTagPill(
+                        text: draft.promptSet.subject.title,
+                        tint: PharTheme.ColorToken.accentMint.opacity(0.20)
+                    )
                 }
 
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    HStack {
-                        Text("풀이 직후 자신감")
-                            .font(PharTypography.captionStrong)
-                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
-                        Spacer(minLength: 0)
-                        Text("\(Int(draft.confidenceAfter.rounded()))")
-                            .font(PharTypography.bodyStrong.monospacedDigit())
-                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                    }
-                    Slider(value: $draft.confidenceAfter, in: 0 ... 100, step: 1)
-                    HStack {
-                        Text("0")
-                        Spacer(minLength: 0)
-                        Text("100")
-                    }
+                Text(
+                    draft.promptSet.overviewText
+                        ?? "문항을 막 푼 직후의 생각을 한 번에 다 쓰게 하지 않고, 확신도부터 한 단계씩 정리합니다."
+                )
                     .font(PharTypography.caption)
                     .foregroundStyle(PharTheme.ColorToken.inkSecondary)
-                }
-
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("문제를 보자마자 먼저 한 생각")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
-                    Picker("첫 접근", selection: firstApproachBinding) {
-                        Text("선택 안 함").tag(Optional<String>.none)
-                        ForEach(draft.promptSet.firstApproachOptions) { option in
-                            Text(option.title).tag(Optional(option.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
 
                 VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
-                    Text("단계별 리뷰")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    Text(stageTitle)
+                        .font(PharTypography.sectionTitle)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
 
-                    ForEach(draft.promptSet.stepDefinitions) { step in
-                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                            Text(step.title)
-                                .font(PharTypography.bodyStrong)
-                                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-
-                            Picker(step.title, selection: statusBinding(for: step.id)) {
-                                ForEach(AnalysisReviewStepStatus.allCases, id: \.rawValue) { status in
-                                    Text(status.title).tag(status)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            if draft.stepStatus(for: step.id) != .notTried {
-                                Picker("구체 신호", selection: optionBinding(for: step.id)) {
-                                    Text("선택 안 함").tag(Optional<String>.none)
-                                    ForEach(step.options) { option in
-                                        Text(option.title).tag(Optional(option.id))
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
-                        }
-                        .padding(PharTheme.Spacing.small)
-                        .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
-                        .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
-                    }
+                    stageContent
                 }
 
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("가장 막혔던 지점")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
-                    Picker("가장 막혔던 지점", selection: primaryStuckPointBinding) {
-                        Text("자동 추론에 맡기기").tag(Optional<String>.none)
-                        ForEach(draft.preferredStuckSteps) { step in
-                            Text(step.title).tag(Optional(step.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
+                navigationControls
+            }
+        }
+        .onAppear {
+            syncCompletionState()
+        }
+    }
 
-                VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
-                    Text("짧은 메모")
-                        .font(PharTypography.captionStrong)
-                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
-                    TextEditor(text: $draft.freeMemo)
-                        .frame(minHeight: 72)
-                        .scrollContentBackground(.hidden)
-                        .padding(PharTheme.Spacing.xSmall)
-                        .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
-                        .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
+    private var progressLabel: String {
+        switch reviewStage {
+        case .complete:
+            return "복기 완료"
+        default:
+            return "복기 \(currentStageNumber) / \(totalInteractiveStages)"
+        }
+    }
+
+    private var totalInteractiveStages: Int {
+        draft.promptSet.stepDefinitions.count + 4
+    }
+
+    private var currentStageNumber: Int {
+        switch reviewStage {
+        case .confidence:
+            return 1
+        case .firstApproach:
+            return 2
+        case .step(let index):
+            return index + 3
+        case .stuckPoint:
+            return draft.promptSet.stepDefinitions.count + 3
+        case .memo, .complete:
+            return totalInteractiveStages
+        }
+    }
+
+    private var stageTitle: String {
+        switch reviewStage {
+        case .confidence:
+            return "풀이 직후 확신도"
+        case .firstApproach:
+            return "문제를 보자마자 먼저 한 생각"
+        case .step(let index):
+            guard let step = draft.resolvedStepDefinition(at: index) else {
+                return "단계별 복기"
+            }
+            return step.title
+        case .stuckPoint:
+            return "가장 막혔던 지점"
+        case .memo:
+            return "짧은 메모"
+        case .complete:
+            return "복기 입력 준비 완료"
+        }
+    }
+
+    @ViewBuilder
+    private var stageContent: some View {
+        switch reviewStage {
+        case .confidence:
+            confidenceStage
+        case .firstApproach:
+            firstApproachStage
+        case .step:
+            if let step = currentStepDefinition {
+                reviewStepStage(for: step)
+            }
+        case .stuckPoint:
+            stuckPointStage
+        case .memo:
+            memoStage
+        case .complete:
+            completionStage
+        }
+    }
+
+    private var confidenceStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            HStack {
+                Text("지금 답에 얼마나 확신이 있었나요?")
+                    .font(PharTypography.captionStrong)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                Spacer(minLength: 0)
+                Text("\(Int(draft.confidenceAfter.rounded()))")
+                    .font(PharTypography.bodyStrong.monospacedDigit())
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+            }
+
+            Slider(value: $draft.confidenceAfter, in: 0 ... 100, step: 1)
+
+            HStack {
+                Text("거의 감")
+                Spacer(minLength: 0)
+                Text("거의 확신")
+            }
+            .font(PharTypography.caption)
+            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+        }
+    }
+
+    private var firstApproachStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text(
+                draft.promptSet.firstApproachGuidance
+                    ?? "처음 떠올린 접근 하나를 고르면 다음 복기 단계로 넘어갑니다."
+            )
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(draft.promptSet.firstApproachOptions) { option in
+                    AnalysisReviewChoiceButton(
+                        title: option.title,
+                        isSelected: draft.firstApproachID == option.id
+                    ) {
+                        draft.setFirstApproachID(option.id)
+                        resetAnsweredSteps(afterStepIndex: -1)
+                    }
                 }
             }
         }
     }
 
-    private var firstApproachBinding: Binding<String?> {
-        Binding(
-            get: { draft.firstApproachID },
-            set: { draft.firstApproachID = $0 }
-        )
+    private func reviewStepStage(for step: AnalysisResolvedReviewStepDefinition) -> some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text(
+                step.guidance
+                    ?? draft.promptSet.guidance(for: step.id)
+                    ?? "이 단계의 상태를 먼저 고르고, 시도했다면 가장 가까운 행동 신호를 하나 남깁니다."
+            )
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(reviewStatusOptions, id: \.rawValue) { status in
+                    AnalysisReviewChoiceButton(
+                        title: status.title,
+                        isSelected: answeredStepIDs.contains(step.id) && draft.stepStatus(for: step.id) == status
+                    ) {
+                        answeredStepIDs.insert(step.id)
+                        draft.setStepStatus(status, for: step.id, stepIndex: currentStepIndex)
+                    }
+                }
+            }
+
+            if answeredStepIDs.contains(step.id) {
+                if draft.stepStatus(for: step.id) == .notTried {
+                    Text("이 단계는 시도하지 않은 것으로 기록됩니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                } else {
+                    LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                        ForEach(step.options) { option in
+                            AnalysisReviewChoiceButton(
+                                title: option.title,
+                                isSelected: draft.selectedOptionID(for: step.id) == option.id
+                            ) {
+                                draft.setSelectedOptionID(option.id, for: step.id, stepIndex: currentStepIndex)
+                                resetAnsweredSteps(afterStepIndex: currentStepIndex)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    private var primaryStuckPointBinding: Binding<String?> {
-        Binding(
-            get: { draft.primaryStuckPointID },
-            set: { draft.primaryStuckPointID = $0 }
-        )
+    private var stuckPointStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("가장 막혔다고 느낀 단계를 고르세요. 비워두면 복기 결과를 보고 자동으로 추론합니다.")
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            AnalysisReviewChoiceButton(
+                title: "자동 추론에 맡기기",
+                isSelected: draft.primaryStuckPointID == nil
+            ) {
+                draft.primaryStuckPointID = nil
+            }
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(draft.preferredStuckSteps) { step in
+                    AnalysisReviewChoiceButton(
+                        title: step.title,
+                        isSelected: draft.primaryStuckPointID == step.id
+                    ) {
+                        draft.primaryStuckPointID = step.id
+                    }
+                }
+            }
+        }
     }
 
-    private func statusBinding(for stepId: String) -> Binding<AnalysisReviewStepStatus> {
-        Binding(
-            get: { draft.stepStatus(for: stepId) },
-            set: { draft.setStepStatus($0, for: stepId) }
-        )
+    private var memoStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("남겨둘 한 줄이 있으면 적고, 없으면 바로 완료해도 됩니다.")
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            TextEditor(text: $draft.freeMemo)
+                .frame(minHeight: 96)
+                .scrollContentBackground(.hidden)
+                .padding(PharTheme.Spacing.xSmall)
+                .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
+        }
     }
 
-    private func optionBinding(for stepId: String) -> Binding<String?> {
-        Binding(
-            get: { draft.selectedOptionID(for: stepId) },
-            set: { draft.setSelectedOptionID($0, for: stepId) }
-        )
+    private var completionStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("확신도와 사고과정 복기가 모두 정리됐습니다. 아래 적재 버튼으로 분석 큐에 보낼 수 있습니다.")
+                .font(PharTypography.body)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            PreviewRow(title: "확신도", value: "\(Int(draft.confidenceAfter.rounded())) / 100")
+            PreviewRow(title: "첫 접근", value: firstApproachTitle)
+            PreviewRow(title: "단계 요약", value: stepStatusSummary)
+            PreviewRow(title: "막힌 지점", value: stuckPointTitle)
+
+            if trimmedMemo.isEmpty {
+                Text("메모 없음")
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+            } else {
+                Text(trimmedMemo)
+                    .font(PharTypography.body)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    .padding(PharTheme.Spacing.small)
+                    .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var navigationControls: some View {
+        if case .complete = reviewStage {
+            Button("이전 단계 수정") {
+                moveToPreviousStage()
+            }
+            .buttonStyle(PharSoftButtonStyle())
+        } else {
+            HStack(spacing: PharTheme.Spacing.small) {
+                if reviewStage != .confidence {
+                    Button("이전") {
+                        moveToPreviousStage()
+                    }
+                    .buttonStyle(PharSoftButtonStyle())
+                }
+
+                Button(nextButtonTitle) {
+                    moveToNextStage()
+                }
+                .buttonStyle(PharPrimaryButtonStyle())
+                .disabled(!canAdvanceToNextStage)
+            }
+        }
+    }
+
+    private var currentStepDefinition: AnalysisResolvedReviewStepDefinition? {
+        guard case let .step(index) = reviewStage,
+              draft.promptSet.stepDefinitions.indices.contains(index) else {
+            return nil
+        }
+        return draft.resolvedStepDefinition(at: index)
+    }
+
+    private var currentRawStepDefinition: AnalysisReviewStepDefinition? {
+        guard case let .step(index) = reviewStage,
+              draft.promptSet.stepDefinitions.indices.contains(index) else {
+            return nil
+        }
+        return draft.promptSet.stepDefinitions[index]
+    }
+
+    private var currentStepIndex: Int {
+        guard case let .step(index) = reviewStage else {
+            return 0
+        }
+        return index
+    }
+
+    private var reviewStatusOptions: [AnalysisReviewStepStatus] {
+        guard let currentRawStepDefinition,
+              !currentRawStepDefinition.variants.isEmpty else {
+            return AnalysisReviewStepStatus.allCases
+        }
+        return [.clear, .partial, .failed]
+    }
+
+    private var canAdvanceToNextStage: Bool {
+        switch reviewStage {
+        case .confidence:
+            return true
+        case .firstApproach:
+            return draft.firstApproachID != nil
+        case .step:
+            guard let step = currentStepDefinition,
+                  answeredStepIDs.contains(step.id) else {
+                return false
+            }
+            if let currentRawStepDefinition,
+               !currentRawStepDefinition.variants.isEmpty {
+                return draft.selectedOptionID(for: step.id) != nil
+            }
+            return draft.stepStatus(for: step.id) == .notTried || draft.selectedOptionID(for: step.id) != nil
+        case .stuckPoint, .memo:
+            return true
+        case .complete:
+            return false
+        }
+    }
+
+    private var nextButtonTitle: String {
+        switch reviewStage {
+        case .confidence:
+            return "첫 접근 고르기"
+        case .firstApproach:
+            return draft.promptSet.stepDefinitions.first.map { "\($0.title)으로 이동" } ?? "막힌 지점 고르기"
+        case .step(let index):
+            return index + 1 < draft.promptSet.stepDefinitions.count ? "다음 단계" : "막힌 지점 고르기"
+        case .stuckPoint:
+            return "메모로 이동"
+        case .memo:
+            return "복기 완료"
+        case .complete:
+            return "완료"
+        }
+    }
+
+    private var firstApproachTitle: String {
+        guard let optionID = draft.firstApproachID,
+              let option = draft.promptSet.firstApproachOptions.first(where: { $0.id == optionID }) else {
+            return "선택 안 함"
+        }
+        return option.title
+    }
+
+    private var stepStatusSummary: String {
+        let failedCount = draft.promptSet.stepDefinitions.filter {
+            draft.stepStatus(for: $0.id) == .failed
+        }.count
+        let partialCount = draft.promptSet.stepDefinitions.filter {
+            draft.stepStatus(for: $0.id) == .partial
+        }.count
+
+        if failedCount == 0 && partialCount == 0 {
+            return "막힘 없이 기록됨"
+        }
+
+        return "막힘 \(failedCount)단계 · 애매 \(partialCount)단계"
+    }
+
+    private var stuckPointTitle: String {
+        guard let stepID = draft.primaryStuckPointID else {
+            return "자동 추론"
+        }
+        return draft.promptSet.stepTitle(for: stepID)
+    }
+
+    private var trimmedMemo: String {
+        draft.freeMemo.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var reviewColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: PharTheme.Spacing.small),
+            GridItem(.flexible(), spacing: PharTheme.Spacing.small)
+        ]
+    }
+
+    private func moveToNextStage() {
+        guard canAdvanceToNextStage else { return }
+
+        switch reviewStage {
+        case .confidence:
+            setStage(.firstApproach)
+        case .firstApproach:
+            if draft.promptSet.stepDefinitions.isEmpty {
+                setStage(.stuckPoint)
+            } else {
+                setStage(.step(0))
+            }
+        case .step(let index):
+            if index + 1 < draft.promptSet.stepDefinitions.count {
+                setStage(.step(index + 1))
+            } else {
+                setStage(.stuckPoint)
+            }
+        case .stuckPoint:
+            setStage(.memo)
+        case .memo:
+            setStage(.complete)
+        case .complete:
+            break
+        }
+    }
+
+    private func moveToPreviousStage() {
+        switch reviewStage {
+        case .confidence:
+            break
+        case .firstApproach:
+            setStage(.confidence)
+        case .step(let index):
+            if index == 0 {
+                setStage(.firstApproach)
+            } else {
+                setStage(.step(index - 1))
+            }
+        case .stuckPoint:
+            if draft.promptSet.stepDefinitions.isEmpty {
+                setStage(.firstApproach)
+            } else {
+                setStage(.step(draft.promptSet.stepDefinitions.count - 1))
+            }
+        case .memo:
+            setStage(.stuckPoint)
+        case .complete:
+            setStage(.memo)
+        }
+    }
+
+    private func setStage(_ stage: AnalysisPostSolveReviewFlowStage) {
+        reviewStage = stage
+        syncCompletionState()
+    }
+
+    private func syncCompletionState() {
+        isComplete = reviewStage == .complete
+    }
+
+    private func resetAnsweredSteps(afterStepIndex index: Int) {
+        let stepIDsToReset = draft.promptSet.stepDefinitions
+            .enumerated()
+            .filter { $0.offset > index }
+            .map(\.element.id)
+        answeredStepIDs.subtract(stepIDsToReset)
+    }
+}
+
+private struct AnalysisReviewChoiceButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(PharTypography.bodyStrong)
+                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .padding(.horizontal, PharTheme.Spacing.small)
+                .padding(.vertical, PharTheme.Spacing.small)
+                .background(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                        .fill(isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.14) : PharTheme.ColorToken.surfaceSecondary)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                        .stroke(
+                            isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.34) : PharTheme.ColorToken.borderSoft,
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -149,6 +149,15 @@ final class PencilPassthroughCanvasView: SmartShapeCanvasView {
         updateAllowedTouchTypes()
     }
 
+    func refreshDrawingInputState(isEnabled: Bool) {
+        updateAllowedTouchTypes()
+        drawingGestureRecognizer.isEnabled = false
+        drawingGestureRecognizer.isEnabled = isEnabled
+        if isEnabled {
+            becomeFirstResponder()
+        }
+    }
+
     private func updateAllowedTouchTypes() {
         guard isUserInteractionEnabled else {
             drawingGestureRecognizer.allowedTouchTypes = []

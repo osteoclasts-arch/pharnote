@@ -1125,6 +1125,65 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
         )
     }
 
+    func scaled(by factor: CGFloat) -> DocumentWorkspaceAttachmentPlacement {
+        let clampedFactor = min(max(factor, 0.55), 1.6)
+        let currentCenterX = CGFloat(x) + CGFloat(width) / 2
+        let currentCenterY = CGFloat(y) + CGFloat(height) / 2
+        let scaledWidth = CGFloat(width) * clampedFactor
+        let scaledHeight = CGFloat(height) * clampedFactor
+
+        return DocumentWorkspaceAttachmentPlacement(
+            x: Double(currentCenterX - scaledWidth / 2),
+            y: Double(currentCenterY - scaledHeight / 2),
+            width: Double(scaledWidth),
+            height: Double(scaledHeight)
+        ).clamped()
+    }
+
+    func fitted(to imageSize: CGSize, scale: CGFloat) -> DocumentWorkspaceAttachmentPlacement {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return scaled(by: scale)
+        }
+
+        let aspectRatio = imageSize.width / imageSize.height
+        let originalCenterX = CGFloat(x) + CGFloat(width) / 2
+        let originalCenterY = CGFloat(y) + CGFloat(height) / 2
+        let currentSize = CGSize(width: CGFloat(width), height: CGFloat(height))
+        var fittedSize = AVMakeRect(
+            aspectRatio: imageSize,
+            insideRect: CGRect(origin: .zero, size: currentSize)
+        ).size
+
+        let clampedScale = min(max(scale, 0.55), 1.6)
+        fittedSize.width *= clampedScale
+        fittedSize.height *= clampedScale
+
+        let minimumWidth: CGFloat = 0.12
+        let minimumHeight = minimumWidth / max(aspectRatio, 0.2)
+        let maximumWidth: CGFloat = 0.92
+        let maximumHeight: CGFloat = 0.92
+
+        if fittedSize.width < minimumWidth {
+            fittedSize = CGSize(width: minimumWidth, height: minimumWidth / aspectRatio)
+        }
+        if fittedSize.height < minimumHeight {
+            fittedSize = CGSize(width: minimumHeight * aspectRatio, height: minimumHeight)
+        }
+        if fittedSize.width > maximumWidth {
+            fittedSize = CGSize(width: maximumWidth, height: maximumWidth / aspectRatio)
+        }
+        if fittedSize.height > maximumHeight {
+            fittedSize = CGSize(width: maximumHeight * aspectRatio, height: maximumHeight)
+        }
+
+        return DocumentWorkspaceAttachmentPlacement(
+            x: Double(originalCenterX - fittedSize.width / 2),
+            y: Double(originalCenterY - fittedSize.height / 2),
+            width: Double(fittedSize.width),
+            height: Double(fittedSize.height)
+        ).clamped()
+    }
+
     static func defaultPlacement(for imageSize: CGSize) -> DocumentWorkspaceAttachmentPlacement {
         guard imageSize.width > 0, imageSize.height > 0 else {
             return DocumentWorkspaceAttachmentPlacement(
@@ -1152,12 +1211,12 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
 struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
     let id: UUID
     let kind: DocumentWorkspaceAttachmentKind
-    let storedFileName: String
-    let originalFileName: String
+    var storedFileName: String
+    var originalFileName: String
     let pageKey: String?
     let pageLabel: String?
     let createdAt: Date
-    let byteCount: Int64
+    var byteCount: Int64
     var placement: DocumentWorkspaceAttachmentPlacement?
 
     var displaySize: String {
@@ -1167,6 +1226,19 @@ struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
     var displayTitle: String {
         originalFileName.isEmpty ? storedFileName : originalFileName
     }
+}
+
+struct WritingImportedImageDraft: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let suggestedFileName: String?
+}
+
+struct WritingImageEditorContext: Identifiable {
+    let id = UUID()
+    let draft: WritingImportedImageDraft
+    let attachmentID: UUID?
+    let basePlacement: DocumentWorkspaceAttachmentPlacement?
 }
 
 struct DocumentWorkspaceIndex: Codable {
@@ -1388,7 +1460,11 @@ final class DocumentWorkspaceController: ObservableObject {
         persistWorkspaceState()
     }
 
-    func importImageData(_ data: Data, suggestedFileName: String?) {
+    func importImageData(
+        _ data: Data,
+        suggestedFileName: String?,
+        preferredPlacement: DocumentWorkspaceAttachmentPlacement? = nil
+    ) {
         let attachmentID = UUID()
         let originalFileName = normalizedFileName(
             suggestedFileName,
@@ -1416,7 +1492,7 @@ final class DocumentWorkspaceController: ObservableObject {
                     pageLabel: anchor.pageLabel,
                     createdAt: Date(),
                     byteCount: byteCount,
-                    placement: DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
+                    placement: preferredPlacement ?? DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
                 )
                 attachments.insert(attachment, at: 0)
                 selectedAttachmentID = attachment.id
@@ -1425,6 +1501,57 @@ final class DocumentWorkspaceController: ObservableObject {
                 errorMessage = "사진을 첨부하지 못했습니다: \(error.localizedDescription)"
             }
         }
+    }
+
+    func makeImageDraft(from data: Data, suggestedFileName: String?) -> WritingImportedImageDraft? {
+        guard let image = UIImage(data: data)?.normalizedForCanvasPlacement() else {
+            errorMessage = "사진을 불러오지 못했습니다."
+            return nil
+        }
+
+        return WritingImportedImageDraft(image: image, suggestedFileName: suggestedFileName)
+    }
+
+    func makeImageEditorContext(for attachmentID: UUID) -> WritingImageEditorContext? {
+        guard let attachment = attachment(withID: attachmentID), attachment.kind == .image else {
+            errorMessage = "편집할 사진을 찾지 못했습니다."
+            return nil
+        }
+
+        let fileURL = attachmentFileURL(for: attachment)
+        guard let image = UIImage(contentsOfFile: fileURL.path)?.normalizedForCanvasPlacement() else {
+            errorMessage = "사진을 다시 불러오지 못했습니다."
+            return nil
+        }
+
+        return WritingImageEditorContext(
+            draft: WritingImportedImageDraft(
+                image: image,
+                suggestedFileName: attachment.originalFileName
+            ),
+            attachmentID: attachmentID,
+            basePlacement: attachment.placement
+        )
+    }
+
+    func pastedImageDraft() -> WritingImportedImageDraft? {
+        if let pngData = UIPasteboard.general.data(forPasteboardType: UTType.png.identifier) {
+            return makeImageDraft(from: pngData, suggestedFileName: pastedImageFileName(fileExtension: "png"))
+        }
+
+        if let jpegData = UIPasteboard.general.data(forPasteboardType: UTType.jpeg.identifier) {
+            return makeImageDraft(from: jpegData, suggestedFileName: pastedImageFileName(fileExtension: "jpg"))
+        }
+
+        if let image = UIPasteboard.general.image?.normalizedForCanvasPlacement() {
+            return WritingImportedImageDraft(
+                image: image,
+                suggestedFileName: pastedImageFileName(fileExtension: "png")
+            )
+        }
+
+        errorMessage = "클립보드에 붙여넣을 사진이 없습니다."
+        return nil
     }
 
     func importImageFromPasteboard() {
@@ -1548,6 +1675,59 @@ final class DocumentWorkspaceController: ObservableObject {
         attachments[attachmentIndex].placement = placement.clamped()
         if persist {
             persistWorkspaceState()
+        }
+    }
+
+    func replaceImageAttachmentData(
+        id attachmentID: UUID,
+        data: Data,
+        suggestedFileName: String?,
+        preferredPlacement: DocumentWorkspaceAttachmentPlacement?
+    ) {
+        guard let attachmentIndex = attachments.firstIndex(where: { $0.id == attachmentID }) else {
+            errorMessage = "편집할 사진을 찾지 못했습니다."
+            return
+        }
+
+        let currentAttachment = attachments[attachmentIndex]
+        guard currentAttachment.kind == .image else {
+            errorMessage = "사진 첨부만 편집할 수 있습니다."
+            return
+        }
+
+        let originalFileName = normalizedFileName(
+            suggestedFileName ?? currentAttachment.originalFileName,
+            fallbackBaseName: "image-\(attachmentID.uuidString.lowercased())",
+            fallbackExtension: "jpg"
+        )
+
+        Task {
+            do {
+                let destinationURL = try await store.makeAttachmentURL(
+                    documentURL: documentURL,
+                    attachmentID: attachmentID,
+                    originalFileName: originalFileName,
+                    fallbackExtension: "jpg"
+                )
+                let previousURL = attachmentFileURL(for: currentAttachment)
+                let byteCount = try await store.saveAttachmentData(data, to: destinationURL)
+                if previousURL.path != destinationURL.path {
+                    try? FileManager.default.removeItem(at: previousURL)
+                }
+
+                guard let refreshedIndex = attachments.firstIndex(where: { $0.id == attachmentID }) else { return }
+                let editedImageSize = UIImage(data: data)?.size ?? CGSize(width: 1600, height: 1200)
+                attachments[refreshedIndex].storedFileName = destinationURL.lastPathComponent
+                attachments[refreshedIndex].originalFileName = originalFileName
+                attachments[refreshedIndex].byteCount = byteCount
+                attachments[refreshedIndex].placement = preferredPlacement
+                    ?? attachments[refreshedIndex].placement?.fitted(to: editedImageSize, scale: 1)
+                    ?? DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: editedImageSize)
+                selectedAttachmentID = attachmentID
+                persistWorkspaceState()
+            } catch {
+                errorMessage = "사진 편집 내용을 저장하지 못했습니다: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -1800,18 +1980,287 @@ struct WritingAttachmentFilePicker: UIViewControllerRepresentable {
     }
 }
 
+@MainActor
+final class WritingImageCropSession: ObservableObject {
+    fileprivate weak var cropView: WritingImageCropCanvasView?
+
+    func attach(_ cropView: WritingImageCropCanvasView) {
+        self.cropView = cropView
+    }
+
+    func reset() {
+        cropView?.resetToDefaultPosition()
+    }
+
+    func croppedImage(fallback image: UIImage) -> UIImage {
+        cropView?.croppedImage() ?? image
+    }
+}
+
+struct WritingImageInsertionEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var cropSession = WritingImageCropSession()
+    @State private var insertionScale: Double = 1.0
+
+    let draft: WritingImportedImageDraft
+    let basePlacement: DocumentWorkspaceAttachmentPlacement?
+    let onConfirm: (Data, String?, DocumentWorkspaceAttachmentPlacement) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                WritingImageCropCanvasRepresentable(
+                    session: cropSession,
+                    image: draft.image
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                        .fill(Color.black.opacity(0.92))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
+
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                    HStack {
+                        Text("삽입 크기")
+                            .font(PharTypography.bodyStrong)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                        Spacer(minLength: 0)
+
+                        Text("\(Int(insertionScale * 100))%")
+                            .font(PharTypography.captionStrong)
+                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    }
+
+                    Slider(value: $insertionScale, in: 0.6...1.4, step: 0.05)
+                        .tint(WritingChromePalette.accent)
+
+                    Text("핀치로 확대하고 드래그로 위치를 조정한 뒤 삽입하세요.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+                }
+            }
+            .padding(PharTheme.Spacing.medium)
+            .navigationTitle("사진 편집")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("초기화") {
+                        cropSession.reset()
+                        insertionScale = 1.0
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("삽입") {
+                        handleConfirm()
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleConfirm() {
+        let croppedImage = cropSession.croppedImage(fallback: draft.image).normalizedForCanvasPlacement()
+        guard let encoded = croppedImage.preferredAttachmentEncoding else { return }
+        let placement = (basePlacement?.fitted(to: croppedImage.size, scale: insertionScale.cgFloatValue)
+            ?? DocumentWorkspaceAttachmentPlacement
+                .defaultPlacement(for: croppedImage.size)
+                .scaled(by: insertionScale.cgFloatValue))
+        let resolvedFileName = resolvedSuggestedFileName(forExtension: encoded.fileExtension)
+        onConfirm(encoded.data, resolvedFileName, placement)
+        dismiss()
+    }
+
+    private func resolvedSuggestedFileName(forExtension fileExtension: String) -> String? {
+        let trimmed = draft.suggestedFileName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else { return nil }
+
+        let baseName = URL(fileURLWithPath: trimmed).deletingPathExtension().lastPathComponent
+        return "\(baseName).\(fileExtension)"
+    }
+}
+
+private extension Double {
+    var cgFloatValue: CGFloat { CGFloat(self) }
+}
+
+struct WritingImageCropCanvasRepresentable: UIViewRepresentable {
+    @ObservedObject var session: WritingImageCropSession
+    let image: UIImage
+
+    func makeUIView(context: Context) -> WritingImageCropCanvasView {
+        let view = WritingImageCropCanvasView(image: image)
+        session.attach(view)
+        return view
+    }
+
+    func updateUIView(_ uiView: WritingImageCropCanvasView, context: Context) {
+        session.attach(uiView)
+    }
+}
+
+@MainActor
+final class WritingImageCropCanvasView: UIView, UIScrollViewDelegate {
+    private let image: UIImage
+    private let scrollView = UIScrollView()
+    private let imageView = UIImageView()
+    private let maskLayer = CAShapeLayer()
+    private let cropBorderLayer = CAShapeLayer()
+    private var baseImageSize: CGSize = .zero
+    private var didConfigureInitialViewport = false
+
+    init(image: UIImage) {
+        self.image = image
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        isOpaque = false
+
+        scrollView.delegate = self
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.bouncesZoom = true
+        scrollView.decelerationRate = .fast
+        addSubview(scrollView)
+
+        imageView.image = image
+        imageView.contentMode = .scaleToFill
+        scrollView.addSubview(imageView)
+
+        maskLayer.fillRule = .evenOdd
+        maskLayer.fillColor = UIColor.black.withAlphaComponent(0.56).cgColor
+        layer.addSublayer(maskLayer)
+
+        cropBorderLayer.strokeColor = UIColor.white.cgColor
+        cropBorderLayer.fillColor = UIColor.clear.cgColor
+        cropBorderLayer.lineWidth = 2
+        cropBorderLayer.shadowColor = UIColor.black.cgColor
+        cropBorderLayer.shadowOpacity = 0.18
+        cropBorderLayer.shadowRadius = 10
+        cropBorderLayer.shadowOffset = CGSize(width: 0, height: 6)
+        layer.addSublayer(cropBorderLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let cropFrame = computedCropFrame()
+        scrollView.frame = cropFrame
+        updateOverlayPath(cropFrame: cropFrame)
+        configureImageViewportIfNeeded(for: cropFrame)
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        imageView
+    }
+
+    func resetToDefaultPosition() {
+        didConfigureInitialViewport = false
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    func croppedImage() -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+        guard baseImageSize.width > 0, baseImageSize.height > 0 else { return nil }
+
+        let cropWidthScale = CGFloat(cgImage.width) / baseImageSize.width
+        let cropHeightScale = CGFloat(cgImage.height) / baseImageSize.height
+        let visibleRect = CGRect(
+            x: scrollView.contentOffset.x / scrollView.zoomScale,
+            y: scrollView.contentOffset.y / scrollView.zoomScale,
+            width: scrollView.bounds.width / scrollView.zoomScale,
+            height: scrollView.bounds.height / scrollView.zoomScale
+        )
+        let pixelCropRect = CGRect(
+            x: visibleRect.origin.x * cropWidthScale,
+            y: visibleRect.origin.y * cropHeightScale,
+            width: visibleRect.width * cropWidthScale,
+            height: visibleRect.height * cropHeightScale
+        ).integral.intersection(CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
+
+        guard let croppedCGImage = cgImage.cropping(to: pixelCropRect), !pixelCropRect.isNull else {
+            return image
+        }
+
+        return UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: .up)
+    }
+
+    private func configureImageViewportIfNeeded(for cropFrame: CGRect) {
+        let fittedSize = aspectFillSize(for: image.size, in: cropFrame.size)
+        let shouldReconfigure = !didConfigureInitialViewport || abs(fittedSize.width - baseImageSize.width) > 0.5 || abs(fittedSize.height - baseImageSize.height) > 0.5
+
+        guard shouldReconfigure else { return }
+
+        baseImageSize = fittedSize
+        imageView.frame = CGRect(origin: .zero, size: fittedSize)
+        scrollView.contentSize = fittedSize
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 6
+        scrollView.zoomScale = 1
+        scrollView.contentOffset = CGPoint(
+            x: max((fittedSize.width - cropFrame.width) / 2, 0),
+            y: max((fittedSize.height - cropFrame.height) / 2, 0)
+        )
+        didConfigureInitialViewport = true
+    }
+
+    private func computedCropFrame() -> CGRect {
+        let outerBounds = bounds.insetBy(dx: 24, dy: 24)
+        let cropSize = AVMakeRect(aspectRatio: image.size, insideRect: outerBounds).size
+        return CGRect(
+            x: (bounds.width - cropSize.width) / 2,
+            y: (bounds.height - cropSize.height) / 2,
+            width: cropSize.width,
+            height: cropSize.height
+        ).integral
+    }
+
+    private func updateOverlayPath(cropFrame: CGRect) {
+        let path = UIBezierPath(rect: bounds)
+        path.append(UIBezierPath(roundedRect: cropFrame, cornerRadius: 20))
+        maskLayer.path = path.cgPath
+
+        cropBorderLayer.path = UIBezierPath(roundedRect: cropFrame, cornerRadius: 20).cgPath
+    }
+
+    private func aspectFillSize(for imageSize: CGSize, in containerSize: CGSize) -> CGSize {
+        guard imageSize.width > 0, imageSize.height > 0 else { return containerSize }
+        let widthScale = containerSize.width / imageSize.width
+        let heightScale = containerSize.height / imageSize.height
+        let scale = max(widthScale, heightScale)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+}
+
 struct DocumentWorkspaceAttachmentCanvasLayer: UIViewRepresentable {
     @ObservedObject var controller: DocumentWorkspaceController
     let pageKey: String?
     let allowsInteraction: Bool
+    var onEditAttachment: ((UUID) -> Void)? = nil
 
     func makeUIView(context: Context) -> DocumentWorkspaceAttachmentCanvasUIView {
-        let view = DocumentWorkspaceAttachmentCanvasUIView(controller: controller)
+        let view = DocumentWorkspaceAttachmentCanvasUIView(
+            controller: controller,
+            onEditAttachment: onEditAttachment
+        )
         view.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
         return view
     }
 
     func updateUIView(_ uiView: DocumentWorkspaceAttachmentCanvasUIView, context: Context) {
+        uiView.onEditAttachment = onEditAttachment
         uiView.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
     }
 }
@@ -1819,6 +2268,7 @@ struct DocumentWorkspaceAttachmentCanvasLayer: UIViewRepresentable {
 @MainActor
 final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
     private let controller: DocumentWorkspaceController
+    var onEditAttachment: ((UUID) -> Void)?
     private var pageKey: String?
     private var allowsInteraction = false
     private var cancellables: Set<AnyCancellable> = []
@@ -1826,8 +2276,12 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
     private var moveStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
     private var resizeStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
 
-    init(controller: DocumentWorkspaceController) {
+    init(
+        controller: DocumentWorkspaceController,
+        onEditAttachment: ((UUID) -> Void)? = nil
+    ) {
         self.controller = controller
+        self.onEditAttachment = onEditAttachment
         super.init(frame: .zero)
         backgroundColor = .clear
         isOpaque = false
@@ -1944,6 +2398,8 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         resizePanGesture.maximumNumberOfTouches = 1
         imageView.resizeHandle.addGestureRecognizer(resizePanGesture)
 
+        imageView.editButton.addTarget(self, action: #selector(handleEditButtonTap(_:)), for: .touchUpInside)
+
         return imageView
     }
 
@@ -2031,6 +2487,14 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         }
     }
 
+    @objc
+    private func handleEditButtonTap(_ sender: UIButton) {
+        guard allowsInteraction,
+              let imageView = sender.superview as? DocumentWorkspacePlacedImageView else { return }
+        controller.selectAttachment(imageView.attachmentID)
+        onEditAttachment?(imageView.attachmentID)
+    }
+
     private func frame(for placement: DocumentWorkspaceAttachmentPlacement) -> CGRect {
         CGRect(
             x: bounds.width * placement.normalizedRect.origin.x,
@@ -2050,6 +2514,7 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
 private final class DocumentWorkspacePlacedImageView: UIView {
     let attachmentID: UUID
     let resizeHandle = UIView()
+    let editButton = UIButton(type: .system)
 
     private let imageView = UIImageView()
     private let selectionBorder = CAShapeLayer()
@@ -2092,6 +2557,17 @@ private final class DocumentWorkspacePlacedImageView: UIView {
         resizeHandle.isHidden = true
         resizeHandle.isUserInteractionEnabled = true
         addSubview(resizeHandle)
+
+        var config = UIButton.Configuration.filled()
+        config.title = "자르기"
+        config.baseBackgroundColor = accentColor
+        config.baseForegroundColor = .white
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+        editButton.configuration = config
+        editButton.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+        editButton.isHidden = true
+        addSubview(editButton)
     }
 
     @available(*, unavailable)
@@ -2106,10 +2582,16 @@ private final class DocumentWorkspacePlacedImageView: UIView {
             roundedRect: bounds.insetBy(dx: 1, dy: 1),
             cornerRadius: 12
         ).cgPath
+        editButton.sizeToFit()
+        let editSize = editButton.bounds.size
+        editButton.frame = CGRect(x: 8, y: 8, width: max(editSize.width, 56), height: max(editSize.height, 32))
         resizeHandle.frame = CGRect(x: bounds.maxX - 26, y: bounds.maxY - 26, width: 26, height: 26)
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if !editButton.isHidden && editButton.frame.insetBy(dx: -12, dy: -12).contains(point) {
+            return true
+        }
         if !resizeHandle.isHidden {
             let expandedHandleFrame = resizeHandle.frame.insetBy(dx: -18, dy: -18)
             if expandedHandleFrame.contains(point) {
@@ -2122,5 +2604,45 @@ private final class DocumentWorkspacePlacedImageView: UIView {
     func updateSelection(isSelected: Bool, allowsInteraction: Bool) {
         selectionBorder.isHidden = !(isSelected && allowsInteraction)
         resizeHandle.isHidden = !(isSelected && allowsInteraction)
+        editButton.isHidden = !(isSelected && allowsInteraction)
+    }
+}
+
+private struct WritingPreferredAttachmentEncoding {
+    let data: Data
+    let fileExtension: String
+}
+
+private extension UIImage {
+    func normalizedForCanvasPlacement() -> UIImage {
+        guard imageOrientation != .up else { return self }
+
+        let rendererFormat = UIGraphicsImageRendererFormat.default()
+        rendererFormat.scale = scale
+        return UIGraphicsImageRenderer(size: size, format: rendererFormat).image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    var preferredAttachmentEncoding: WritingPreferredAttachmentEncoding? {
+        if hasAlphaChannel(), let pngData = pngData() {
+            return WritingPreferredAttachmentEncoding(data: pngData, fileExtension: "png")
+        }
+
+        if let jpegData = jpegData(compressionQuality: 0.94) {
+            return WritingPreferredAttachmentEncoding(data: jpegData, fileExtension: "jpg")
+        }
+
+        return nil
+    }
+
+    private func hasAlphaChannel() -> Bool {
+        guard let alphaInfo = cgImage?.alphaInfo else { return false }
+        switch alphaInfo {
+        case .first, .last, .premultipliedFirst, .premultipliedLast:
+            return true
+        default:
+            return false
+        }
     }
 }

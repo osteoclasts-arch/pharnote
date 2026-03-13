@@ -6,9 +6,14 @@ import UIKit
 struct PDFKitView: UIViewRepresentable {
     @ObservedObject var viewModel: PDFEditorViewModel
     @ObservedObject var workspaceController: DocumentWorkspaceController
+    var onEditAttachment: ((UUID) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(viewModel: viewModel, workspaceController: workspaceController)
+        Coordinator(
+            viewModel: viewModel,
+            workspaceController: workspaceController,
+            onEditAttachment: onEditAttachment
+        )
     }
 
     func makeUIView(context: Context) -> PDFView {
@@ -34,6 +39,7 @@ struct PDFKitView: UIViewRepresentable {
     final class Coordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasViewDelegate, PDFViewDelegate {
         private let viewModel: PDFEditorViewModel
         private let workspaceController: DocumentWorkspaceController
+        private let onEditAttachment: ((UUID) -> Void)?
         private weak var observedPDFView: PDFView?
         private var pageChangeObserver: NSObjectProtocol?
         private var pageCanvases: [Int: PencilPassthroughCanvasView] = [:]
@@ -41,9 +47,14 @@ struct PDFKitView: UIViewRepresentable {
         private var canvasPageMap: [ObjectIdentifier: Int] = [:]
         private var managedPDFGestureStates: [ObjectIdentifier: Bool] = [:]
 
-        init(viewModel: PDFEditorViewModel, workspaceController: DocumentWorkspaceController) {
+        init(
+            viewModel: PDFEditorViewModel,
+            workspaceController: DocumentWorkspaceController,
+            onEditAttachment: ((UUID) -> Void)?
+        ) {
             self.viewModel = viewModel
             self.workspaceController = workspaceController
+            self.onEditAttachment = onEditAttachment
         }
 
         func startObservingPageChanges(of pdfView: PDFView) {
@@ -123,7 +134,8 @@ struct PDFKitView: UIViewRepresentable {
             let container = PDFPageOverlayContainerView(
                 canvas: canvas,
                 workspaceController: workspaceController,
-                pageKey: pageKey(for: pageIndex)
+                pageKey: pageKey(for: pageIndex),
+                onEditAttachment: onEditAttachment
             )
             configureAttachmentContainer(container, pageIndex: pageIndex)
 
@@ -210,19 +222,26 @@ struct PDFKitView: UIViewRepresentable {
         }
 
         private func configureCanvas(_ canvas: PencilPassthroughCanvasView) {
-            canvas.isUserInteractionEnabled = viewModel.isCanvasInputEnabled
+            let isInputEnabled = viewModel.isCanvasInputEnabled
+            canvas.isUserInteractionEnabled = isInputEnabled
             canvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing()
             canvas.drawingPolicy = viewModel.currentDrawingPolicy()
             canvas.tool = viewModel.currentTool()
+            canvas.drawingGestureRecognizer.isEnabled = false
+            canvas.drawingGestureRecognizer.isEnabled = isInputEnabled
+            if isInputEnabled {
+                canvas.becomeFirstResponder()
+            }
             if #available(iOS 18.0, *) {
-                canvas.isDrawingEnabled = viewModel.isCanvasInputEnabled
+                canvas.isDrawingEnabled = isInputEnabled
             }
         }
 
         private func configureAttachmentContainer(_ container: PDFPageOverlayContainerView, pageIndex: Int) {
             container.updateAttachmentLayer(
                 pageKey: pageKey(for: pageIndex),
-                allowsInteraction: !viewModel.isCanvasInputEnabled && !viewModel.isReadOnlyMode
+                allowsInteraction: !viewModel.isCanvasInputEnabled && !viewModel.isReadOnlyMode,
+                onEditAttachment: onEditAttachment
             )
         }
 
@@ -329,10 +348,14 @@ private final class PDFPageOverlayContainerView: UIView {
     init(
         canvas: PencilPassthroughCanvasView,
         workspaceController: DocumentWorkspaceController,
-        pageKey: String?
+        pageKey: String?,
+        onEditAttachment: ((UUID) -> Void)?
     ) {
         self.canvas = canvas
-        self.attachmentView = DocumentWorkspaceAttachmentCanvasUIView(controller: workspaceController)
+        self.attachmentView = DocumentWorkspaceAttachmentCanvasUIView(
+            controller: workspaceController,
+            onEditAttachment: onEditAttachment
+        )
         self.pageKey = pageKey
         super.init(frame: .zero)
         backgroundColor = .clear
@@ -351,10 +374,50 @@ private final class PDFPageOverlayContainerView: UIView {
         super.layoutSubviews()
         attachmentView.frame = bounds
         canvas.frame = bounds
+        if canvas.contentSize != bounds.size {
+            canvas.contentSize = bounds.size
+        }
     }
 
-    func updateAttachmentLayer(pageKey: String?, allowsInteraction: Bool) {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let canvasPoint = convert(point, to: canvas)
+        if canvas.isUserInteractionEnabled,
+           !canvas.isHidden,
+           canvas.alpha > 0.01,
+           canvas.point(inside: canvasPoint, with: event) {
+            return true
+        }
+
+        let attachmentPoint = convert(point, to: attachmentView)
+        return attachmentView.point(inside: attachmentPoint, with: event)
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, alpha > 0.01, isUserInteractionEnabled else { return nil }
+
+        let canvasPoint = convert(point, to: canvas)
+        if canvas.isUserInteractionEnabled,
+           !canvas.isHidden,
+           canvas.alpha > 0.01,
+           canvas.point(inside: canvasPoint, with: event) {
+            return canvas.hitTest(canvasPoint, with: event) ?? canvas
+        }
+
+        let attachmentPoint = convert(point, to: attachmentView)
+        if attachmentView.point(inside: attachmentPoint, with: event) {
+            return attachmentView.hitTest(attachmentPoint, with: event)
+        }
+
+        return nil
+    }
+
+    func updateAttachmentLayer(
+        pageKey: String?,
+        allowsInteraction: Bool,
+        onEditAttachment: ((UUID) -> Void)?
+    ) {
         self.pageKey = pageKey
+        attachmentView.onEditAttachment = onEditAttachment
         attachmentView.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
         setNeedsLayout()
     }

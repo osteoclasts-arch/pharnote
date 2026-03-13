@@ -3,13 +3,17 @@ import Foundation
 
 @MainActor
 final class NodeAnalysisViewModel: ObservableObject {
+    private static let demoLookupTimeoutNanoseconds: UInt64 = 1_500_000_000
+
     @Published var selectedTab: NodeAnalysisTab = .questionLookup
+    @Published var lookupMode: NodeAnalysisLookupMode = .direct
 
     @Published var lookupSubject: StudySubject = .math
     @Published var lookupYearText: String = ""
     @Published var lookupMonthText: String = "9"
     @Published var lookupQuestionNumberText: String = ""
     @Published var lookupVariant: NodeAnalysisExamVariantOption = .unspecified
+    @Published var selectedDemoPresetID: String = NodeAnalysisDemoQuestionPreset.demoCSAT22.first?.id ?? ""
 
     @Published private(set) var isLookingUp = false
     @Published private(set) var lookupResponse: PastQuestionLookupResponse?
@@ -17,10 +21,13 @@ final class NodeAnalysisViewModel: ObservableObject {
 
     @Published private(set) var sessionPhase: NodeAnalysisSessionPhase = .idle
     @Published private(set) var elapsedSeconds = 0
-    @Published var confidenceAfter: Double = 60
+    @Published var confidenceAfter: Double = Double(NodeAnalysisConfidenceChoice.unsure.rawValue)
 
     @Published private(set) var reviewDraft: AnalysisPostSolveReviewDraft?
     @Published private(set) var reviewStage: NodeAnalysisReviewStage?
+    @Published private(set) var activeDemoPresetID: String?
+    @Published private(set) var questionSourceLabel: String?
+    @Published private(set) var questionSourceMessage: String?
 
     @Published private(set) var weaknessRecords: [NodeAnalysisWeaknessRecord] = []
     @Published var selectedWeaknessRecordID: UUID?
@@ -69,6 +76,18 @@ final class NodeAnalysisViewModel: ObservableObject {
         configuration.hasLookupConfiguration
     }
 
+    var demoPresets: [NodeAnalysisDemoQuestionPreset] {
+        NodeAnalysisDemoQuestionPreset.demoCSAT22
+    }
+
+    var selectedDemoPreset: NodeAnalysisDemoQuestionPreset? {
+        demoPresets.first(where: { $0.id == selectedDemoPresetID })
+    }
+
+    var activeDemoPreset: NodeAnalysisDemoQuestionPreset? {
+        demoPresets.first(where: { $0.id == activeDemoPresetID })
+    }
+
     var canLoadRecommendations: Bool {
         configuration.hasSearchConfiguration
     }
@@ -85,13 +104,12 @@ final class NodeAnalysisViewModel: ObservableObject {
         reviewDraft?.promptSet
     }
 
-    var currentReviewStepDefinition: AnalysisReviewStepDefinition? {
+    var currentReviewStepDefinition: AnalysisResolvedReviewStepDefinition? {
         guard case .step(let index) = reviewStage,
-              let promptSet = currentReviewPromptSet,
-              promptSet.stepDefinitions.indices.contains(index) else {
+              let promptSet = currentReviewPromptSet else {
             return nil
         }
-        return promptSet.stepDefinitions[index]
+        return promptSet.resolvedStepDefinition(at: index, draft: reviewDraft)
     }
 
     var reviewProgressLabel: String {
@@ -139,18 +157,36 @@ final class NodeAnalysisViewModel: ObservableObject {
 
         switch reviewStage {
         case .firstApproach:
-            return "문제를 처음 보자마자 어떤 접근으로 시작했는지 먼저 고르세요."
+            return promptSet.firstApproachGuidance
+                ?? "문제를 처음 보자마자 어떤 접근으로 시작했는지 먼저 고르세요."
         case .step(let index):
+            guard let step = promptSet.resolvedStepDefinition(at: index, draft: reviewDraft) else {
+                return "이 단계에서 실제로 어떤 선택을 했는지 고르세요."
+            }
+            let stageGuidance = step.guidance
+                ?? "이 단계에서 실제로 어떤 선택을 했는지 고르세요."
             let previousSignals = accumulatedReviewSignals(
                 upTo: index,
                 promptSet: promptSet,
                 reviewDraft: reviewDraft
             )
             if previousSignals.isEmpty {
-                return "이 단계에서 실제로 어떤 선택을 했는지 고르세요."
+                return stageGuidance
             }
-            return "앞 단계에서 \(previousSignals.joined(separator: " -> ")) 흐름으로 갔다고 했어요. 그다음엔 무엇을 했나요?"
+            return "앞 단계에서 \(previousSignals.joined(separator: " -> ")) 흐름으로 갔다고 했어요. \(stageGuidance)"
         }
+    }
+
+    var selectedConfidenceChoice: NodeAnalysisConfidenceChoice? {
+        NodeAnalysisConfidenceChoice(rawValue: Int(confidenceAfter.rounded()))
+    }
+
+    var canStartInstantReviewDemo: Bool {
+        activeDemoPreset != nil && currentQuestion != nil && sessionPhase == .questionReady
+    }
+
+    var shouldShowRecommendationCTA: Bool {
+        canLoadRecommendations
     }
 
     func loadWeaknessRecords() async {
@@ -172,10 +208,6 @@ final class NodeAnalysisViewModel: ObservableObject {
     }
 
     func lookupQuestion() async {
-        lookupErrorMessage = nil
-        isLookingUp = true
-        defer { isLookingUp = false }
-
         guard let year = Int(lookupYearText.trimmingCharacters(in: .whitespacesAndNewlines)),
               let month = Int(lookupMonthText.trimmingCharacters(in: .whitespacesAndNewlines)),
               let questionNumber = Int(lookupQuestionNumberText.trimmingCharacters(in: .whitespacesAndNewlines)) else {
@@ -185,37 +217,74 @@ final class NodeAnalysisViewModel: ObservableObject {
             return
         }
 
-        do {
-            let response = try await questionsService.lookup(
-                PastQuestionLookupRequest(
-                    subject: lookupSubject.title,
-                    year: year,
-                    month: month,
-                    examType: nil,
-                    questionNumber: questionNumber,
-                    examVariant: lookupVariant.requestValue,
-                    requireImage: true,
-                    requirePaperSection: lookupVariant == .common ? "공통" : nil,
-                    requirePoints: nil
-                ),
-                configuration: configuration
+        lookupMode = .direct
+
+        let request = PastQuestionLookupRequest(
+            subject: lookupSubject.title,
+            year: year,
+            month: month,
+            examType: nil,
+            questionNumber: questionNumber,
+            examVariant: lookupVariant.requestValue,
+            requireImage: true,
+            requirePaperSection: lookupVariant == .common ? "공통" : nil,
+            requirePoints: nil
+        )
+
+        await performLookup(with: [request], demoPresetID: nil)
+    }
+
+    func loadSelectedDemoPreset() async {
+        guard let preset = selectedDemoPreset else { return }
+        await loadDemoPreset(preset)
+    }
+
+    func loadDemoPreset(_ preset: NodeAnalysisDemoQuestionPreset) async {
+        lookupMode = .demo
+        selectedDemoPresetID = preset.id
+        lookupSubject = preset.subject
+        lookupYearText = String(preset.academicYear)
+        lookupMonthText = String(preset.month)
+        lookupQuestionNumberText = String(preset.questionNumber)
+        lookupVariant = preset.examVariant
+
+        let requests = preset.lookupYears.map { year in
+            PastQuestionLookupRequest(
+                subject: preset.subject.title,
+                year: year,
+                month: preset.month,
+                examType: preset.examType,
+                questionNumber: preset.questionNumber,
+                examVariant: preset.examVariant.requestValue,
+                requireImage: true,
+                requirePaperSection: "공통",
+                requirePoints: nil
             )
-
-            lookupResponse = response
-
-            if let match = response.match {
-                applyLookupMatch(match)
-            } else {
-                resetSolveFlow()
-                sessionPhase = .idle
-                lookupErrorMessage = response.message ?? "조건에 맞는 기출 문항을 찾지 못했습니다."
-            }
-        } catch {
-            lookupResponse = nil
-            resetSolveFlow()
-            sessionPhase = .idle
-            lookupErrorMessage = error.localizedDescription
         }
+
+        await performLookup(with: requests, demoPresetID: preset.id)
+    }
+
+    func prepareForAnotherDemo() {
+        lookupMode = .demo
+        lookupErrorMessage = nil
+        questionSourceLabel = nil
+        questionSourceMessage = nil
+        resetSolveFlow()
+        sessionPhase = .idle
+    }
+
+    func selectConfidenceChoice(_ choice: NodeAnalysisConfidenceChoice) {
+        confidenceAfter = Double(choice.rawValue)
+    }
+
+    func startInstantReviewDemo() {
+        guard currentQuestion != nil else { return }
+        solveTimer?.invalidate()
+        solveTimer = nil
+        solveStartedAt = nil
+        elapsedSeconds = 0
+        sessionPhase = .confidenceSurvey
     }
 
     private func bindConfigurationStore() {
@@ -263,7 +332,7 @@ final class NodeAnalysisViewModel: ObservableObject {
         guard let currentQuestion else { return }
 
         if reviewDraft == nil {
-            reviewDraft = AnalysisPostSolveReviewDraft(subject: mappedStudySubject(from: currentQuestion.subject))
+            reviewDraft = AnalysisPostSolveReviewDraft(question: currentQuestion)
         }
 
         reviewDraft?.confidenceAfter = confidenceAfter
@@ -272,23 +341,27 @@ final class NodeAnalysisViewModel: ObservableObject {
     }
 
     func selectFirstApproach(_ optionID: String) {
-        reviewDraft?.firstApproachID = optionID
+        mutateReviewDraft { draft in
+            draft.setFirstApproachID(optionID)
+        }
     }
 
     func selectCurrentReviewOption(_ optionID: String) {
-        guard let step = currentReviewStepDefinition else { return }
+        guard let step = currentReviewStepDefinition,
+              case .step(let stepIndex) = reviewStage else { return }
         mutateReviewDraft { draft in
-            draft.setSelectedOptionID(optionID, for: step.id)
+            draft.setSelectedOptionID(optionID, for: step.id, stepIndex: stepIndex)
             if draft.stepStatus(for: step.id) == .notTried {
-                draft.setStepStatus(.clear, for: step.id)
+                draft.setStepStatus(.clear, for: step.id, stepIndex: stepIndex)
             }
         }
     }
 
     func setCurrentReviewStatus(_ status: AnalysisReviewStepStatus) {
-        guard let step = currentReviewStepDefinition else { return }
+        guard let step = currentReviewStepDefinition,
+              case .step(let stepIndex) = reviewStage else { return }
         mutateReviewDraft { draft in
-            draft.setStepStatus(status, for: step.id)
+            draft.setStepStatus(status, for: step.id, stepIndex: stepIndex)
         }
     }
 
@@ -406,13 +479,15 @@ final class NodeAnalysisViewModel: ObservableObject {
         lookupMonthText = question.month.map(String.init) ?? ""
         lookupQuestionNumberText = String(question.questionNumber)
         lookupVariant = mappedVariantOption(from: question.examVariant)
+        activeDemoPresetID = nil
+        lookupMode = .direct
         lookupResponse = PastQuestionLookupResponse(
             status: .matched,
             match: question,
             candidates: [question],
             message: nil
         )
-        applyLookupMatch(question)
+        applyLookupMatch(question, demoPresetID: nil)
         selectedTab = .questionLookup
     }
 
@@ -435,20 +510,31 @@ final class NodeAnalysisViewModel: ObservableObject {
             await loadWeaknessRecords()
             selectedWeaknessRecordID = record.id
             recommendationHits = []
-            recommendationMessage = "약점 기록을 저장했습니다. 비슷한 문제를 바로 추천합니다."
+            recommendationMessage = canLoadRecommendations
+                ? "약점 기록을 저장했습니다. 같은 화면에서 결과를 확인한 뒤 추천 문제로 넘어갈 수 있습니다."
+                : "약점 기록을 저장했습니다. 같은 화면에서 진단 결과를 확인하고 다음 데모 문항으로 이어갈 수 있습니다."
             sessionPhase = .completed
-            selectedTab = .weaknessRecommendations
-            await refreshRecommendations()
+            if canLoadRecommendations {
+                await refreshRecommendations()
+            }
         } catch {
             recommendationMessage = "약점 기록 저장 실패: \(error.localizedDescription)"
         }
     }
 
-    private func applyLookupMatch(_ match: PastQuestionRecord) {
+    private func applyLookupMatch(
+        _ match: PastQuestionRecord,
+        demoPresetID: String? = nil,
+        sourceLabel: String? = nil,
+        sourceMessage: String? = nil
+    ) {
         resetSolveFlow(keepLookup: true)
         lookupErrorMessage = nil
-        confidenceAfter = 60
-        reviewDraft = AnalysisPostSolveReviewDraft(subject: mappedStudySubject(from: match.subject))
+        activeDemoPresetID = demoPresetID
+        questionSourceLabel = sourceLabel
+        questionSourceMessage = sourceMessage
+        confidenceAfter = Double(NodeAnalysisConfidenceChoice.unsure.rawValue)
+        reviewDraft = AnalysisPostSolveReviewDraft(question: match)
         sessionPhase = .questionReady
     }
 
@@ -457,13 +543,16 @@ final class NodeAnalysisViewModel: ObservableObject {
         solveTimer = nil
         solveStartedAt = nil
         elapsedSeconds = 0
-        confidenceAfter = 60
+        confidenceAfter = Double(NodeAnalysisConfidenceChoice.unsure.rawValue)
         reviewDraft = nil
         reviewStage = nil
         explicitlyMarkedStuckStepID = nil
 
         if !keepLookup {
             lookupResponse = nil
+            activeDemoPresetID = nil
+            questionSourceLabel = nil
+            questionSourceMessage = nil
         }
     }
 
@@ -489,7 +578,7 @@ final class NodeAnalysisViewModel: ObservableObject {
             guard promptSet.stepDefinitions.indices.contains(index) else { continue }
             let step = promptSet.stepDefinitions[index]
             guard let selectedID = reviewDraft.selectedOptionID(for: step.id),
-                  let option = step.options.first(where: { $0.id == selectedID }) else {
+                  let option = promptSet.optionDefinition(for: selectedID) else {
                 continue
             }
             signals.append(option.title)
@@ -530,6 +619,117 @@ final class NodeAnalysisViewModel: ObservableObject {
         }
 
         return deduplicated
+    }
+
+    private func performLookup(
+        with requests: [PastQuestionLookupRequest],
+        demoPresetID: String?
+    ) async {
+        lookupErrorMessage = nil
+        questionSourceLabel = nil
+        questionSourceMessage = nil
+        isLookingUp = true
+        defer { isLookingUp = false }
+
+        var lastResponse: PastQuestionLookupResponse?
+
+        do {
+            for request in requests {
+                let response = try await lookupResponse(for: request, demoPresetID: demoPresetID)
+                lastResponse = response
+
+                if let match = response.match {
+                    lookupResponse = response
+                    let sourceLabel = configuration.hasLookupAPIConfiguration ? "TutorGPT API" : "기출 DB 검색"
+                    applyLookupMatch(
+                        match,
+                        demoPresetID: demoPresetID,
+                        sourceLabel: sourceLabel,
+                        sourceMessage: demoPresetID == nil ? nil : "\(sourceLabel)으로 문제를 불러왔습니다."
+                    )
+                    return
+                }
+            }
+
+            if let demoFallback = demoPresetID.flatMap({ demoPreset(for: $0) }) {
+                applyDemoFallback(demoFallback, response: lastResponse)
+                return
+            }
+
+            lookupResponse = lastResponse
+            activeDemoPresetID = nil
+            resetSolveFlow(keepLookup: true)
+            sessionPhase = .idle
+            lookupErrorMessage = lastResponse?.message ?? "조건에 맞는 기출 문항을 찾지 못했습니다."
+        } catch {
+            if let demoFallback = demoPresetID.flatMap({ demoPreset(for: $0) }) {
+                applyDemoFallback(demoFallback, response: nil, error: error)
+                return
+            }
+
+            lookupResponse = nil
+            activeDemoPresetID = nil
+            resetSolveFlow()
+            sessionPhase = .idle
+            lookupErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func lookupResponse(
+        for request: PastQuestionLookupRequest,
+        demoPresetID: String?
+    ) async throws -> PastQuestionLookupResponse {
+        guard demoPresetID != nil else {
+            return try await questionsService.lookup(request, configuration: configuration)
+        }
+
+        let questionsService = self.questionsService
+        let configuration = self.configuration
+
+        return try await withThrowingTaskGroup(of: PastQuestionLookupResponse.self) { group in
+            group.addTask {
+                try await questionsService.lookup(request, configuration: configuration)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: Self.demoLookupTimeoutNanoseconds)
+                throw PastQuestionsError.requestFailed("데모 조회가 지연되었습니다.")
+            }
+
+            defer { group.cancelAll() }
+
+            guard let firstResult = try await group.next() else {
+                throw PastQuestionsError.invalidResponse
+            }
+
+            return firstResult
+        }
+    }
+
+    private func demoPreset(for id: String) -> NodeAnalysisDemoQuestionPreset? {
+        demoPresets.first(where: { $0.id == id })
+    }
+
+    private func applyDemoFallback(
+        _ preset: NodeAnalysisDemoQuestionPreset,
+        response: PastQuestionLookupResponse?,
+        error: Error? = nil
+    ) {
+        let fallbackRecord = preset.fallbackRecord
+        let fallbackResponse = PastQuestionLookupResponse(
+            status: .matched,
+            match: fallbackRecord,
+            candidates: [fallbackRecord],
+            message: nil
+        )
+        lookupResponse = fallbackResponse
+        applyLookupMatch(
+            fallbackRecord,
+            demoPresetID: preset.id,
+            sourceLabel: "앱 내 데모 캐시",
+            sourceMessage: error == nil && response?.message == nil
+                ? "실시간 API가 아직 준비되지 않아 앱에 저장된 데모 문항으로 이어서 진행합니다."
+                : "실시간 API 응답이 불안정해 앱에 저장된 데모 문항으로 자동 전환했습니다."
+        )
     }
 
     private func mappedStudySubject(from subjectLabel: String) -> StudySubject? {

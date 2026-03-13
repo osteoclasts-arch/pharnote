@@ -216,7 +216,7 @@ enum PastQuestionsError: LocalizedError {
     }
 }
 
-private struct PastQuestionLookupAPIResponse: Decodable {
+nonisolated private struct PastQuestionLookupAPIResponse: Decodable {
     let ok: Bool
     let match: PastQuestionRecord?
     let candidates: [PastQuestionRecord]
@@ -258,7 +258,14 @@ actor PastQuestionsService {
         }
 
         if configuration.hasLookupAPIConfiguration {
-            return try await lookupViaTutorHubAPI(request, configuration: configuration)
+            do {
+                return try await lookupViaTutorHubAPI(request, configuration: configuration)
+            } catch {
+                if configuration.hasSearchConfiguration {
+                    return try await lookupViaSupabaseFallback(request, configuration: configuration)
+                }
+                throw error
+            }
         }
         if configuration.hasSearchConfiguration {
             return try await lookupViaSupabaseFallback(request, configuration: configuration)

@@ -53,6 +53,7 @@ struct PDFDocumentEditorView: View {
     @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
+    @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
 
@@ -143,9 +144,37 @@ struct PDFDocumentEditorView: View {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 viewModel.deactivateToolSelection()
-                workspaceController.importImageData(data, suggestedFileName: fileName)
+                DispatchQueue.main.async {
+                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
+                    imageEditorContext = WritingImageEditorContext(
+                        draft: draft,
+                        attachmentID: nil,
+                        basePlacement: nil
+                    )
+                }
             } onCancel: {
                 isShowingPhotoPicker = false
+            }
+        }
+        .fullScreenCover(item: $imageEditorContext) { context in
+            WritingImageInsertionEditorSheet(
+                draft: context.draft,
+                basePlacement: context.basePlacement
+            ) { data, fileName, placement in
+                if let attachmentID = context.attachmentID {
+                    workspaceController.replaceImageAttachmentData(
+                        id: attachmentID,
+                        data: data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                } else {
+                    workspaceController.importImageData(
+                        data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                }
             }
         }
         .sheet(isPresented: $isShowingFilePicker) {
@@ -206,7 +235,13 @@ struct PDFDocumentEditorView: View {
                 }
                 .padding(PharTheme.Spacing.medium)
 
-            PDFKitView(viewModel: viewModel, workspaceController: workspaceController)
+            PDFKitView(
+                viewModel: viewModel,
+                workspaceController: workspaceController
+            ) { attachmentID in
+                viewModel.deactivateToolSelection()
+                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
+            }
                 .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
                 .padding(PharTheme.Spacing.medium)
 
@@ -216,11 +251,14 @@ struct PDFDocumentEditorView: View {
                 .allowsHitTesting(false)
 
             VStack(spacing: 10) {
-                WritingDocumentChipStrip(
-                    chips: workspaceChips,
-                    onSelect: handleWorkspaceChipSelection,
-                    onClose: handleWorkspaceChipClose
-                )
+                HStack(alignment: .center, spacing: 12) {
+                    backToHomeButton
+                    WritingDocumentChipStrip(
+                        chips: workspaceChips,
+                        onSelect: handleWorkspaceChipSelection,
+                        onClose: handleWorkspaceChipClose
+                    )
+                }
                 chromeToolbar
                 if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                     chromeAnalyzeCallout
@@ -363,6 +401,32 @@ struct PDFDocumentEditorView: View {
                 .padding(.horizontal, 2)
             }
         }
+    }
+
+    private var backToHomeButton: some View {
+        Button {
+            handleBackAction()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                Text("홈")
+            }
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(WritingChromePalette.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.94))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(WritingChromePalette.chromeBorder, lineWidth: 1.2)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("홈으로 돌아가기")
     }
 
     private var chromeAnalyzeCallout: some View {
@@ -1540,7 +1604,12 @@ struct PDFDocumentEditorView: View {
 
     private func handlePasteImageAction() {
         viewModel.deactivateToolSelection()
-        workspaceController.importImageFromPasteboard()
+        guard let draft = workspaceController.pastedImageDraft() else { return }
+        imageEditorContext = WritingImageEditorContext(
+            draft: draft,
+            attachmentID: nil,
+            basePlacement: nil
+        )
     }
 }
 
@@ -1594,6 +1663,7 @@ private struct PDFAnalyzePreviewSheet: View {
     @State private var ocrSummary: OCRPreviewSummary?
     @State private var isLoadingOCRSummary = false
     @State private var reviewDraft: AnalysisPostSolveReviewDraft
+    @State private var isReviewFlowComplete = false
 
     init(viewModel: PDFEditorViewModel) {
         self.viewModel = viewModel
@@ -1647,7 +1717,10 @@ private struct PDFAnalyzePreviewSheet: View {
                         }
                     }
 
-                    AnalysisPostSolveReviewSection(draft: $reviewDraft)
+                    AnalysisPostSolveReviewSection(
+                        draft: $reviewDraft,
+                        isComplete: $isReviewFlowComplete
+                    )
 
                     if let preview = viewModel.analysisPreview, let source = viewModel.analysisSource {
                         PharSurfaceCard {
@@ -1710,6 +1783,12 @@ private struct PDFAnalyzePreviewSheet: View {
                         .foregroundStyle(PharTheme.ColorToken.inkSecondary)
                     }
 
+                    if !isReviewFlowComplete {
+                        Text("확신도부터 단계별 복기를 마치면 분석 번들 적재가 열립니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+
                     Button {
                         Task {
                             guard var source = viewModel.analysisSource else { return }
@@ -1730,7 +1809,11 @@ private struct PDFAnalyzePreviewSheet: View {
                         }
                     }
                     .buttonStyle(PharPrimaryButtonStyle())
-                    .disabled(analysisCenter.isEnqueuing || viewModel.analysisSource == nil)
+                    .disabled(
+                        analysisCenter.isEnqueuing
+                            || viewModel.analysisSource == nil
+                            || !isReviewFlowComplete
+                    )
 
                     Spacer(minLength: 0)
                 }
