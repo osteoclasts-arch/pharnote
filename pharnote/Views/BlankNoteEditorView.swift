@@ -84,6 +84,12 @@ struct BlankNoteEditorView: View {
         }
         .onChange(of: viewModel.currentPageID) { _, _ in
             animatePageTransition()
+            workspaceController.clearAttachmentSelection()
+        }
+        .onChange(of: viewModel.isCanvasInputEnabled) { _, isEnabled in
+            if isEnabled {
+                workspaceController.clearAttachmentSelection()
+            }
         }
         .sheet(isPresented: $isShowingAnalyzeSheet) {
             BlankNoteAnalyzePreviewSheet(viewModel: viewModel)
@@ -102,6 +108,7 @@ struct BlankNoteEditorView: View {
         .sheet(isPresented: $isShowingPhotoPicker) {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
+                viewModel.deactivateToolSelection()
                 workspaceController.importImageData(data, suggestedFileName: fileName)
             } onCancel: {
                 isShowingPhotoPicker = false
@@ -204,13 +211,15 @@ struct BlankNoteEditorView: View {
                 .fill(WritingChromePalette.canvas)
                 .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
 
+            DocumentWorkspaceAttachmentCanvasLayer(
+                controller: workspaceController,
+                pageKey: viewModel.currentPageID?.uuidString.lowercased(),
+                allowsInteraction: !viewModel.isCanvasInputEnabled
+            )
+
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
-
-            DocumentWorkspaceCanvasAttachmentOverlayView(controller: workspaceController)
-                .padding(18)
-                .allowsHitTesting(false)
 
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
@@ -768,6 +777,7 @@ struct BlankNoteEditorView: View {
     }
 
     private func handlePasteImageAction() {
+        viewModel.deactivateToolSelection()
         workspaceController.importImageFromPasteboard()
     }
 

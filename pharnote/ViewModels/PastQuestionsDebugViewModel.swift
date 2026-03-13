@@ -3,14 +3,18 @@ import Foundation
 
 @MainActor
 final class PastQuestionsDebugViewModel: ObservableObject {
+    @Published var apiBaseURLString: String
     @Published var baseURLString: String
     @Published var anonKey: String
 
     @Published var lookupSubject: String
     @Published var lookupYearText: String
     @Published var lookupMonthText: String
+    @Published var lookupExamType: String
     @Published var lookupQuestionNumberText: String
     @Published var lookupExamVariant: String
+    @Published var lookupRequireImage: Bool
+    @Published var lookupRequirePointsText: String
 
     @Published var searchQuery: String
     @Published var searchSubjectHint: String
@@ -38,14 +42,18 @@ final class PastQuestionsDebugViewModel: ObservableObject {
         self.service = service
 
         let configuration = configurationStore.configuration
+        apiBaseURLString = configuration.apiBaseURLString
         baseURLString = configuration.baseURLString
         anonKey = configuration.anonKey
 
         lookupSubject = "수학"
         lookupYearText = "2026"
         lookupMonthText = "9"
+        lookupExamType = "9월 모의평가"
         lookupQuestionNumberText = "22"
         lookupExamVariant = "공통"
+        lookupRequireImage = true
+        lookupRequirePointsText = "4"
 
         searchQuery = ""
         searchSubjectHint = "수학"
@@ -56,8 +64,12 @@ final class PastQuestionsDebugViewModel: ObservableObject {
         configurationStore.configurationSourceLabel
     }
 
-    var isConfigured: Bool {
-        configurationStore.configuration.isComplete
+    var isLookupConfigured: Bool {
+        configurationStore.configuration.hasLookupConfiguration
+    }
+
+    var isSearchConfigured: Bool {
+        configurationStore.configuration.hasSearchConfiguration
     }
 
     var maskedAnonKey: String {
@@ -72,8 +84,12 @@ final class PastQuestionsDebugViewModel: ObservableObject {
         lookupSubject = "수학"
         lookupYearText = "2026"
         lookupMonthText = "9"
+        lookupExamType = "9월 모의평가"
         lookupQuestionNumberText = "22"
         lookupExamVariant = "공통"
+        lookupRequireImage = true
+        lookupRequirePointsText = "4"
+
         if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             searchQuery = "함수 미분"
         }
@@ -84,13 +100,19 @@ final class PastQuestionsDebugViewModel: ObservableObject {
     func refreshConfigurationFields() {
         configurationStore.reload()
         let configuration = configurationStore.configuration
+        apiBaseURLString = configuration.apiBaseURLString
         baseURLString = configuration.baseURLString
         anonKey = configuration.anonKey
     }
 
     func saveConfiguration() {
-        configurationStore.update(baseURLString: baseURLString, anonKey: anonKey)
+        configurationStore.update(
+            baseURLString: baseURLString,
+            anonKey: anonKey,
+            apiBaseURLString: apiBaseURLString
+        )
         let configuration = configurationStore.configuration
+        apiBaseURLString = configuration.apiBaseURLString
         baseURLString = configuration.baseURLString
         anonKey = configuration.anonKey
     }
@@ -100,6 +122,12 @@ final class PastQuestionsDebugViewModel: ObservableObject {
               let month = Int(lookupMonthText),
               let questionNumber = Int(lookupQuestionNumberText) else {
             errorMessage = PastQuestionsError.invalidLookupRequest.localizedDescription
+            return
+        }
+
+        let trimmedPoints = lookupRequirePointsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPoints.isEmpty, Int(trimmedPoints) == nil {
+            errorMessage = "배점 조건은 숫자로 입력해 주세요."
             return
         }
 
@@ -113,8 +141,12 @@ final class PastQuestionsDebugViewModel: ObservableObject {
                     subject: lookupSubject.trimmingCharacters(in: .whitespacesAndNewlines),
                     year: year,
                     month: month,
+                    examType: lookupExamType.nilIfEmpty,
                     questionNumber: questionNumber,
-                    examVariant: lookupExamVariant.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    examVariant: lookupExamVariant.nilIfEmpty,
+                    requireImage: lookupRequireImage,
+                    requirePaperSection: lookupExamVariant.trimmingCharacters(in: .whitespacesAndNewlines) == "공통" ? "공통" : nil,
+                    requirePoints: Int(trimmedPoints)
                 ),
                 configuration: configurationStore.configuration
             )

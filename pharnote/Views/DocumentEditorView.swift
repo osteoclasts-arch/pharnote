@@ -1101,6 +1101,54 @@ struct DocumentWorkspaceTextEntry: Codable, Hashable, Identifiable {
     var text: String
 }
 
+struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+
+    var normalizedRect: CGRect {
+        CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    func clamped(minDimension: CGFloat = 0.12, maxDimension: CGFloat = 0.92) -> DocumentWorkspaceAttachmentPlacement {
+        let clampedWidth = min(max(CGFloat(width), minDimension), maxDimension)
+        let clampedHeight = min(max(CGFloat(height), minDimension), maxDimension)
+        let clampedX = min(max(CGFloat(x), 0), max(0, 1 - clampedWidth))
+        let clampedY = min(max(CGFloat(y), 0), max(0, 1 - clampedHeight))
+
+        return DocumentWorkspaceAttachmentPlacement(
+            x: Double(clampedX),
+            y: Double(clampedY),
+            width: Double(clampedWidth),
+            height: Double(clampedHeight)
+        )
+    }
+
+    static func defaultPlacement(for imageSize: CGSize) -> DocumentWorkspaceAttachmentPlacement {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return DocumentWorkspaceAttachmentPlacement(
+                x: 0.27,
+                y: 0.16,
+                width: 0.46,
+                height: 0.28
+            )
+        }
+
+        let maxBox = CGSize(width: 0.46, height: 0.32)
+        let fittedSize = AVMakeRect(aspectRatio: imageSize, insideRect: CGRect(origin: .zero, size: maxBox)).size
+        let width = max(0.18, fittedSize.width)
+        let height = max(0.14, fittedSize.height)
+
+        return DocumentWorkspaceAttachmentPlacement(
+            x: Double((1 - width) / 2),
+            y: 0.16,
+            width: Double(width),
+            height: Double(height)
+        ).clamped()
+    }
+}
+
 struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
     let id: UUID
     let kind: DocumentWorkspaceAttachmentKind
@@ -1110,6 +1158,7 @@ struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
     let pageLabel: String?
     let createdAt: Date
     let byteCount: Int64
+    var placement: DocumentWorkspaceAttachmentPlacement?
 
     var displaySize: String {
         ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
@@ -1276,6 +1325,7 @@ final class DocumentWorkspaceController: ObservableObject {
 
     @Published private(set) var textEntries: [DocumentWorkspaceTextEntry] = []
     @Published private(set) var attachments: [DocumentWorkspaceAttachmentItem] = []
+    @Published private(set) var selectedAttachmentID: UUID?
     @Published var errorMessage: String?
 
     private let store: DocumentWorkspaceStore
@@ -1307,7 +1357,12 @@ final class DocumentWorkspaceController: ObservableObject {
             do {
                 let index = try await store.load(documentURL: documentURL)
                 textEntries = index.textEntries.sorted { $0.updatedAt > $1.updatedAt }
-                attachments = index.attachments.sorted { $0.createdAt > $1.createdAt }
+                let sortedAttachments = index.attachments.sorted { $0.createdAt > $1.createdAt }
+                let migratedAttachments = migrateLegacyImagePlacements(in: sortedAttachments)
+                attachments = migratedAttachments
+                if migratedAttachments != sortedAttachments {
+                    persistWorkspaceState()
+                }
             } catch {
                 errorMessage = "페이지 보조 자료를 불러오지 못했습니다: \(error.localizedDescription)"
             }
@@ -1351,6 +1406,7 @@ final class DocumentWorkspaceController: ObservableObject {
                     fallbackExtension: "jpg"
                 )
                 let byteCount = try await store.saveAttachmentData(data, to: destinationURL)
+                let imageSize = UIImage(data: data)?.size ?? CGSize(width: 1600, height: 1200)
                 let attachment = DocumentWorkspaceAttachmentItem(
                     id: attachmentID,
                     kind: .image,
@@ -1359,9 +1415,11 @@ final class DocumentWorkspaceController: ObservableObject {
                     pageKey: anchor.pageKey,
                     pageLabel: anchor.pageLabel,
                     createdAt: Date(),
-                    byteCount: byteCount
+                    byteCount: byteCount,
+                    placement: DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
                 )
                 attachments.insert(attachment, at: 0)
+                selectedAttachmentID = attachment.id
                 persistWorkspaceState()
             } catch {
                 errorMessage = "사진을 첨부하지 못했습니다: \(error.localizedDescription)"
@@ -1435,9 +1493,11 @@ final class DocumentWorkspaceController: ObservableObject {
                     pageKey: anchor.pageKey,
                     pageLabel: anchor.pageLabel,
                     createdAt: Date(),
-                    byteCount: byteCount
+                    byteCount: byteCount,
+                    placement: nil
                 )
                 attachments.insert(attachment, at: 0)
+                selectedAttachmentID = nil
                 persistWorkspaceState()
             } catch {
                 errorMessage = "파일을 첨부하지 못했습니다: \(error.localizedDescription)"
@@ -1452,10 +1512,43 @@ final class DocumentWorkspaceController: ObservableObject {
 
     func deleteAttachment(_ attachment: DocumentWorkspaceAttachmentItem) {
         attachments.removeAll { $0.id == attachment.id }
+        if selectedAttachmentID == attachment.id {
+            selectedAttachmentID = nil
+        }
         Task {
             await store.deleteAttachment(attachment, documentURL: documentURL)
         }
         persistWorkspaceState()
+    }
+
+    func selectAttachment(_ attachmentID: UUID?) {
+        selectedAttachmentID = attachmentID
+    }
+
+    func clearAttachmentSelection() {
+        selectedAttachmentID = nil
+    }
+
+    func attachment(withID attachmentID: UUID) -> DocumentWorkspaceAttachmentItem? {
+        attachments.first { $0.id == attachmentID }
+    }
+
+    func imageAttachments(for pageKey: String?) -> [DocumentWorkspaceAttachmentItem] {
+        filteredAttachments(pageKey: pageKey)
+            .filter { $0.kind == .image }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func updateAttachmentPlacement(
+        id attachmentID: UUID,
+        placement: DocumentWorkspaceAttachmentPlacement,
+        persist: Bool
+    ) {
+        guard let attachmentIndex = attachments.firstIndex(where: { $0.id == attachmentID }) else { return }
+        attachments[attachmentIndex].placement = placement.clamped()
+        if persist {
+            persistWorkspaceState()
+        }
     }
 
     func attachmentFileURL(for attachment: DocumentWorkspaceAttachmentItem) -> URL {
@@ -1472,6 +1565,11 @@ final class DocumentWorkspaceController: ObservableObject {
     var currentPageAttachments: [DocumentWorkspaceAttachmentItem] {
         let pageKey = anchorProvider().pageKey
         return filteredAttachments(pageKey: pageKey)
+    }
+
+    var currentPageImageAttachments: [DocumentWorkspaceAttachmentItem] {
+        let pageKey = anchorProvider().pageKey
+        return imageAttachments(for: pageKey)
     }
 
     var currentPageHasSupplements: Bool {
@@ -1531,6 +1629,20 @@ final class DocumentWorkspaceController: ObservableObject {
         let formatter = ISO8601DateFormatter()
         let timestamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
         return "pasted-image-\(timestamp).\(fileExtension)"
+    }
+
+    private func migrateLegacyImagePlacements(in sourceAttachments: [DocumentWorkspaceAttachmentItem]) -> [DocumentWorkspaceAttachmentItem] {
+        sourceAttachments.map { attachment in
+            guard attachment.kind == .image, attachment.placement == nil else {
+                return attachment
+            }
+
+            var updatedAttachment = attachment
+            let fileURL = attachmentFileURL(for: attachment)
+            let imageSize = UIImage(contentsOfFile: fileURL.path)?.size ?? CGSize(width: 1600, height: 1200)
+            updatedAttachment.placement = DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
+            return updatedAttachment
+        }
     }
 }
 
@@ -1688,75 +1800,327 @@ struct WritingAttachmentFilePicker: UIViewControllerRepresentable {
     }
 }
 
-struct DocumentWorkspaceCanvasAttachmentOverlayView: View {
+struct DocumentWorkspaceAttachmentCanvasLayer: UIViewRepresentable {
     @ObservedObject var controller: DocumentWorkspaceController
-    var maxPreviewCount: Int = 2
+    let pageKey: String?
+    let allowsInteraction: Bool
 
-    var body: some View {
-        let previewAttachments = Array(controller.currentPageAttachments.prefix(maxPreviewCount))
+    func makeUIView(context: Context) -> DocumentWorkspaceAttachmentCanvasUIView {
+        let view = DocumentWorkspaceAttachmentCanvasUIView(controller: controller)
+        view.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
+        return view
+    }
 
-        if !previewAttachments.isEmpty {
-            VStack(alignment: .trailing, spacing: PharTheme.Spacing.xSmall) {
-                ForEach(previewAttachments) { attachment in
-                    canvasAttachmentCard(for: attachment)
-                }
+    func updateUIView(_ uiView: DocumentWorkspaceAttachmentCanvasUIView, context: Context) {
+        uiView.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
+    }
+}
 
-                if controller.currentPageAttachments.count > maxPreviewCount {
-                    PharTagPill(
-                        text: "+\(controller.currentPageAttachments.count - maxPreviewCount)",
-                        tint: PharTheme.ColorToken.surfacePrimary.opacity(0.94),
-                        foreground: PharTheme.ColorToken.inkPrimary
-                    )
-                }
+@MainActor
+final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
+    private let controller: DocumentWorkspaceController
+    private var pageKey: String?
+    private var allowsInteraction = false
+    private var cancellables: Set<AnyCancellable> = []
+    private var imageViews: [UUID: DocumentWorkspacePlacedImageView] = [:]
+    private var moveStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
+    private var resizeStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
+
+    init(controller: DocumentWorkspaceController) {
+        self.controller = controller
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        isOpaque = false
+        clipsToBounds = true
+        subscribeToController()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(pageKey: String?, allowsInteraction: Bool) {
+        self.pageKey = pageKey
+        self.allowsInteraction = allowsInteraction
+        syncImageViews()
+        updateSelectionState()
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutImageViews()
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard allowsInteraction else { return false }
+
+        for imageView in subviews.reversed() {
+            let convertedPoint = imageView.convert(point, from: self)
+            if imageView.point(inside: convertedPoint, with: event) {
+                return true
             }
-            .padding(PharTheme.Spacing.small)
+        }
+
+        return false
+    }
+
+    private func subscribeToController() {
+        controller.$attachments
+            .combineLatest(controller.$selectedAttachmentID)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _ in
+                guard let self else { return }
+                self.syncImageViews()
+                self.updateSelectionState()
+                self.setNeedsLayout()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func syncImageViews() {
+        let visibleAttachments = controller.imageAttachments(for: pageKey)
+        let visibleIDs = Set(visibleAttachments.map(\.id))
+
+        for (id, imageView) in imageViews where !visibleIDs.contains(id) {
+            imageView.removeFromSuperview()
+            imageViews.removeValue(forKey: id)
+            moveStartPlacements.removeValue(forKey: id)
+            resizeStartPlacements.removeValue(forKey: id)
+        }
+
+        for attachment in visibleAttachments {
+            if imageViews[attachment.id] == nil {
+                let imageView = makeImageView(for: attachment)
+                imageViews[attachment.id] = imageView
+                addSubview(imageView)
+            }
         }
     }
 
-    @ViewBuilder
-    private func canvasAttachmentCard(for attachment: DocumentWorkspaceAttachmentItem) -> some View {
-        HStack(spacing: PharTheme.Spacing.xSmall) {
-            if attachment.kind == .image,
-               let image = UIImage(contentsOfFile: controller.attachmentFileURL(for: attachment).path) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 82, height: 82)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
-                    .fill(PharTheme.ColorToken.surfaceTertiary)
-                    .frame(width: 82, height: 82)
-                    .overlay {
-                        Image(systemName: attachment.kind.systemImage)
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(attachment.displayTitle)
-                    .font(PharTypography.captionStrong)
-                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                    .lineLimit(1)
-
-                Text(attachment.displaySize)
-                    .font(PharTypography.caption)
-                    .foregroundStyle(PharTheme.ColorToken.subtleText)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: 110, alignment: .leading)
+    private func updateSelectionState() {
+        for (id, imageView) in imageViews {
+            imageView.updateSelection(
+                isSelected: controller.selectedAttachmentID == id,
+                allowsInteraction: allowsInteraction
+            )
         }
-        .padding(PharTheme.Spacing.xSmall)
-        .background(
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                .fill(PharTheme.ColorToken.surfacePrimary.opacity(0.94))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                .stroke(PharTheme.ColorToken.border.opacity(0.36), lineWidth: 1)
-        )
-        .shadow(color: PharTheme.ColorToken.overlayShadow.opacity(0.35), radius: 10, x: 0, y: 6)
+    }
+
+    private func layoutImageViews() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        let visibleAttachments = controller.imageAttachments(for: pageKey)
+        for attachment in visibleAttachments {
+            guard let imageView = imageViews[attachment.id] else { continue }
+
+            let placement = attachment.placement ?? defaultPlacement(for: attachment)
+            imageView.frame = frame(for: placement)
+            imageView.updateSelection(
+                isSelected: controller.selectedAttachmentID == attachment.id,
+                allowsInteraction: allowsInteraction
+            )
+
+            if controller.selectedAttachmentID == attachment.id {
+                bringSubviewToFront(imageView)
+            }
+        }
+    }
+
+    private func makeImageView(for attachment: DocumentWorkspaceAttachmentItem) -> DocumentWorkspacePlacedImageView {
+        let fileURL = controller.attachmentFileURL(for: attachment)
+        let image = UIImage(contentsOfFile: fileURL.path) ?? UIImage()
+        let imageView = DocumentWorkspacePlacedImageView(attachmentID: attachment.id, image: image)
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleItemTap(_:)))
+        imageView.addGestureRecognizer(tapGesture)
+
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handleItemPan(_:)))
+        panGesture.maximumNumberOfTouches = 1
+        imageView.addGestureRecognizer(panGesture)
+
+        let resizePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleResizePan(_:)))
+        resizePanGesture.maximumNumberOfTouches = 1
+        imageView.resizeHandle.addGestureRecognizer(resizePanGesture)
+
+        return imageView
+    }
+
+    @objc
+    private func handleItemTap(_ gesture: UITapGestureRecognizer) {
+        guard allowsInteraction,
+              let imageView = gesture.view as? DocumentWorkspacePlacedImageView else { return }
+        controller.selectAttachment(imageView.attachmentID)
+    }
+
+    @objc
+    private func handleItemPan(_ gesture: UIPanGestureRecognizer) {
+        guard allowsInteraction,
+              let imageView = gesture.view as? DocumentWorkspacePlacedImageView,
+              let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+
+        let attachmentID = imageView.attachmentID
+        let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
+
+        switch gesture.state {
+        case .began:
+            controller.selectAttachment(attachmentID)
+            moveStartPlacements[attachmentID] = startingPlacement
+        case .changed:
+            guard let initialPlacement = moveStartPlacements[attachmentID] else { return }
+            let translation = gesture.translation(in: self)
+            let updatedPlacement = DocumentWorkspaceAttachmentPlacement(
+                x: initialPlacement.x + Double(translation.x / bounds.width),
+                y: initialPlacement.y + Double(translation.y / bounds.height),
+                width: initialPlacement.width,
+                height: initialPlacement.height
+            ).clamped()
+            controller.updateAttachmentPlacement(id: attachmentID, placement: updatedPlacement, persist: false)
+        case .ended, .cancelled, .failed:
+            moveStartPlacements.removeValue(forKey: attachmentID)
+            if let finalPlacement = controller.attachment(withID: attachmentID)?.placement {
+                controller.updateAttachmentPlacement(id: attachmentID, placement: finalPlacement, persist: true)
+            }
+        default:
+            break
+        }
+    }
+
+    @objc
+    private func handleResizePan(_ gesture: UIPanGestureRecognizer) {
+        guard allowsInteraction,
+              let handleView = gesture.view,
+              let imageView = handleView.superview as? DocumentWorkspacePlacedImageView,
+              let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+
+        let attachmentID = imageView.attachmentID
+        let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
+        let aspectRatio = max(CGFloat(startingPlacement.width / max(startingPlacement.height, 0.0001)), 0.2)
+
+        switch gesture.state {
+        case .began:
+            controller.selectAttachment(attachmentID)
+            resizeStartPlacements[attachmentID] = startingPlacement
+        case .changed:
+            guard let initialPlacement = resizeStartPlacements[attachmentID] else { return }
+            let translation = gesture.translation(in: self)
+            let scaleX = 1 + (translation.x / max(bounds.width, 1))
+            let scaleY = 1 + (translation.y / max(bounds.height, 1))
+            let scale = max(0.45, max(scaleX, scaleY))
+
+            var proposedWidth = CGFloat(initialPlacement.width) * scale
+            proposedWidth = min(max(proposedWidth, 0.12), 1 - CGFloat(initialPlacement.x))
+            let proposedHeight = min(max(proposedWidth / aspectRatio, 0.12), 1 - CGFloat(initialPlacement.y))
+            proposedWidth = min(max(proposedHeight * aspectRatio, 0.12), 1 - CGFloat(initialPlacement.x))
+
+            let updatedPlacement = DocumentWorkspaceAttachmentPlacement(
+                x: initialPlacement.x,
+                y: initialPlacement.y,
+                width: Double(proposedWidth),
+                height: Double(proposedHeight)
+            ).clamped()
+            controller.updateAttachmentPlacement(id: attachmentID, placement: updatedPlacement, persist: false)
+        case .ended, .cancelled, .failed:
+            resizeStartPlacements.removeValue(forKey: attachmentID)
+            if let finalPlacement = controller.attachment(withID: attachmentID)?.placement {
+                controller.updateAttachmentPlacement(id: attachmentID, placement: finalPlacement, persist: true)
+            }
+        default:
+            break
+        }
+    }
+
+    private func frame(for placement: DocumentWorkspaceAttachmentPlacement) -> CGRect {
+        CGRect(
+            x: bounds.width * placement.normalizedRect.origin.x,
+            y: bounds.height * placement.normalizedRect.origin.y,
+            width: bounds.width * placement.normalizedRect.width,
+            height: bounds.height * placement.normalizedRect.height
+        ).integral
+    }
+
+    private func defaultPlacement(for attachment: DocumentWorkspaceAttachmentItem) -> DocumentWorkspaceAttachmentPlacement {
+        let fileURL = controller.attachmentFileURL(for: attachment)
+        let imageSize = UIImage(contentsOfFile: fileURL.path)?.size ?? CGSize(width: 1600, height: 1200)
+        return DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
+    }
+}
+
+private final class DocumentWorkspacePlacedImageView: UIView {
+    let attachmentID: UUID
+    let resizeHandle = UIView()
+
+    private let imageView = UIImageView()
+    private let selectionBorder = CAShapeLayer()
+    private let accentColor = UIColor(red: 1.0, green: 0.439, blue: 0.0, alpha: 1.0)
+
+    init(attachmentID: UUID, image: UIImage) {
+        self.attachmentID = attachmentID
+        super.init(frame: .zero)
+
+        backgroundColor = .clear
+        clipsToBounds = false
+
+        imageView.image = image
+        imageView.contentMode = .scaleAspectFit
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 12
+        imageView.layer.borderWidth = 1
+        imageView.layer.borderColor = UIColor.black.withAlphaComponent(0.06).cgColor
+        imageView.layer.shadowColor = UIColor.black.cgColor
+        imageView.layer.shadowOpacity = 0.08
+        imageView.layer.shadowRadius = 14
+        imageView.layer.shadowOffset = CGSize(width: 0, height: 8)
+        addSubview(imageView)
+
+        selectionBorder.fillColor = UIColor.clear.cgColor
+        selectionBorder.strokeColor = accentColor.cgColor
+        selectionBorder.lineWidth = 2
+        selectionBorder.lineDashPattern = [8, 6]
+        selectionBorder.isHidden = true
+        layer.addSublayer(selectionBorder)
+
+        resizeHandle.backgroundColor = accentColor
+        resizeHandle.layer.cornerRadius = 13
+        resizeHandle.layer.borderWidth = 3
+        resizeHandle.layer.borderColor = UIColor.white.cgColor
+        resizeHandle.layer.shadowColor = UIColor.black.cgColor
+        resizeHandle.layer.shadowOpacity = 0.12
+        resizeHandle.layer.shadowRadius = 6
+        resizeHandle.layer.shadowOffset = CGSize(width: 0, height: 3)
+        resizeHandle.isHidden = true
+        resizeHandle.isUserInteractionEnabled = true
+        addSubview(resizeHandle)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        imageView.frame = bounds
+        selectionBorder.path = UIBezierPath(
+            roundedRect: bounds.insetBy(dx: 1, dy: 1),
+            cornerRadius: 12
+        ).cgPath
+        resizeHandle.frame = CGRect(x: bounds.maxX - 26, y: bounds.maxY - 26, width: 26, height: 26)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if !resizeHandle.isHidden {
+            let expandedHandleFrame = resizeHandle.frame.insetBy(dx: -18, dy: -18)
+            if expandedHandleFrame.contains(point) {
+                return true
+            }
+        }
+        return bounds.insetBy(dx: -8, dy: -8).contains(point)
+    }
+
+    func updateSelection(isSelected: Bool, allowsInteraction: Bool) {
+        selectionBorder.isHidden = !(isSelected && allowsInteraction)
+        resizeHandle.isHidden = !(isSelected && allowsInteraction)
     }
 }

@@ -62,6 +62,35 @@ nonisolated enum PastQuestionJSONValue: Codable, Hashable, Sendable {
         guard case .array(let values) = self else { return [] }
         return values.compactMap(\.stringValue).filter { !$0.isEmpty }
     }
+
+    var intValue: Int? {
+        switch self {
+        case .number(let value):
+            return Int(value.rounded(.towardZero))
+        case .string(let value):
+            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    var boolValue: Bool? {
+        switch self {
+        case .bool(let value):
+            return value
+        case .string(let value):
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "1", "yes":
+                return true
+            case "false", "0", "no":
+                return false
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
 }
 
 nonisolated struct PastQuestionMetadata: Codable, Hashable, Sendable {
@@ -101,6 +130,18 @@ nonisolated struct PastQuestionMetadata: Codable, Hashable, Sendable {
         string(for: "exam_variant")
     }
 
+    var paperSection: String? {
+        string(for: "paper_section")
+    }
+
+    var points: Int? {
+        values["points"]?.intValue
+    }
+
+    var isCommon: Bool? {
+        values["is_common"]?.boolValue
+    }
+
     var keywords: [String] {
         stringArray(for: "keywords")
     }
@@ -124,6 +165,10 @@ nonisolated struct PastQuestionRecord: Codable, Identifiable, Hashable, Sendable
     let imageURLString: String?
     let answer: String?
     let solution: String?
+    let normalizedExamVariant: String?
+    let normalizedPaperSection: String?
+    let normalizedPoints: Int?
+    let normalizedHasImage: Bool?
     let metadata: PastQuestionMetadata
 
     enum CodingKeys: String, CodingKey {
@@ -132,12 +177,19 @@ nonisolated struct PastQuestionRecord: Codable, Identifiable, Hashable, Sendable
         case year
         case month
         case examType = "exam_type"
+        case examTypeCamel = "examType"
         case questionNumber = "question_number"
+        case questionNumberCamel = "questionNumber"
         case difficulty
         case content
         case imageURLString = "image_url"
+        case imageURLStringCamel = "imageUrl"
         case answer
         case solution
+        case normalizedExamVariant = "examVariant"
+        case normalizedPaperSection = "paperSection"
+        case normalizedPoints = "points"
+        case normalizedHasImage = "hasImage"
         case metadata
     }
 
@@ -153,6 +205,10 @@ nonisolated struct PastQuestionRecord: Codable, Identifiable, Hashable, Sendable
         imageURLString: String?,
         answer: String?,
         solution: String?,
+        normalizedExamVariant: String?,
+        normalizedPaperSection: String?,
+        normalizedPoints: Int?,
+        normalizedHasImage: Bool?,
         metadata: PastQuestionMetadata
     ) {
         self.id = id
@@ -166,6 +222,10 @@ nonisolated struct PastQuestionRecord: Codable, Identifiable, Hashable, Sendable
         self.imageURLString = imageURLString
         self.answer = answer
         self.solution = solution
+        self.normalizedExamVariant = normalizedExamVariant
+        self.normalizedPaperSection = normalizedPaperSection
+        self.normalizedPoints = normalizedPoints
+        self.normalizedHasImage = normalizedHasImage
         self.metadata = metadata
     }
 
@@ -175,14 +235,42 @@ nonisolated struct PastQuestionRecord: Codable, Identifiable, Hashable, Sendable
         subject = try container.decode(String.self, forKey: .subject)
         year = try container.decodeIfPresent(Int.self, forKey: .year)
         month = try container.decodeIfPresent(Int.self, forKey: .month)
-        examType = try container.decodeIfPresent(String.self, forKey: .examType) ?? ""
-        questionNumber = try container.decode(Int.self, forKey: .questionNumber)
+        examType = try container.decodeIfPresent(String.self, forKey: .examType)
+            ?? container.decodeIfPresent(String.self, forKey: .examTypeCamel)
+            ?? ""
+        questionNumber = try container.decodeIfPresent(Int.self, forKey: .questionNumber)
+            ?? container.decode(Int.self, forKey: .questionNumberCamel)
         difficulty = try container.decodeIfPresent(String.self, forKey: .difficulty)
         content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
         imageURLString = try container.decodeIfPresent(String.self, forKey: .imageURLString)
+            ?? container.decodeIfPresent(String.self, forKey: .imageURLStringCamel)
         answer = try container.decodeIfPresent(String.self, forKey: .answer)
         solution = try container.decodeIfPresent(String.self, forKey: .solution)
+        normalizedExamVariant = try container.decodeIfPresent(String.self, forKey: .normalizedExamVariant)
+        normalizedPaperSection = try container.decodeIfPresent(String.self, forKey: .normalizedPaperSection)
+        normalizedPoints = try container.decodeIfPresent(Int.self, forKey: .normalizedPoints)
+        normalizedHasImage = try container.decodeIfPresent(Bool.self, forKey: .normalizedHasImage)
         metadata = try container.decodeIfPresent(PastQuestionMetadata.self, forKey: .metadata) ?? PastQuestionMetadata()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(subject, forKey: .subject)
+        try container.encodeIfPresent(year, forKey: .year)
+        try container.encodeIfPresent(month, forKey: .month)
+        try container.encode(examType, forKey: .examType)
+        try container.encode(questionNumber, forKey: .questionNumber)
+        try container.encodeIfPresent(difficulty, forKey: .difficulty)
+        try container.encode(content, forKey: .content)
+        try container.encodeIfPresent(imageURLString, forKey: .imageURLString)
+        try container.encodeIfPresent(answer, forKey: .answer)
+        try container.encodeIfPresent(solution, forKey: .solution)
+        try container.encodeIfPresent(normalizedExamVariant, forKey: .normalizedExamVariant)
+        try container.encodeIfPresent(normalizedPaperSection, forKey: .normalizedPaperSection)
+        try container.encodeIfPresent(normalizedPoints, forKey: .normalizedPoints)
+        try container.encodeIfPresent(normalizedHasImage, forKey: .normalizedHasImage)
+        try container.encode(metadata, forKey: .metadata)
     }
 }
 
@@ -200,6 +288,22 @@ extension PastQuestionRecord {
         imageURL?.absoluteString
     }
 
+    nonisolated var examVariant: String? {
+        normalizedExamVariant?.nonEmpty ?? metadata.examVariant
+    }
+
+    nonisolated var paperSection: String? {
+        normalizedPaperSection?.nonEmpty ?? metadata.paperSection
+    }
+
+    nonisolated var points: Int? {
+        normalizedPoints ?? metadata.points
+    }
+
+    nonisolated var hasImage: Bool {
+        normalizedHasImage ?? (imageURL != nil)
+    }
+
     nonisolated var contentPreview: String {
         let cleaned = content.compactWhitespace()
         return String(cleaned.prefix(220))
@@ -210,12 +314,16 @@ extension PastQuestionRecord {
     }
 }
 
-nonisolated struct PastQuestionLookupRequest: Hashable, Sendable {
+nonisolated struct PastQuestionLookupRequest: Codable, Hashable, Sendable {
     var subject: String
     var year: Int
     var month: Int
+    var examType: String?
     var questionNumber: Int
     var examVariant: String?
+    var requireImage: Bool
+    var requirePaperSection: String?
+    var requirePoints: Int?
 }
 
 nonisolated enum PastQuestionLookupStatus: String, Codable, Hashable, Sendable {

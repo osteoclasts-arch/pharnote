@@ -571,6 +571,12 @@ final class PDFEditorViewModel: ObservableObject {
         applyPDFInteractionMode()
     }
 
+    func deactivateToolSelection() {
+        guard isToolSelectionActive else { return }
+        isToolSelectionActive = false
+        applyPDFInteractionMode()
+    }
+
     func uiColorForColorID(_ id: Int) -> UIColor {
         annotationColors.first(where: { $0.id == id })?.uiColor ?? .black
     }

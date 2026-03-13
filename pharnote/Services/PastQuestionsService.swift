@@ -4,9 +4,10 @@ import Foundation
 nonisolated struct PastQuestionsConfiguration: Hashable, Sendable {
     var baseURLString: String
     var anonKey: String
+    var apiBaseURLString: String
 
     var isComplete: Bool {
-        baseURLString.trimmedNonEmpty != nil && anonKey.trimmedNonEmpty != nil
+        hasLookupConfiguration
     }
 
     var sanitizedBaseURLString: String {
@@ -16,6 +17,22 @@ nonisolated struct PastQuestionsConfiguration: Hashable, Sendable {
     var sanitizedAnonKey: String {
         anonKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    var sanitizedAPIBaseURLString: String {
+        apiBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var hasSearchConfiguration: Bool {
+        baseURLString.trimmedNonEmpty != nil && anonKey.trimmedNonEmpty != nil
+    }
+
+    var hasLookupAPIConfiguration: Bool {
+        apiBaseURLString.trimmedNonEmpty != nil
+    }
+
+    var hasLookupConfiguration: Bool {
+        hasLookupAPIConfiguration || hasSearchConfiguration
+    }
 }
 
 @MainActor
@@ -24,10 +41,13 @@ final class PastQuestionsConfigurationStore: ObservableObject {
 
     static let envURLKey = "PAST_QUESTIONS_SUPABASE_URL"
     static let envAnonKey = "PAST_QUESTIONS_SUPABASE_ANON_KEY"
+    static let envAPIBaseURLKey = "PAST_QUESTIONS_API_BASE_URL"
     static let infoURLKey = "PAST_QUESTIONS_SUPABASE_URL"
     static let infoAnonKey = "PAST_QUESTIONS_SUPABASE_ANON_KEY"
+    static let infoAPIBaseURLKey = "PAST_QUESTIONS_API_BASE_URL"
     private static let storedURLUserDefaultsKey = "past_questions.supabase_url"
     private static let storedAnonUserDefaultsKey = "past_questions.supabase_anon_key"
+    private static let storedAPIBaseURLUserDefaultsKey = "past_questions.api_base_url"
 
     @Published private(set) var configuration: PastQuestionsConfiguration
 
@@ -55,24 +75,27 @@ final class PastQuestionsConfigurationStore: ObservableObject {
     var configurationSourceLabel: String {
         let envURL = environment[Self.envURLKey]?.trimmedNonEmpty
         let envAnonKey = environment[Self.envAnonKey]?.trimmedNonEmpty
-        if envURL != nil || envAnonKey != nil {
+        let envAPIBaseURL = environment[Self.envAPIBaseURLKey]?.trimmedNonEmpty
+        if envURL != nil || envAnonKey != nil || envAPIBaseURL != nil {
             return "환경변수"
         }
         let bundleURL = Self.infoString(forKey: Self.infoURLKey, in: infoDictionary)
         let bundleAnonKey = Self.infoString(forKey: Self.infoAnonKey, in: infoDictionary)
-        if bundleURL != nil || bundleAnonKey != nil {
+        let bundleAPIBaseURL = Self.infoString(forKey: Self.infoAPIBaseURLKey, in: infoDictionary)
+        if bundleURL != nil || bundleAnonKey != nil || bundleAPIBaseURL != nil {
             return "앱 번들"
         }
-        if configuration.isComplete {
+        if configuration.hasLookupConfiguration || configuration.hasSearchConfiguration {
             return "앱 저장값"
         }
         return "미설정"
     }
 
-    func update(baseURLString: String, anonKey: String) {
+    func update(baseURLString: String, anonKey: String, apiBaseURLString: String) {
         let normalized = PastQuestionsConfiguration(
             baseURLString: normalizedURLString(baseURLString),
-            anonKey: anonKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            anonKey: anonKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            apiBaseURLString: normalizedURLString(apiBaseURLString)
         )
 
         if let baseURL = normalized.baseURLString.trimmedNonEmpty {
@@ -85,6 +108,12 @@ final class PastQuestionsConfigurationStore: ObservableObject {
             userDefaults.set(anonKey, forKey: Self.storedAnonUserDefaultsKey)
         } else {
             userDefaults.removeObject(forKey: Self.storedAnonUserDefaultsKey)
+        }
+
+        if let apiBaseURL = normalized.apiBaseURLString.trimmedNonEmpty {
+            userDefaults.set(apiBaseURL, forKey: Self.storedAPIBaseURLUserDefaultsKey)
+        } else {
+            userDefaults.removeObject(forKey: Self.storedAPIBaseURLUserDefaultsKey)
         }
 
         configuration = Self.loadConfiguration(
@@ -125,14 +154,18 @@ final class PastQuestionsConfigurationStore: ObservableObject {
     ) -> PastQuestionsConfiguration {
         let envURL = environment[envURLKey]?.trimmedNonEmpty
         let envAnonKey = environment[envAnonKey]?.trimmedNonEmpty
+        let envAPIBaseURL = environment[envAPIBaseURLKey]?.trimmedNonEmpty
         let bundleURL = infoString(forKey: infoURLKey, in: infoDictionary)
         let bundleAnonKey = infoString(forKey: infoAnonKey, in: infoDictionary)
+        let bundleAPIBaseURL = infoString(forKey: infoAPIBaseURLKey, in: infoDictionary)
         let storedURL = userDefaults.string(forKey: storedURLKey)?.trimmedNonEmpty
         let storedAnonKey = userDefaults.string(forKey: storedAnonKey)?.trimmedNonEmpty
+        let storedAPIBaseURL = userDefaults.string(forKey: storedAPIBaseURLUserDefaultsKey)?.trimmedNonEmpty
 
         return PastQuestionsConfiguration(
             baseURLString: envURL ?? bundleURL ?? storedURL ?? "",
-            anonKey: envAnonKey ?? bundleAnonKey ?? storedAnonKey ?? ""
+            anonKey: envAnonKey ?? bundleAnonKey ?? storedAnonKey ?? "",
+            apiBaseURLString: envAPIBaseURL ?? bundleAPIBaseURL ?? storedAPIBaseURL ?? ""
         )
     }
 
@@ -147,7 +180,10 @@ final class PastQuestionsConfigurationStore: ObservableObject {
 
 enum PastQuestionsError: LocalizedError {
     case missingConfiguration
+    case missingLookupConfiguration
+    case missingSearchConfiguration
     case invalidBaseURL
+    case invalidAPIBaseURL
     case invalidLookupRequest
     case invalidSearchQuery
     case requestFailed(String)
@@ -157,9 +193,15 @@ enum PastQuestionsError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            return "기출 DB 연결 정보가 없습니다. PAST_QUESTIONS_SUPABASE_URL과 PAST_QUESTIONS_SUPABASE_ANON_KEY를 설정하세요."
+            return "기출 DB 연결 정보가 없습니다."
+        case .missingLookupConfiguration:
+            return "기출 exact lookup 연결 정보가 없습니다. PAST_QUESTIONS_API_BASE_URL을 설정하거나 기존 Supabase 설정을 확인하세요."
+        case .missingSearchConfiguration:
+            return "기출 search 연결 정보가 없습니다. PAST_QUESTIONS_SUPABASE_URL과 PAST_QUESTIONS_SUPABASE_ANON_KEY를 설정하세요."
         case .invalidBaseURL:
             return "기출 DB Supabase URL 형식이 올바르지 않습니다."
+        case .invalidAPIBaseURL:
+            return "TutorHub API URL 형식이 올바르지 않습니다."
         case .invalidLookupRequest:
             return "과목, 연도, 월, 문항 번호를 모두 확인해 주세요."
         case .invalidSearchQuery:
@@ -171,6 +213,28 @@ enum PastQuestionsError: LocalizedError {
         case .decodingFailed:
             return "기출 DB 응답을 해석하지 못했습니다."
         }
+    }
+}
+
+private struct PastQuestionLookupAPIResponse: Decodable {
+    let ok: Bool
+    let match: PastQuestionRecord?
+    let candidates: [PastQuestionRecord]
+    let reason: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case match
+        case candidates
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        match = try container.decodeIfPresent(PastQuestionRecord.self, forKey: .match)
+        candidates = try container.decodeIfPresent([PastQuestionRecord].self, forKey: .candidates) ?? []
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
     }
 }
 
@@ -189,58 +253,25 @@ actor PastQuestionsService {
         _ request: PastQuestionLookupRequest,
         configuration: PastQuestionsConfiguration
     ) async throws -> PastQuestionLookupResponse {
-        guard configuration.isComplete else {
-            throw PastQuestionsError.missingConfiguration
-        }
         guard request.year > 0, request.month > 0, request.questionNumber > 0 else {
             throw PastQuestionsError.invalidLookupRequest
         }
 
-        let yearCandidates = inferredYearCandidates(year: request.year, month: request.month)
-        let queryItems = [
-            URLQueryItem(name: "select", value: selectFields),
-            URLQueryItem(name: "question_number", value: "eq.\(request.questionNumber)"),
-            URLQueryItem(name: "month", value: "eq.\(request.month)"),
-            URLQueryItem(name: "year", value: yearCandidates.count == 1 ? "eq.\(yearCandidates[0])" : "in.(\(yearCandidates.map(String.init).joined(separator: ",")))"),
-            URLQueryItem(name: "limit", value: "60"),
-            URLQueryItem(name: "order", value: "year.desc.nullslast,month.desc.nullslast")
-        ]
-
-        let rows = try await fetchRows(queryItems: queryItems, configuration: configuration)
-        let subjectFiltered = filteredLookupRows(rows, request: request)
-        let candidatePool = subjectFiltered.isEmpty ? rows : subjectFiltered
-        let requestedVariant = normalizedRequestedVariant(for: request)
-        let exactVariantExists = requestedVariant.map { variant in
-            candidatePool.contains { row in normalizedVariant(for: row) == variant && !isLegacyIntegratedRow(row) }
-        } ?? false
-
-        let ranked = candidatePool.sorted {
-            isLookupCandidate($0, rankedAheadOf: $1, request: request, exactVariantExists: exactVariantExists)
+        if configuration.hasLookupAPIConfiguration {
+            return try await lookupViaTutorHubAPI(request, configuration: configuration)
         }
-
-        guard let match = ranked.first else {
-            return PastQuestionLookupResponse(
-                status: .notFound,
-                match: nil,
-                candidates: [],
-                message: "조건에 맞는 기출 문항을 찾지 못했습니다."
-            )
+        if configuration.hasSearchConfiguration {
+            return try await lookupViaSupabaseFallback(request, configuration: configuration)
         }
-
-        return PastQuestionLookupResponse(
-            status: .matched,
-            match: match,
-            candidates: ranked,
-            message: nil
-        )
+        throw PastQuestionsError.missingLookupConfiguration
     }
 
     func search(
         _ request: PastQuestionSearchRequest,
         configuration: PastQuestionsConfiguration
     ) async throws -> PastQuestionSearchResponse {
-        guard configuration.isComplete else {
-            throw PastQuestionsError.missingConfiguration
+        guard configuration.hasSearchConfiguration else {
+            throw PastQuestionsError.missingSearchConfiguration
         }
 
         let trimmedQuery = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -295,6 +326,140 @@ actor PastQuestionsService {
             totalCandidates: rows.count,
             items: Array(hits.prefix(max(request.topK, 1)))
         )
+    }
+
+    private func lookupViaTutorHubAPI(
+        _ request: PastQuestionLookupRequest,
+        configuration: PastQuestionsConfiguration
+    ) async throws -> PastQuestionLookupResponse {
+        let endpoint = try makeLookupAPIURL(configuration: configuration)
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = 30
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+
+        let (data, response) = try await session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PastQuestionsError.invalidResponse
+        }
+
+        let decoded: PastQuestionLookupAPIResponse
+        do {
+            decoded = try decoder.decode(PastQuestionLookupAPIResponse.self, from: data)
+        } catch {
+            if (200 ... 299).contains(httpResponse.statusCode) {
+                throw PastQuestionsError.decodingFailed
+            }
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw PastQuestionsError.requestFailed(message?.trimmedNonEmpty ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))
+        }
+
+        if httpResponse.statusCode == 404 {
+            return PastQuestionLookupResponse(
+                status: .notFound,
+                match: nil,
+                candidates: decoded.candidates,
+                message: lookupFailureMessage(reason: decoded.reason)
+            )
+        }
+
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw PastQuestionsError.requestFailed(
+                lookupFailureMessage(reason: decoded.reason) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            )
+        }
+
+        guard decoded.ok, let match = decoded.match else {
+            return PastQuestionLookupResponse(
+                status: .notFound,
+                match: nil,
+                candidates: decoded.candidates,
+                message: lookupFailureMessage(reason: decoded.reason)
+            )
+        }
+
+        return PastQuestionLookupResponse(
+            status: .matched,
+            match: match,
+            candidates: [match] + decoded.candidates,
+            message: nil
+        )
+    }
+
+    private func lookupViaSupabaseFallback(
+        _ request: PastQuestionLookupRequest,
+        configuration: PastQuestionsConfiguration
+    ) async throws -> PastQuestionLookupResponse {
+        let yearCandidates = inferredYearCandidates(year: request.year, month: request.month)
+        let queryItems = [
+            URLQueryItem(name: "select", value: selectFields),
+            URLQueryItem(name: "question_number", value: "eq.\(request.questionNumber)"),
+            URLQueryItem(name: "month", value: "eq.\(request.month)"),
+            URLQueryItem(name: "year", value: yearCandidates.count == 1 ? "eq.\(yearCandidates[0])" : "in.(\(yearCandidates.map(String.init).joined(separator: ",")))"),
+            URLQueryItem(name: "limit", value: "60"),
+            URLQueryItem(name: "order", value: "year.desc.nullslast,month.desc.nullslast")
+        ]
+
+        let rows = try await fetchRows(queryItems: queryItems, configuration: configuration)
+        let subjectFiltered = filteredLookupRows(rows, request: request)
+        let candidatePool = subjectFiltered.isEmpty ? rows : subjectFiltered
+        let requirementFiltered = candidatePool.filter { row in
+            rowSatisfiesLookupRequirements(row, request: request)
+        }
+        let filteredCandidates = requirementFiltered.isEmpty ? [] : requirementFiltered
+        let requestedVariant = normalizedRequestedVariant(for: request)
+        let exactVariantExists = requestedVariant.map { variant in
+            filteredCandidates.contains { row in normalizedVariant(for: row) == variant && !isLegacyIntegratedRow(row) }
+        } ?? false
+
+        let ranked = filteredCandidates.sorted {
+            isLookupCandidate($0, rankedAheadOf: $1, request: request, exactVariantExists: exactVariantExists)
+        }
+
+        guard let match = ranked.first else {
+            return PastQuestionLookupResponse(
+                status: .notFound,
+                match: nil,
+                candidates: Array(candidatePool.prefix(6)),
+                message: "조건에 맞는 기출 문항을 찾지 못했습니다."
+            )
+        }
+
+        return PastQuestionLookupResponse(
+            status: .matched,
+            match: match,
+            candidates: ranked,
+            message: nil
+        )
+    }
+
+    private func makeLookupAPIURL(configuration: PastQuestionsConfiguration) throws -> URL {
+        guard configuration.hasLookupAPIConfiguration,
+              let baseURL = URL(string: configuration.sanitizedAPIBaseURLString) else {
+            throw PastQuestionsError.invalidAPIBaseURL
+        }
+
+        if baseURL.path.hasSuffix("/api") {
+            return baseURL.appending(path: "pharnode/item/lookup")
+        }
+        return baseURL.appending(path: "api/pharnode/item/lookup")
+    }
+
+    private func lookupFailureMessage(reason: String?) -> String? {
+        switch reason?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case nil, "":
+            return "조건에 맞는 기출 문항을 찾지 못했습니다."
+        case "no_match_after_requirement_filter":
+            return "이미지/공통 여부/배점 조건을 만족하는 기출 문항을 찾지 못했습니다."
+        case "no_candidates":
+            return "해당 회차와 문항 번호에 맞는 기출 후보가 없습니다."
+        case "invalid_request":
+            return "기출 조회 요청 형식이 올바르지 않습니다."
+        default:
+            return reason
+        }
     }
 
     private func fetchRows(
@@ -437,6 +602,74 @@ actor PastQuestionsService {
             return "확률과통계"
         }
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func inferredPaperSection(for row: PastQuestionRecord) -> String? {
+        if let explicit = row.paperSection?.trimmedNonEmpty {
+            return explicit
+        }
+
+        switch normalizedVariant(for: row) {
+        case "공통":
+            return "공통"
+        case "미적분", "기하", "확률과통계":
+            return "선택"
+        case "통합":
+            if (1 ... 22).contains(row.questionNumber) {
+                return "공통"
+            }
+            if (23 ... 30).contains(row.questionNumber) {
+                return "선택"
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private func inferredPoints(for row: PastQuestionRecord) -> Int? {
+        if let explicit = row.points {
+            return explicit
+        }
+
+        guard let difficulty = row.difficulty?.trimmingCharacters(in: .whitespacesAndNewlines).trimmedNonEmpty else {
+            return nil
+        }
+
+        if difficulty.contains("4점") { return 4 }
+        if difficulty.contains("3점") { return 3 }
+        if difficulty.contains("2점") { return 2 }
+        if difficulty.contains("5점") { return 5 }
+        return nil
+    }
+
+    private func rowSatisfiesLookupRequirements(
+        _ row: PastQuestionRecord,
+        request: PastQuestionLookupRequest
+    ) -> Bool {
+        if let examType = request.examType?.trimmedNonEmpty {
+            let normalizedRequestedExamType = normalizedCompact(examType)
+            let normalizedRowExamType = normalizedCompact(row.examType)
+            if normalizedRequestedExamType != normalizedRowExamType {
+                return false
+            }
+        }
+
+        if request.requireImage, !row.hasImage {
+            return false
+        }
+
+        if let requiredPaperSection = request.requirePaperSection?.trimmedNonEmpty,
+           inferredPaperSection(for: row) != requiredPaperSection {
+            return false
+        }
+
+        if let requiredPoints = request.requirePoints,
+           inferredPoints(for: row) != requiredPoints {
+            return false
+        }
+
+        return true
     }
 
     private func isLegacyIntegratedRow(_ row: PastQuestionRecord) -> Bool {

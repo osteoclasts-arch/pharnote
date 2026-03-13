@@ -415,6 +415,13 @@ final class BlankNoteEditorViewModel: ObservableObject {
         refreshUndoRedoState()
     }
 
+    func deactivateToolSelection() {
+        guard isToolSelectionActive else { return }
+        isToolSelectionActive = false
+        applyCanvasConfiguration()
+        refreshUndoRedoState()
+    }
+
     func updateSelectedColor(_ colorID: Int) {
         selectedColorID = colorID
         applyCanvasConfiguration()

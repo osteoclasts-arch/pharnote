@@ -83,7 +83,7 @@ extension NodeAnalysisWeaknessRecord {
     }
 
     nonisolated var examVariantLabel: String? {
-        question.metadata.examVariant
+        question.examVariant
     }
 
     nonisolated var unitLabel: String? {

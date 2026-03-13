@@ -1,11 +1,12 @@
 # TutorHub 기출문항 DB 연동
 
-PharNote는 TutorHub의 `public.past_questions`를 read-only source of truth로 직접 조회합니다. 로컬 DB 복제나 별도 동기화는 하지 않습니다.
+PharNote는 TutorHub의 `public.past_questions`를 read-only source of truth로 사용합니다. exact lookup은 TutorHub 백엔드 API를, text search는 Supabase read-only REST를 사용합니다. 로컬 DB 복제나 별도 동기화는 하지 않습니다.
 
 ## 설정
 
-1. TutorHub Supabase anon key와 project URL을 준비합니다.
+1. TutorHub exact lookup API base URL과 Supabase anon key / project URL을 준비합니다.
 2. 아래 이름으로 값을 관리합니다.
+   - `PAST_QUESTIONS_API_BASE_URL`
    - `PAST_QUESTIONS_SUPABASE_URL`
    - `PAST_QUESTIONS_SUPABASE_ANON_KEY`
 3. 상용 앱 빌드에서는 target build setting 또는 xcconfig로 두 값을 주입합니다.
@@ -18,14 +19,13 @@ PharNote는 TutorHub의 `public.past_questions`를 read-only source of truth로 
 ## 동작
 
 - exact lookup
-  - 입력: `subject`, `year`, `month`, `question_number`, `exam_variant`
-  - 우선순위: exact variant > `image_url` 존재 > `answer` 존재
-  - 정규화:
-    - `수학(공통)` -> `공통`
-    - `가` -> `가형`
-    - `나` -> `나형`
-    - `통합` + `1...22번` -> `공통`
+  - 경로: `POST /api/pharnode/item/lookup`
+  - 입력: `subject`, `year`, `month`, `questionNumber`, `examVariant`, optional `requireImage`, `requirePaperSection`, `requirePoints`
+  - 기본 앱 동작: `requireImage = true`
+  - 공통형 요청은 `requirePaperSection = 공통`을 같이 보냅니다.
+  - 응답은 정규화된 `examVariant`, `paperSection`, `points`, `hasImage`, `imageUrl`을 포함합니다.
 - search
+  - 경로: Supabase `rest/v1/past_questions`
   - 대상: `content`, `answer`, `solution`, `metadata.keywords`, `metadata.unit`
   - 결과: `topK` 기준으로 snippet과 함께 반환
 - 이미지

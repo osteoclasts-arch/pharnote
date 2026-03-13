@@ -45,9 +45,15 @@ struct PastQuestionsDebugView: View {
 
     private var connectionSection: some View {
         Section("연결 설정") {
-            LabeledContent("상태", value: viewModel.isConfigured ? "준비됨" : "미설정")
+            LabeledContent("Exact lookup", value: viewModel.isLookupConfigured ? "준비됨" : "미설정")
+            LabeledContent("Search", value: viewModel.isSearchConfigured ? "준비됨" : "미설정")
             LabeledContent("소스", value: viewModel.configurationSourceLabel)
             LabeledContent("현재 키", value: viewModel.maskedAnonKey)
+
+            TextField("PAST_QUESTIONS_API_BASE_URL", text: $viewModel.apiBaseURLString)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
 
             TextField("PAST_QUESTIONS_SUPABASE_URL", text: $viewModel.baseURLString)
                 .textInputAutocapitalization(.never)
@@ -70,12 +76,18 @@ struct PastQuestionsDebugView: View {
                 .buttonStyle(.borderedProminent)
             }
 
-            Text("iOS 앱은 `.env`를 자동 로드하지 않습니다. Xcode Run Scheme 환경변수나 이 화면의 저장값을 사용합니다.")
+            Text("Exact lookup은 TutorHub API base URL을, search는 Supabase URL + anon key를 사용합니다. iOS 앱은 `.env`를 자동 로드하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            if !viewModel.isConfigured {
-                Text("연결 설정을 먼저 저장해야 exact lookup과 search 버튼이 활성화됩니다.")
+            if !viewModel.isLookupConfigured {
+                Text("TutorHub API base URL을 저장해야 exact lookup 버튼이 활성화됩니다.")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+
+            if !viewModel.isSearchConfigured {
+                Text("추천 검색까지 쓰려면 Supabase URL과 anon key도 함께 저장해야 합니다.")
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
@@ -95,7 +107,11 @@ struct PastQuestionsDebugView: View {
                     .keyboardType(.numberPad)
             }
 
+            TextField("exam_type (예: 9월 모의평가)", text: $viewModel.lookupExamType)
             TextField("exam_variant (예: 공통, 미적분, 기하, 가형)", text: $viewModel.lookupExamVariant)
+            Toggle("image_url 필수", isOn: $viewModel.lookupRequireImage)
+            TextField("require_points (예: 4)", text: $viewModel.lookupRequirePointsText)
+                .keyboardType(.numberPad)
 
             HStack {
                 Button("2026 9월 22 프리셋") {
@@ -114,7 +130,7 @@ struct PastQuestionsDebugView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isRunningLookup || !viewModel.isConfigured)
+                .disabled(viewModel.isRunningLookup || !viewModel.isLookupConfigured)
             }
         }
     }
@@ -176,7 +192,7 @@ struct PastQuestionsDebugView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isRunningSearch || !viewModel.isConfigured)
+            .disabled(viewModel.isRunningSearch || !viewModel.isSearchConfigured)
         }
     }
 
@@ -231,12 +247,19 @@ private struct PastQuestionResultCard: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             PastQuestionBadge(text: record.subject, tint: .blue)
-                            if let variant = record.metadata.examVariant {
+                            if let variant = record.examVariant {
                                 PastQuestionBadge(text: variant, tint: .green)
+                            }
+                            if let paperSection = record.paperSection {
+                                PastQuestionBadge(text: paperSection, tint: .mint)
+                            }
+                            if let points = record.points {
+                                PastQuestionBadge(text: "\(points)점", tint: .pink)
                             }
                             if let difficulty = record.difficulty?.trimmingCharacters(in: .whitespacesAndNewlines), !difficulty.isEmpty {
                                 PastQuestionBadge(text: difficulty, tint: .orange)
                             }
+                            PastQuestionBadge(text: record.hasImage ? "image" : "no image", tint: record.hasImage ? .teal : .gray)
                             if let score {
                                 PastQuestionBadge(text: "score \(score)", tint: .purple)
                             }

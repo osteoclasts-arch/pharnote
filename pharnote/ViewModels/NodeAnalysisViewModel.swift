@@ -66,7 +66,11 @@ final class NodeAnalysisViewModel: ObservableObject {
     }
 
     var hasConfiguration: Bool {
-        configuration.isComplete
+        configuration.hasLookupConfiguration
+    }
+
+    var canLoadRecommendations: Bool {
+        configuration.hasSearchConfiguration
     }
 
     var selectedWeaknessRecord: NodeAnalysisWeaknessRecord? {
@@ -187,8 +191,12 @@ final class NodeAnalysisViewModel: ObservableObject {
                     subject: lookupSubject.title,
                     year: year,
                     month: month,
+                    examType: nil,
                     questionNumber: questionNumber,
-                    examVariant: lookupVariant.requestValue
+                    examVariant: lookupVariant.requestValue,
+                    requireImage: true,
+                    requirePaperSection: lookupVariant == .common ? "공통" : nil,
+                    requirePoints: nil
                 ),
                 configuration: configuration
             )
@@ -326,6 +334,12 @@ final class NodeAnalysisViewModel: ObservableObject {
     }
 
     func refreshRecommendations() async {
+        guard canLoadRecommendations else {
+            recommendationHits = []
+            recommendationMessage = PastQuestionsError.missingSearchConfiguration.localizedDescription
+            return
+        }
+
         guard let weakness = selectedWeaknessRecord else {
             recommendationHits = []
             recommendationMessage = "먼저 검색 탭에서 기출을 풀고 약점을 저장하세요."
@@ -391,7 +405,7 @@ final class NodeAnalysisViewModel: ObservableObject {
         lookupYearText = question.year.map(String.init) ?? ""
         lookupMonthText = question.month.map(String.init) ?? ""
         lookupQuestionNumberText = String(question.questionNumber)
-        lookupVariant = mappedVariantOption(from: question.metadata.examVariant)
+        lookupVariant = mappedVariantOption(from: question.examVariant)
         lookupResponse = PastQuestionLookupResponse(
             status: .matched,
             match: question,

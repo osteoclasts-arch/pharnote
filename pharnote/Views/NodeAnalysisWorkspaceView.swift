@@ -93,7 +93,7 @@ struct NodeAnalysisWorkspaceView: View {
             if !viewModel.hasConfiguration {
                 NodeAnalysisInfoCard(
                     title: "기출 검색 준비 중",
-                    detail: "앱의 기출 DB 설정이 아직 반영되지 않았습니다. 제품 빌드에서는 번들 설정으로 자동 연결되고, DEBUG 빌드에서는 내부 기출 DB 패널에서만 수동 설정할 수 있습니다.",
+                    detail: "정확한 기출 조회에는 TutorHub API base URL이 필요합니다. 제품 빌드에서는 번들 설정으로 자동 연결되고, DEBUG 빌드에서는 내부 기출 DB 패널에서만 수동 설정할 수 있습니다.",
                     accent: PharTheme.ColorToken.accentPeach
                 )
             }
@@ -200,7 +200,7 @@ struct NodeAnalysisWorkspaceView: View {
                                 }
                             }
                             .buttonStyle(PharSoftButtonStyle())
-                            .disabled(viewModel.isLoadingRecommendations)
+                            .disabled(viewModel.isLoadingRecommendations || !viewModel.canLoadRecommendations)
                         }
 
                         if let recommendationMessage = viewModel.recommendationMessage {
@@ -300,7 +300,7 @@ struct NodeAnalysisWorkspaceView: View {
 
                     Spacer(minLength: 0)
 
-                    if let variant = question.metadata.examVariant {
+                    if let variant = question.examVariant {
                         PharTagPill(
                             text: variant,
                             tint: PharTheme.ColorToken.accentButter.opacity(0.22),
@@ -341,6 +341,12 @@ struct NodeAnalysisWorkspaceView: View {
                     .foregroundStyle(PharTheme.ColorToken.inkSecondary)
 
                 HStack(spacing: PharTheme.Spacing.xSmall) {
+                    if let paperSection = question.paperSection {
+                        PharTagPill(text: paperSection, tint: PharTheme.ColorToken.accentBlue.opacity(0.16))
+                    }
+                    if let points = question.points {
+                        PharTagPill(text: "\(points)점", tint: PharTheme.ColorToken.accentPeach.opacity(0.18))
+                    }
                     if let unit = question.metadata.unit {
                         PharTagPill(text: unit, tint: PharTheme.ColorToken.accentMint.opacity(0.24))
                     }

@@ -115,6 +115,12 @@ struct PDFDocumentEditorView: View {
         }
         .onChange(of: viewModel.currentPageIndex) { _, _ in
             animatePageTransition()
+            workspaceController.clearAttachmentSelection()
+        }
+        .onChange(of: viewModel.isCanvasInputEnabled) { _, isEnabled in
+            if isEnabled {
+                workspaceController.clearAttachmentSelection()
+            }
         }
         .sheet(isPresented: $isShowingAnalyzeSheet) {
             PDFAnalyzePreviewSheet(viewModel: viewModel)
@@ -136,6 +142,7 @@ struct PDFDocumentEditorView: View {
         .sheet(isPresented: $isShowingPhotoPicker) {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
+                viewModel.deactivateToolSelection()
                 workspaceController.importImageData(data, suggestedFileName: fileName)
             } onCancel: {
                 isShowingPhotoPicker = false
@@ -199,7 +206,7 @@ struct PDFDocumentEditorView: View {
                 }
                 .padding(PharTheme.Spacing.medium)
 
-            PDFKitView(viewModel: viewModel)
+            PDFKitView(viewModel: viewModel, workspaceController: workspaceController)
                 .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
                 .padding(PharTheme.Spacing.medium)
 
@@ -242,10 +249,7 @@ struct PDFDocumentEditorView: View {
             VStack {
                 Spacer()
                 HStack {
-                    DocumentWorkspaceCanvasAttachmentOverlayView(controller: workspaceController)
-                        .allowsHitTesting(false)
-
-                    Spacer()
+                    Spacer(minLength: 0)
                     WritingShareFAB {
                         isShowingShareSheet = true
                     }
@@ -1535,6 +1539,7 @@ struct PDFDocumentEditorView: View {
     }
 
     private func handlePasteImageAction() {
+        viewModel.deactivateToolSelection()
         workspaceController.importImageFromPasteboard()
     }
 }
