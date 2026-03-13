@@ -45,6 +45,9 @@ final class PastQuestionsConfigurationStore: ObservableObject {
     static let infoURLKey = "PAST_QUESTIONS_SUPABASE_URL"
     static let infoAnonKey = "PAST_QUESTIONS_SUPABASE_ANON_KEY"
     static let infoAPIBaseURLKey = "PAST_QUESTIONS_API_BASE_URL"
+    private static let defaultSupabaseURLString = "https://djxxqvglkqqpkmbudksr.supabase.co"
+    private static let defaultSupabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqeHhxdmdsa3FxcGttYnVka3NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1ODI1MTUsImV4cCI6MjA4MTE1ODUxNX0.2nm49QCawrtpyRsLhybCd3L0DwUs5XGSeBo9Fj9S51M"
+    private static let defaultAPIBaseURLString = "https://tutorgpt.site"
     private static let storedURLUserDefaultsKey = "past_questions.supabase_url"
     private static let storedAnonUserDefaultsKey = "past_questions.supabase_anon_key"
     private static let storedAPIBaseURLUserDefaultsKey = "past_questions.api_base_url"
@@ -76,6 +79,9 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         let envURL = environment[Self.envURLKey]?.trimmedNonEmpty
         let envAnonKey = environment[Self.envAnonKey]?.trimmedNonEmpty
         let envAPIBaseURL = environment[Self.envAPIBaseURLKey]?.trimmedNonEmpty
+        let storedURL = userDefaults.string(forKey: Self.storedURLUserDefaultsKey)?.trimmedNonEmpty
+        let storedAnonKey = userDefaults.string(forKey: Self.storedAnonUserDefaultsKey)?.trimmedNonEmpty
+        let storedAPIBaseURL = userDefaults.string(forKey: Self.storedAPIBaseURLUserDefaultsKey)?.trimmedNonEmpty
         if envURL != nil || envAnonKey != nil || envAPIBaseURL != nil {
             return "환경변수"
         }
@@ -85,8 +91,11 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         if bundleURL != nil || bundleAnonKey != nil || bundleAPIBaseURL != nil {
             return "앱 번들"
         }
-        if configuration.hasLookupConfiguration || configuration.hasSearchConfiguration {
+        if storedURL != nil || storedAnonKey != nil || storedAPIBaseURL != nil {
             return "앱 저장값"
+        }
+        if configuration.hasLookupConfiguration {
+            return "앱 기본값"
         }
         return "미설정"
     }
@@ -163,9 +172,9 @@ final class PastQuestionsConfigurationStore: ObservableObject {
         let storedAPIBaseURL = userDefaults.string(forKey: storedAPIBaseURLUserDefaultsKey)?.trimmedNonEmpty
 
         return PastQuestionsConfiguration(
-            baseURLString: envURL ?? bundleURL ?? storedURL ?? "",
-            anonKey: envAnonKey ?? bundleAnonKey ?? storedAnonKey ?? "",
-            apiBaseURLString: envAPIBaseURL ?? bundleAPIBaseURL ?? storedAPIBaseURL ?? ""
+            baseURLString: envURL ?? bundleURL ?? storedURL ?? defaultSupabaseURLString,
+            anonKey: envAnonKey ?? bundleAnonKey ?? storedAnonKey ?? defaultSupabaseAnonKey,
+            apiBaseURLString: envAPIBaseURL ?? bundleAPIBaseURL ?? storedAPIBaseURL ?? defaultAPIBaseURLString
         )
     }
 
@@ -259,7 +268,13 @@ actor PastQuestionsService {
 
         if configuration.hasLookupAPIConfiguration {
             do {
-                return try await lookupViaTutorHubAPI(request, configuration: configuration)
+                let apiResponse = try await lookupViaTutorHubAPI(request, configuration: configuration)
+                guard apiResponse.match == nil, configuration.hasSearchConfiguration else {
+                    return apiResponse
+                }
+
+                let fallbackResponse = try await lookupViaSupabaseFallback(request, configuration: configuration)
+                return fallbackResponse.match != nil ? fallbackResponse : apiResponse
             } catch {
                 if configuration.hasSearchConfiguration {
                     return try await lookupViaSupabaseFallback(request, configuration: configuration)
