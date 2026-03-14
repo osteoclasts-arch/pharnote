@@ -667,7 +667,7 @@ final class LibraryViewModel: ObservableObject {
         if let tabIndex = openDocumentTabs.firstIndex(where: { $0.document.id == document.id }) {
             let existing = openDocumentTabs[tabIndex]
             openDocumentTabs[tabIndex] = DocumentEditorLaunchTarget(document: document, initialPageKey: existing.initialPageKey)
-            if activeDocumentTabID == document.id {
+            if activeDocumentTabID == document.id && !navigationPath.isEmpty {
                 setNavigationTarget(openDocumentTabs[tabIndex])
             }
         }
@@ -689,20 +689,42 @@ final class LibraryViewModel: ObservableObject {
 
         if let activeDocumentTabID,
            let activeTarget = openDocumentTabs.first(where: { $0.document.id == activeDocumentTabID }) {
-            setNavigationTarget(activeTarget)
+            // "홈 화면" 상태(!navigationPath.isEmpty == false)일 때 자동으로 다시 들어가는 현상을 방지합니다.
+            // 사용자가 명시적으로 탭(activeDocumentTabID)을 선택했거나, 초기 복원 과정에서만 네비게이션을 수행해야 합니다.
+            // 현재 navigationPath가 비어있다는 것은 사용자가 의도적으로 홈으로 나왔음을 의미할 수 있습니다.
+            
+            if !navigationPath.isEmpty {
+                // 이미 무언가 열려있는 상태에서 탭 전환 등으로 인한 정합성 맞추기
+                if !isAlreadyNavigated(to: activeTarget) {
+                    setNavigationTarget(activeTarget)
+                }
+            }
         } else if openDocumentTabs.isEmpty {
             activeDocumentTabID = nil
-            setNavigationTarget(nil)
+            if !navigationPath.isEmpty {
+                setNavigationTarget(nil)
+            }
         }
 
         persistWorkspaceState()
     }
 
     private func setNavigationTarget(_ target: DocumentEditorLaunchTarget?) {
-        navigationPath = NavigationPath()
+        var newPath = NavigationPath()
         if let target {
-            navigationPath.append(target)
+            newPath.append(target)
         }
+        navigationPath = newPath
+    }
+
+    private func isAlreadyNavigated(to target: DocumentEditorLaunchTarget) -> Bool {
+        // navigationPath가 비어있으면 홈 화면이므로, 어떤 문서 타겟과도 "이미 네비게이션된" 상태가 아닙니다.
+        if navigationPath.isEmpty {
+            return false
+        }
+        
+        // 현재 활성화된 탭 ID가 타겟과 일치하면 이미 화면이 떠 있는 것으로 간주합니다.
+        return activeDocumentTabID == target.document.id
     }
 
     private func restoreWorkspaceStateIfNeeded() {

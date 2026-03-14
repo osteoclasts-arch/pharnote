@@ -305,8 +305,8 @@ private enum WritingSmartShapeRecognizer {
 
         let templatePoint = originalPoints[originalPoints.count / 2]
         let targetSize = CGSize(
-            width: max(templatePoint.size.width, stroke.ink.weight),
-            height: max(templatePoint.size.height, stroke.ink.weight)
+            width: max(templatePoint.size.width, stroke.ink.inkType == .pen ? 1.0 : 2.0),
+            height: max(templatePoint.size.height, stroke.ink.inkType == .pen ? 1.0 : 2.0)
         )
         let targetOpacity = templatePoint.opacity <= 0.01 ? 1.0 : templatePoint.opacity
         let targetForce = max(templatePoint.force, 1.0)
@@ -420,13 +420,13 @@ private enum WritingSmartShapeRecognizer {
     }
 }
 
-private extension CGPoint {
+extension CGPoint {
     func distance(to other: CGPoint) -> CGFloat {
         hypot(other.x - x, other.y - y)
     }
 }
 
-private extension CGRect {
+extension CGRect {
     var maxDimension: CGFloat {
         max(width, height)
     }

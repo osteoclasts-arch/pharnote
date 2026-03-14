@@ -33,3 +33,7 @@ When the user assigns a task in this workspace, follow this protocol:
 2. **Micro-Task Output:** Output code in clear, modular blocks. If it's a DB task, provide the exact migration/schema code. If it's UI, provide the View and ViewModel separately.
 3. **Edge-Case Defense:** Always implement error handling for missing data (e.g., "What if the user skips the confidence score?", "What if the AI fails to extract a node?").
 4. **Automation Mindset:** If a task looks repetitive (e.g., mapping 350 nodes), explicitly suggest a script or automation tool to solve it instead of manual labor.
+
+## 6. LANGUAGE RULES
+- **Rule KO-1:** 모든 계획 문서(`implementation_plan.md`, `task.md`, `walkthrough.md`, 분석 문서 등)는 반드시 **한국어**로 작성한다. 사용자(백준식)는 한국인이므로 모든 계획 내용은 한국어로 이해할 수 있어야 한다.
+- **Rule KO-2:** 코드, 변수명, 기술적 식별자는 영문 유지. 계획의 설명과 내러티브만 한국어로 작성한다.

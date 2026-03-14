@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import PencilKit
+import SwiftUI
 import UIKit
 
 @MainActor
@@ -481,10 +482,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
             let ink = PKInk(.pen, color: color)
             let center = CGPoint(x: bounds.midX, y: bounds.midY)
             let path = PKStrokePath(controlPoints: [
-                PKStrokePoint(location: center, timeOffset: 0, size: CGSize(width: size, height: size), opacity: 1, force: 1, azimuth: 0, altitude: .pi/2)
+                PKStrokePoint(location: center, timeOffset: 0.0, size: CGSize(width: size, height: size), opacity: 1.0, force: 1.0, azimuth: 0.0, altitude: .pi/2)
             ], creationDate: Date())
             let stroke = PKStroke(ink: ink, path: path)
-            // Ideally we'd mask it, but PKStroke Mask is not public in a way we can readily initialize without an existing stroke mask.
             return stroke
         }
         
@@ -498,10 +498,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
             guard let first = points.first, let last = points.last, first.distance(to: last) < 50 else { return false }
             
             // Check bounding box first
-            let minX = points.map(\.x).min() ?? 0
-            let maxX = points.map(\.x).max() ?? 0
-            let minY = points.map(\.y).min() ?? 0
-            let maxY = points.map(\.y).max() ?? 0
+            let minX = points.map { $0.x }.min() ?? 0
+            let maxX = points.map { $0.x }.max() ?? 0
+            let minY = points.map { $0.y }.min() ?? 0
+            let maxY = points.map { $0.y }.max() ?? 0
             let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
             
             if !bounds.contains(point) { return false }
@@ -719,7 +719,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             return PKEraserTool(.vector)
         case .tape:
             // Tape tool uses a specific semi-opaque yellow by default, but width is adjustable
-            let tapeColor = PharTheme.ColorToken.accentButter.uiColor.withAlphaComponent(0.92)
+            let tapeColor = UIColor(PharTheme.ColorToken.accentButter).withAlphaComponent(0.92)
             return PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
         case .lasso, .paint:
             return PKLassoTool()

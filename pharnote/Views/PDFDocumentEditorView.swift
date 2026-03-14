@@ -37,7 +37,7 @@ private enum PDFWorkspaceSidebarMode: String, CaseIterable, Identifiable {
 }
 
 struct PDFDocumentEditorView: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @EnvironmentObject private var libraryViewModel: LibraryViewModel
@@ -1595,7 +1595,7 @@ struct PDFDocumentEditorView: View {
     private func navigateBackPreservingCurrentTab() {
         isManagedTransition = true
         audioController.tearDown()
-        dismiss()
+        presentationMode.wrappedValue.dismiss()
 
         Task {
             await viewModel.closeDocument()
@@ -1611,7 +1611,7 @@ struct PDFDocumentEditorView: View {
         if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == documentID }) {
             libraryViewModel.closeDocumentTab(documentID)
         } else {
-            dismiss()
+            presentationMode.wrappedValue.dismiss()
         }
 
         Task {

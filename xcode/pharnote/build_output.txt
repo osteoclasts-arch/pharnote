@@ -1,0 +1,72 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project pharnote.xcodeproj -scheme pharnote -destination "platform=iOS Simulator,name=iPad Pro 11-inch (M4)" CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO build
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = 
+    CODE_SIGNING_REQUIRED = NO
+
+2026-03-15 01:58:05.942 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/A1FA236A-8FD8-4E77-B02C-48644B5FAE67.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“A1FA236A-8FD8-4E77-B02C-48644B5FAE67.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/A1FA236A-8FD8-4E77-B02C-48644B5FAE67.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/A1FA236A-8FD8-4E77-B02C-48644B5FAE67.xcactivitylog, NSUnderlyingError=0x72b486b80 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.943 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/DEDC1602-4DE4-4A35-9215-4C7EC21F6C85.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“DEDC1602-4DE4-4A35-9215-4C7EC21F6C85.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/DEDC1602-4DE4-4A35-9215-4C7EC21F6C85.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/DEDC1602-4DE4-4A35-9215-4C7EC21F6C85.xcactivitylog, NSUnderlyingError=0x72b487030 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.943 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/B07DBE11-960E-4CBA-9FD1-FCF01F9A13DD.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“B07DBE11-960E-4CBA-9FD1-FCF01F9A13DD.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/B07DBE11-960E-4CBA-9FD1-FCF01F9A13DD.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/B07DBE11-960E-4CBA-9FD1-FCF01F9A13DD.xcactivitylog, NSUnderlyingError=0x72b4873c0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.944 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/D510A1F0-3B78-4FD4-8216-5C3AE5491E1B.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“D510A1F0-3B78-4FD4-8216-5C3AE5491E1B.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/D510A1F0-3B78-4FD4-8216-5C3AE5491E1B.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/D510A1F0-3B78-4FD4-8216-5C3AE5491E1B.xcactivitylog, NSUnderlyingError=0x72b487480 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.944 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/FB35EF55-31A6-4D0F-B8D5-19C9E2960252.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“FB35EF55-31A6-4D0F-B8D5-19C9E2960252.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/FB35EF55-31A6-4D0F-B8D5-19C9E2960252.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/FB35EF55-31A6-4D0F-B8D5-19C9E2960252.xcactivitylog, NSUnderlyingError=0x72b487720 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.945 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/297474FE-EBF1-421C-94E5-336D180344D3.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“297474FE-EBF1-421C-94E5-336D180344D3.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/297474FE-EBF1-421C-94E5-336D180344D3.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/297474FE-EBF1-421C-94E5-336D180344D3.xcactivitylog, NSUnderlyingError=0x72b487810 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.945 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/0CD2B394-1EF4-4898-8783-7099CC0D59FD.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“0CD2B394-1EF4-4898-8783-7099CC0D59FD.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/0CD2B394-1EF4-4898-8783-7099CC0D59FD.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/0CD2B394-1EF4-4898-8783-7099CC0D59FD.xcactivitylog, NSUnderlyingError=0x72b487ae0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.946 xcodebuild[9913:30754528]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/7682A61B-E6DE-4B0D-AB34-1A6C1D65EFCF.xcactivitylog: Error Domain=NSCocoaErrorDomain Code=513 "“7682A61B-E6DE-4B0D-AB34-1A6C1D65EFCF.xcactivitylog” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/7682A61B-E6DE-4B0D-AB34-1A6C1D65EFCF.xcactivitylog, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/7682A61B-E6DE-4B0D-AB34-1A6C1D65EFCF.xcactivitylog, NSUnderlyingError=0x72b487bd0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:05.946 xcodebuild[9913:30754484] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build
+2026-03-15 01:58:05.946 xcodebuild[9913:30754484] [MT] IDELogStore: Failed to open Build log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Build”." UserInfo={NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/LogStoreManifest.plist, NSUnderlyingError=0x72b485fb0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Build/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 01:58:06.003 xcodebuild[9913:30754490]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_16-35-39-+0900.xcresult: Error Domain=NSCocoaErrorDomain Code=513 "“Run-pharnote-2026.03.13_16-35-39-+0900.xcresult” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_16-35-39-+0900.xcresult, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_16-35-39-+0900.xcresult, NSUnderlyingError=0x72bba1590 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:06.003 xcodebuild[9913:30754490]  IDELogStore: Unable to remove item at path /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_18-49-35-+0900.xcresult: Error Domain=NSCocoaErrorDomain Code=513 "“Run-pharnote-2026.03.13_18-49-35-+0900.xcresult” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+    Remove
+), NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_18-49-35-+0900.xcresult, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/Run-pharnote-2026.03.13_18-49-35-+0900.xcresult, NSUnderlyingError=0x72bba0330 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+2026-03-15 01:58:06.003 xcodebuild[9913:30754484] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch
+2026-03-15 01:58:06.004 xcodebuild[9913:30754484] [MT] IDELogStore: Failed to open Launch log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Launch”." UserInfo={NSUserStringVariant=Folder, NSURL=file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/LogStoreManifest.plist, NSUnderlyingError=0x72baf0de0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/Logs/Launch/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 01:59:06.121 xcodebuild[9913:30754484] Writing error result bundle to /var/folders/nn/npvlfr5d4jlgh4f01nn4t1gc0000gn/T/ResultBundle_2026-15-03_01-59-0006.xcresult
+Failed saving result bundle for error: You don’t have permission to save the file “ResultBundle_2026-15-03_01-59-0006.xcresult” in the folder “T”.
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+		{ platform:iOS Simulator, OS:latest, name:iPad Pro 11-inch (M4) }
+
+	The requested device could not be found because no available devices matched the request.
+
+	Available destinations for the "pharnote" scheme:
+		{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00008103-000551D0113B001E, name:My Mac }
+		{ platform:iOS, arch:arm64, id:00008130-001670DA2E62001C, name:밍쪼아빠의 iPhone }
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+		{ platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+		{ platform:iOS Simulator, arch:arm64, id:F8EFCE51-30BF-4F2E-84B8-06BA4E7B0678, OS:26.2, name:iPad (A16) }
+		{ platform:iOS Simulator, arch:arm64, id:B42E0D10-49CE-44FC-9E96-2F0D797F0EB0, OS:26.2, name:iPad Air 11-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:4FD82409-3C53-4898-9902-0D1ACD2F7AE3, OS:26.2, name:iPad Air 13-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:6A8B99F9-78E0-4AEE-83AC-828EACB1AEA6, OS:26.2, name:iPad Pro 11-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:FA14DF98-D4F6-479D-BAC4-A2A234DC3CDA, OS:26.2, name:iPad Pro 13-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:5D87988B-23CE-4B3B-9AA2-F2140F604763, OS:26.2, name:iPad mini (A17 Pro) }
+		{ platform:iOS Simulator, arch:arm64, id:1EB5B72A-C1D1-439C-9FF7-5C3B388F98F8, OS:26.2, name:iPhone 16e }
+		{ platform:iOS Simulator, arch:arm64, id:2ECC2B43-DD8C-472A-9075-7222C4FD979B, OS:26.2, name:iPhone 17 }
+		{ platform:iOS Simulator, arch:arm64, id:46BEAFED-1ABC-40FC-BF12-CD9A9E5D2EBB, OS:26.2, name:iPhone 17 Pro }
+		{ platform:iOS Simulator, arch:arm64, id:B51D5653-6879-454D-BC08-17555486D907, OS:26.2, name:iPhone 17 Pro Max }
+		{ platform:iOS Simulator, arch:arm64, id:FEF0E947-ADF3-45C1-9816-94F62CB38181, OS:26.2, name:iPhone Air }

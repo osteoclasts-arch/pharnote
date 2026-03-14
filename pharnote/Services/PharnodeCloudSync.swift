@@ -497,10 +497,24 @@ final class PharnodeCloudSyncManager: ObservableObject {
                 return
             }
             let result = analysisCenter.result(for: bundle.bundleId)
-            let assets = PharnodeCloudBundleAssets(
-                previewImageBase64: try base64IfPresent(at: bundle.content.previewImageRef),
-                drawingDataBase64: try base64IfPresent(at: bundle.content.drawingRef)
-            )
+            
+            // Perform heavy asset encoding in a background task
+            let assets = try await Task.detached(priority: .background) { () -> PharnodeCloudBundleAssets in
+                let imagePath = bundle.content.previewImageRef
+                let drawingPath = bundle.content.drawingRef
+                
+                func base64IfPresent(at path: String?) throws -> String? {
+                    guard let path, FileManager.default.fileExists(atPath: path) else { return nil }
+                    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+                    return data.base64EncodedString()
+                }
+                
+                return PharnodeCloudBundleAssets(
+                    previewImageBase64: try base64IfPresent(at: imagePath),
+                    drawingDataBase64: try base64IfPresent(at: drawingPath)
+                )
+            }.value
+
             let payload = PharnodeCloudAnalysisUploadRequest(
                 bundle: bundle,
                 result: result,
@@ -530,13 +544,28 @@ final class PharnodeCloudSyncManager: ObservableObject {
                     continue
                 }
                 let result = try await analysisQueueStore.loadResult(bundleId: entry.bundleId)
+                
+                // Move asset processing to background
+                let assets = try await Task.detached(priority: .background) { () -> PharnodeCloudBundleAssets in
+                    let imagePath = bundle.content.previewImageRef
+                    let drawingPath = bundle.content.drawingRef
+                    
+                    func base64IfPresent(at path: String?) throws -> String? {
+                        guard let path, FileManager.default.fileExists(atPath: path) else { return nil }
+                        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+                        return data.base64EncodedString()
+                    }
+                    
+                    return PharnodeCloudBundleAssets(
+                        previewImageBase64: try base64IfPresent(at: imagePath),
+                        drawingDataBase64: try base64IfPresent(at: drawingPath)
+                    )
+                }.value
+
                 let payload = PharnodeCloudAnalysisUploadRequest(
                     bundle: bundle,
                     result: result,
-                    assets: PharnodeCloudBundleAssets(
-                        previewImageBase64: try base64IfPresent(at: bundle.content.previewImageRef),
-                        drawingDataBase64: try base64IfPresent(at: bundle.content.drawingRef)
-                    ),
+                    assets: assets,
                     client: makeClientContext()
                 )
                 _ = try await outboxStore.enqueuePayload(
@@ -649,11 +678,6 @@ final class PharnodeCloudSyncManager: ObservableObject {
         return "https://\(normalized)"
     }
 
-    private func base64IfPresent(at path: String?) throws -> String? {
-        guard let path, FileManager.default.fileExists(atPath: path) else { return nil }
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        return data.base64EncodedString()
-    }
 
     private func safeLoadBundle(bundleId: UUID) async throws -> AnalysisBundle? {
         do {

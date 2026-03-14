@@ -13,6 +13,7 @@
 		93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F812F5474A1007D741C /* pharnoteApp.swift */; };
 		93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */; };
 		93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F662F5474A1007D741C /* BlankNoteContent.swift */; };
+		BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */; };
 		93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */; };
 		93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F742F5474A1007D741C /* LibraryViewModel.swift */; };
 		93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6E2F5474A1007D741C /* LibraryStore.swift */; };
@@ -26,6 +27,7 @@
 		93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */; };
 		93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */; };
 		93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */; };
+		CC0001BB2F5700000000CC02 /* BlankNotePageGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */; };
 		93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */; };
 		93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */; };
 		93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F692F5474A1007D741C /* PharDocument.swift */; };
@@ -68,6 +70,7 @@
 		93FC7F632F5474A1007D741C /* PharControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharControls.swift; sourceTree = "<group>"; };
 		93FC7F642F5474A1007D741C /* PharTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharTheme.swift; sourceTree = "<group>"; };
 		93FC7F662F5474A1007D741C /* BlankNoteContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteContent.swift; sourceTree = "<group>"; };
+		BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingPenStyle.swift; sourceTree = "<group>"; };
 		93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchModels.swift; sourceTree = "<group>"; };
 		93FC7F682F5474A1007D741C /* LibraryFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolder.swift; sourceTree = "<group>"; };
 		93FC7F692F5474A1007D741C /* PharDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharDocument.swift; sourceTree = "<group>"; };
@@ -82,6 +85,7 @@
 		93FC7F742F5474A1007D741C /* LibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewModel.swift; sourceTree = "<group>"; };
 		93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFEditorViewModel.swift; sourceTree = "<group>"; };
 		93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteEditorView.swift; sourceTree = "<group>"; };
+		CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNotePageGridView.swift; sourceTree = "<group>"; };
 		93FC7F782F5474A1007D741C /* DocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorView.swift; sourceTree = "<group>"; };
 		93FC7F792F5474A1007D741C /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentEditorView.swift; sourceTree = "<group>"; };
@@ -171,6 +175,7 @@
 			children = (
 				AA0000172F56000100AA0001 /* AnalysisModels.swift */,
 				93FC7F662F5474A1007D741C /* BlankNoteContent.swift */,
+					BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */,
 				93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */,
 				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
 				AA0000572F56000100AA0001 /* NodeAnalysisModels.swift */,
@@ -226,6 +231,7 @@
 				AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
 				AA0000122F56000100AA0001 /* ContentView.swift */,
 				93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */,
+				CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */,
 				93FC7F782F5474A1007D741C /* DocumentEditorView.swift */,
 				93FC7F792F5474A1007D741C /* LibraryView.swift */,
 				AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */,
@@ -380,6 +386,7 @@
 				93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */,
 				93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */,
 				93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */,
+				BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */,
 				93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */,
 				93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */,
 				AA0000552F56000100AA0001 /* NodeAnalysisViewModel.swift in Sources */,
@@ -397,6 +404,7 @@
 				93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */,
 				93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */,
 				93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */,
+				CC0001BB2F5700000000CC02 /* BlankNotePageGridView.swift in Sources */,
 				93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */,
 				93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */,
 				93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */,

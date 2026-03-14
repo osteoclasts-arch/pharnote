@@ -1096,6 +1096,12 @@ final class PDFEditorViewModel: ObservableObject {
         switch selectedPenStyle {
         case .ballpoint:
             return PKInkingTool(.pen, color: baseColor, width: CGFloat(strokeWidth))
+        case .fountain:
+            return PKInkingTool(.pen, color: baseColor, width: CGFloat(strokeWidth))
+        case .brush:
+            return PKInkingTool(.marker, color: baseColor.withAlphaComponent(0.85), width: CGFloat(strokeWidth * 1.5))
+        case .monoline:
+            return PKInkingTool(.pen, color: baseColor, width: CGFloat(max(strokeWidth * 0.85, 1)))
         case .pencil:
             let texturedColor = baseColor.withAlphaComponent(0.88)
             let texturedWidth = CGFloat(max(strokeWidth * 1.15, 1.8))
@@ -1236,7 +1242,7 @@ final class PDFEditorViewModel: ObservableObject {
             return .pen
         case .highlighter:
             return .highlighter
-        case .eraser, .lasso:
+        case .eraser, .lasso, .paint:
             return nil
         }
     }
@@ -1281,7 +1287,7 @@ final class PDFEditorViewModel: ObservableObject {
             return "pen"
         case .highlighter:
             return "highlighter"
-        case .eraser, .lasso:
+        case .eraser, .lasso, .paint:
             return "pen"
         }
     }
