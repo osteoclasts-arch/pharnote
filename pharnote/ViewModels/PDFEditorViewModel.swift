@@ -1257,6 +1257,12 @@ final class PDFEditorViewModel: ObservableObject {
     private func applyPDFInteractionMode() {
         guard let pdfView else { return }
         let allowsNavigation = allowsPDFNavigation
+        let isMarkupModeEnabled = isCanvasInputEnabled
+
+        pdfView.isInMarkupMode = isMarkupModeEnabled
+        if isMarkupModeEnabled {
+            pdfView.clearSelection()
+        }
 
         descendantScrollViews(in: pdfView).forEach { scrollView in
             guard !(scrollView is PKCanvasView) else { return }

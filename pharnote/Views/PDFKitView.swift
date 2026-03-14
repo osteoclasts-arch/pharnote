@@ -193,6 +193,12 @@ struct PDFKitView: UIViewRepresentable {
 
         func updatePDFInteractionMode(of pdfView: PDFView) {
             let allowsNavigation = viewModel.allowsPDFNavigation
+            let isMarkupModeEnabled = viewModel.isCanvasInputEnabled
+
+            pdfView.isInMarkupMode = isMarkupModeEnabled
+            if isMarkupModeEnabled {
+                pdfView.clearSelection()
+            }
 
             descendantScrollViews(in: pdfView).forEach { scrollView in
                 guard !(scrollView is PKCanvasView) else { return }
