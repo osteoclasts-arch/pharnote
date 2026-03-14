@@ -56,6 +56,7 @@ struct PDFDocumentEditorView: View {
     @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
+    @State private var activePaletteTool: PDFEditorViewModel.AnnotationTool? = nil
 
     init(document: PharDocument, initialPageKey: String? = nil) {
         let editorViewModel = PDFEditorViewModel(
@@ -263,9 +264,6 @@ struct PDFDocumentEditorView: View {
                 if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                     chromeAnalyzeCallout
                 }
-                if viewModel.isEditingInkTool && !viewModel.isReadOnlyMode {
-                    chromeInkPalette
-                }
                 if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                     chromeSelectionBar
                 }
@@ -323,16 +321,10 @@ struct PDFDocumentEditorView: View {
 
                     toolChromeButton(.pen, icon: "pencil.tip", isEnabled: !viewModel.isReadOnlyMode)
                     toolChromeButton(.highlighter, icon: "highlighter", isEnabled: !viewModel.isReadOnlyMode)
+                    toolChromeButton(.paint, icon: "paintbrush", isEnabled: !viewModel.isReadOnlyMode)
                     toolChromeButton(.eraser, icon: "eraser", isEnabled: !viewModel.isReadOnlyMode)
                     toolChromeButton(.lasso, icon: "lasso", isEnabled: !viewModel.isReadOnlyMode)
 
-                    WritingChromeIconButton(
-                        systemName: "paintbrush",
-                        accentTint: true,
-                        isSelected: viewModel.isEditingInkTool
-                    ) {
-                        handlePaintAction()
-                    }
                     WritingChromeIconButton(systemName: "textformat", accentTint: true) {
                         isShowingTextComposer = true
                     }
@@ -563,6 +555,34 @@ struct PDFDocumentEditorView: View {
         .opacity(isEnabled ? 1 : 0.38)
     }
 
+    private var chromePaintPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                Button {
+                    viewModel.updateSelectedColor(1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(WritingChromePalette.chromeBorder)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle().fill(Color.white.opacity(0.72))
+                        )
+                        .overlay(
+                            Circle().stroke(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(minWidth: 200)
+    }
+
     private func toolChromeButton(_ tool: PDFEditorViewModel.AnnotationTool, icon: String, isEnabled: Bool = true) -> some View {
         WritingChromeIconButton(
             systemName: icon,
@@ -570,7 +590,40 @@ struct PDFDocumentEditorView: View {
             isEnabled: isEnabled
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                viewModel.selectTool(tool)
+                if viewModel.isToolSelected(tool) {
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = (activePaletteTool == tool) ? nil : tool
+                    }
+                } else {
+                    viewModel.selectTool(tool)
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = tool
+                    } else {
+                        activePaletteTool = nil
+                    }
+                }
+            }
+        }
+        .popover(
+            isPresented: Binding(
+                get: { activePaletteTool == tool },
+                set: { isOpen in
+                    if !isOpen && activePaletteTool == tool {
+                        activePaletteTool = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if tool == .paint {
+                chromePaintPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else {
+                chromeInkPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
             }
         }
     }
@@ -1540,27 +1593,30 @@ struct PDFDocumentEditorView: View {
     }
 
     private func navigateBackPreservingCurrentTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        dismiss()
+
         Task {
-            isManagedTransition = true
-            audioController.tearDown()
             await viewModel.closeDocument()
             libraryViewModel.loadDocuments()
-            dismiss()
         }
     }
 
     private func closeCurrentWorkspaceTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        
+        let documentID = viewModel.document.id
+        if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == documentID }) {
+            libraryViewModel.closeDocumentTab(documentID)
+        } else {
+            dismiss()
+        }
+
         Task {
-            isManagedTransition = true
-            audioController.tearDown()
             await viewModel.closeDocument()
             libraryViewModel.loadDocuments()
-
-            if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == viewModel.document.id }) {
-                libraryViewModel.closeDocumentTab(viewModel.document.id)
-            } else {
-                dismiss()
-            }
         }
     }
 
@@ -1584,23 +1640,6 @@ struct PDFDocumentEditorView: View {
         libraryViewModel.closeDocumentTab(documentID)
     }
 
-    private func handlePaintAction() {
-        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            guard let activeTool = viewModel.activeTool else {
-                viewModel.selectTool(.pen)
-                return
-            }
-
-            switch activeTool {
-            case .pen:
-                viewModel.selectTool(.highlighter)
-            case .highlighter:
-                viewModel.selectTool(.pen)
-            case .eraser, .lasso:
-                viewModel.selectTool(.pen)
-            }
-        }
-    }
 
     private func handlePasteImageAction() {
         viewModel.deactivateToolSelection()

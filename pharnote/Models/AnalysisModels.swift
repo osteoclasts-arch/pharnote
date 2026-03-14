@@ -197,6 +197,8 @@ nonisolated struct AnalysisReviewStepResponse: Codable, Hashable, Sendable, Iden
     var stepId: String
     var status: AnalysisReviewStepStatus
     var selectedOptionId: String?
+    var linkedStrokeId: String?
+    var calculatedDelayMs: Int?
 
     var id: String { stepId }
 }
@@ -1015,6 +1017,8 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
     var firstApproachID: String?
     var stepStatuses: [String: AnalysisReviewStepStatus]
     var stepOptionSelections: [String: String]
+    var stepLinkedStrokeIds: [String: String]
+    var stepCalculatedDelays: [String: Int]
     var primaryStuckPointID: String?
     var freeMemo: String
 
@@ -1034,6 +1038,8 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
             uniqueKeysWithValues: promptSet.stepDefinitions.map { ($0.id, .notTried) }
         )
         self.stepOptionSelections = [:]
+        self.stepLinkedStrokeIds = [:]
+        self.stepCalculatedDelays = [:]
         self.primaryStuckPointID = nil
         self.freeMemo = ""
     }
@@ -1057,6 +1063,8 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
         stepStatuses[stepId] = status
         if status == .notTried {
             stepOptionSelections.removeValue(forKey: stepId)
+            stepLinkedStrokeIds.removeValue(forKey: stepId)
+            stepCalculatedDelays.removeValue(forKey: stepId)
             if let stepIndex {
                 clearStepSelections(startingAt: stepIndex + 1)
             }
@@ -1080,6 +1088,8 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
             stepOptionSelections[stepId] = optionID
         } else {
             stepOptionSelections.removeValue(forKey: stepId)
+            stepLinkedStrokeIds.removeValue(forKey: stepId)
+            stepCalculatedDelays.removeValue(forKey: stepId)
         }
 
         if previousOptionID != optionID, let stepIndex {
@@ -1105,7 +1115,9 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
             AnalysisReviewStepResponse(
                 stepId: step.id,
                 status: stepStatus(for: step.id),
-                selectedOptionId: selectedOptionID(for: step.id)
+                selectedOptionId: selectedOptionID(for: step.id),
+                linkedStrokeId: stepLinkedStrokeIds[step.id],
+                calculatedDelayMs: stepCalculatedDelays[step.id]
             )
         }
         let trimmedMemo = freeMemo.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1131,6 +1143,8 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
         for stepID in clearedStepIDs {
             stepStatuses[stepID] = .notTried
             stepOptionSelections.removeValue(forKey: stepID)
+            stepLinkedStrokeIds.removeValue(forKey: stepID)
+            stepCalculatedDelays.removeValue(forKey: stepID)
         }
 
         if let primaryStuckPointID,

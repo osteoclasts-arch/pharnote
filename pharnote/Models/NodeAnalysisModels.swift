@@ -293,6 +293,7 @@ nonisolated struct NodeAnalysisReviewDiagnosis: Hashable, Sendable {
     var blockedNode: String
     var why: String
     var nextAction: String
+    var delayWarning: String? = nil
 }
 
 extension NodeAnalysisWeaknessRecord {
@@ -479,12 +480,25 @@ extension NodeAnalysisWeaknessRecord {
         blockedNode: String,
         nextAction: String
     ) -> NodeAnalysisReviewDiagnosis {
-        NodeAnalysisReviewDiagnosis(
+        var delayWarning: String? = nil
+        if let maxDelay = review.reviewPath?.compactMap({ $0.calculatedDelayMs }).max() {
+            if maxDelay > 60000 {
+                let minutes = maxDelay / 60000
+                let seconds = (maxDelay % 60000) / 1000
+                delayWarning = "⚠️ 특정 단계에서 \(minutes)분 \(seconds)초 이상 정체되었습니다. 초기 발상 속도를 높이는 연습이 필요합니다."
+            } else if maxDelay > 0 {
+                let seconds = maxDelay / 1000
+                delayWarning = "✅ 인지 지연 체크됨: 최고 지연 \(seconds)초. 빠른 발상 속도입니다."
+            }
+        }
+
+        return NodeAnalysisReviewDiagnosis(
             categoryTitle: categoryTitle,
             summary: summary,
             blockedNode: blockedNode,
             why: diagnosisWhyLine,
-            nextAction: nextAction
+            nextAction: nextAction,
+            delayWarning: delayWarning
         )
     }
 

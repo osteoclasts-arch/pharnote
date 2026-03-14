@@ -18,6 +18,7 @@ final class PDFEditorViewModel: ObservableObject {
         case highlighter = "형광펜"
         case eraser = "지우개"
         case lasso = "라쏘"
+        case paint = "붓/채우기"
 
         var id: String { rawValue }
     }
@@ -531,7 +532,7 @@ final class PDFEditorViewModel: ObservableObject {
 
     var isEditingInkTool: Bool {
         guard let activeTool else { return false }
-        return activeTool == .pen || activeTool == .highlighter
+        return activeTool == .pen || activeTool == .highlighter || activeTool == .paint
     }
 
     var currentToolLabel: String {
@@ -552,7 +553,7 @@ final class PDFEditorViewModel: ObservableObject {
         selectedTool = tool
         isToolSelectionActive = true
         toolUsageCounts[tool, default: 0] += 1
-        if tool == .lasso {
+        if tool == .lasso || tool == .paint {
             lassoActionCountByPageIndex[currentPageIndex, default: 0] += 1
         }
         eventLogger.log(
@@ -736,7 +737,7 @@ final class PDFEditorViewModel: ObservableObject {
             return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth))
         case .eraser:
             return PKEraserTool(.vector)
-        case .lasso:
+        case .lasso, .paint:
             return PKLassoTool()
         }
     }
@@ -799,6 +800,85 @@ final class PDFEditorViewModel: ObservableObject {
 
     func refreshCanvasInteractionState() {
         refreshEditActionAvailability()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.refreshEditActionAvailability()
+        }
+    }
+
+    func handleCanvasTap(at point: CGPoint, pageIndex: Int) {
+        guard activeTool == .paint, let canvas = activeOverlayCanvas else { return }
+        
+        let generateFillStroke: (CGRect, UIColor) -> PKStroke = { bounds, color in
+            let size = max(bounds.width, bounds.height) * 1.5
+            let ink = PKInk(.pen, color: color)
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            let path = PKStrokePath(controlPoints: [
+                PKStrokePoint(location: center, timeOffset: 0, size: CGSize(width: size, height: size), opacity: 1, force: 1, azimuth: 0, altitude: .pi/2)
+            ], creationDate: Date())
+            let stroke = PKStroke(ink: ink, path: path)
+            return stroke
+        }
+        
+        let drawing = overlayDrawingCache[pageIndex] ?? canvas.drawing
+        let fillColor = uiColorForColorID(selectedColorID)
+        
+        let hitStrokeIndex = drawing.strokes.lastIndex { stroke in
+            let points = stroke.path.map { $0.location }
+            guard points.count >= 4 else { return false }
+            guard let first = points.first, let last = points.last, first.distance(to: last) < 50 else { return false }
+            
+            let minX = points.map(\.x).min() ?? 0
+            let maxX = points.map(\.x).max() ?? 0
+            let minY = points.map(\.y).min() ?? 0
+            let maxY = points.map(\.y).max() ?? 0
+            let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            if !bounds.contains(point) { return false }
+            
+            var contains = false
+            var j = points.count - 1
+            for i in 0..<points.count {
+                if (points[i].y < point.y && points[j].y >= point.y) || (points[j].y < point.y && points[i].y >= point.y) {
+                    if points[i].x + (point.y - points[i].y) / (points[j].y - points[i].y) * (points[j].x - points[i].x) < point.x {
+                        contains.toggle()
+                    }
+                }
+                j = i
+            }
+            return contains
+        }
+        
+        var updatedStrokes = drawing.strokes
+        let isShapeFill = hitStrokeIndex != nil
+        
+        if let index = hitStrokeIndex {
+            let hitStroke = updatedStrokes[index]
+            let points = hitStroke.path.map(\.location)
+            let minX = points.map(\.x).min() ?? 0
+            let maxX = points.map(\.x).max() ?? 0
+            let minY = points.map(\.y).min() ?? 0
+            let maxY = points.map(\.y).max() ?? 0
+            let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            
+            let fillStroke = generateFillStroke(bounds, fillColor)
+            updatedStrokes.insert(fillStroke, at: index)
+        } else {
+            let bounds = CGRect(x: -5000, y: -5000, width: 10000, height: 10000)
+            let fillStroke = generateFillStroke(bounds, fillColor)
+            updatedStrokes.insert(fillStroke, at: 0)
+        }
+        
+        let newDrawing = PKDrawing(strokes: updatedStrokes)
+        
+        canvas.undoManager?.registerUndo(withTarget: self, handler: { target in
+            target.overlayDrawingDidChange(pageIndex: pageIndex, drawing: drawing)
+            if target.currentPageIndex == pageIndex {
+                target.activeOverlayCanvas?.drawing = drawing
+            }
+        })
+        canvas.undoManager?.setActionName(isShapeFill ? "Shape Fill" : "Background Fill")
+        
+        canvas.drawing = newDrawing
+        overlayDrawingDidChange(pageIndex: pageIndex, drawing: newDrawing)
     }
 
     func undo() {

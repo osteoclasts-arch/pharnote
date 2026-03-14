@@ -4,6 +4,7 @@ import UIKit
 class SmartShapeCanvasView: PKCanvasView {
     var onSmartShapeApplied: ((PKCanvasView) -> Void)?
     var onInteractionDidEnd: ((PKCanvasView) -> Void)?
+    var onCanvasTapped: ((CGPoint) -> Void)?
     var isSmartShapeEnabled: Bool = true
 
     private var trackedTouchID: ObjectIdentifier?
@@ -42,11 +43,18 @@ class SmartShapeCanvasView: PKCanvasView {
         super.touchesEnded(touches, with: event)
         notifyInteractionDidEnd()
         guard trackedTouch(in: touches) != nil else { return }
+        
+        if accumulatedMovement <= stillnessTolerance {
+            if let tapPoint = lastTrackedPoint {
+                onCanvasTapped?(tapPoint)
+            }
+        }
+        
         let shouldApplySmartShape = didTriggerHold && accumulatedMovement >= movementStartThreshold
         resetTouchTracking()
 
         guard shouldApplySmartShape else { return }
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.applySmartShapeIfNeeded()
         }
     }
@@ -60,7 +68,7 @@ class SmartShapeCanvasView: PKCanvasView {
     }
 
     private func beginTrackingIfPossible(with touches: Set<UITouch>) {
-        guard isSmartShapeEnabled, tool is PKInkingTool else {
+        guard isSmartShapeEnabled || onCanvasTapped != nil else {
             resetTouchTracking()
             return
         }
@@ -292,16 +300,24 @@ private enum WritingSmartShapeRecognizer {
     }
 
     private static func makeStroke(from stroke: PKStroke, shapePoints: [CGPoint]) -> PKStroke? {
-        guard let templatePoint = Array(stroke.path).first, shapePoints.count >= 2 else { return nil }
+        let originalPoints = Array(stroke.path)
+        guard !originalPoints.isEmpty, shapePoints.count >= 2 else { return nil }
 
-        let totalSegments = max(shapePoints.count - 1, 1)
+        let templatePoint = originalPoints[originalPoints.count / 2]
+        let targetSize = CGSize(
+            width: max(templatePoint.size.width, stroke.ink.weight),
+            height: max(templatePoint.size.height, stroke.ink.weight)
+        )
+        let targetOpacity = templatePoint.opacity <= 0.01 ? 1.0 : templatePoint.opacity
+        let targetForce = max(templatePoint.force, 1.0)
+
         let controlPoints = shapePoints.enumerated().map { index, point in
             PKStrokePoint(
                 location: point,
-                timeOffset: Double(index) / Double(totalSegments),
-                size: templatePoint.size,
-                opacity: templatePoint.opacity,
-                force: templatePoint.force,
+                timeOffset: Double(index) * 0.02,
+                size: targetSize,
+                opacity: targetOpacity,
+                force: targetForce,
                 azimuth: templatePoint.azimuth,
                 altitude: templatePoint.altitude
             )

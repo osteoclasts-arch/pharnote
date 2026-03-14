@@ -26,6 +26,9 @@ struct PencilCanvasView: UIViewRepresentable {
         canvasView.onInteractionDidEnd = { [weak viewModel] _ in
             viewModel?.refreshCanvasInteractionState()
         }
+        canvasView.onCanvasTapped = { [weak viewModel] point in
+            viewModel?.handleCanvasTap(at: point)
+        }
 
         context.coordinator.setCanvasView(canvasView)
         viewModel.attachCanvasView(canvasView)

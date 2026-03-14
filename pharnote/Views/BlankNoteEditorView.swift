@@ -18,6 +18,8 @@ struct BlankNoteEditorView: View {
     @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
+    @State private var activePaletteTool: BlankNoteEditorViewModel.AnnotationTool? = nil
+    @State private var isShowingPageGrid = false
 
     init(document: PharDocument, initialPageKey: String? = nil) {
         let editorViewModel = BlankNoteEditorViewModel(
@@ -97,6 +99,9 @@ struct BlankNoteEditorView: View {
         }
         .sheet(isPresented: $isShowingShareSheet) {
             WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
+        .fullScreenCover(isPresented: $isShowingPageGrid) {
+            BlankNotePageGridView(viewModel: viewModel)
         }
         .sheet(isPresented: $isShowingTextComposer) {
             WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
@@ -215,9 +220,6 @@ struct BlankNoteEditorView: View {
                     if viewModel.isToolSelected(.lasso) {
                         chromeAnalyzeCallout
                     }
-                    if viewModel.isEditingInkTool {
-                        chromeInkPalette
-                    }
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 28)
@@ -252,9 +254,28 @@ struct BlankNoteEditorView: View {
                 imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
             }
 
+            if viewModel.isBindingEvidence {
+                Color.black.opacity(0.4)
+                    .allowsHitTesting(false)
+            }
+
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+
+            if viewModel.isBindingEvidence {
+                VStack {
+                    Text("해당 사고를 적은 수식을 탭하거나 동그라미 치세요")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.75), in: Capsule())
+                        .padding(.top, 24)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+            }
 
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
@@ -279,16 +300,10 @@ struct BlankNoteEditorView: View {
 
                     toolChromeButton(.pen, icon: "pencil.tip")
                     toolChromeButton(.highlighter, icon: "highlighter")
+                    toolChromeButton(.paint, icon: "paintbrush")
                     toolChromeButton(.eraser, icon: "eraser")
                     toolChromeButton(.lasso, icon: "lasso")
-
-                    WritingChromeIconButton(
-                        systemName: "paintbrush",
-                        accentTint: true,
-                        isSelected: viewModel.isEditingInkTool
-                    ) {
-                        handlePaintAction()
-                    }
+                    toolChromeButton(.tape, icon: "tape")
                     WritingChromeIconButton(systemName: "textformat", accentTint: true) {
                         isShowingTextComposer = true
                     }
@@ -310,12 +325,9 @@ struct BlankNoteEditorView: View {
                     }
                     WritingChromeIconButton(
                         systemName: "square.grid.2x2",
-                        accentTint: true,
-                        isSelected: isBottomPanelExpanded
+                        accentTint: true
                     ) {
-                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                            isBottomPanelExpanded.toggle()
-                        }
+                        isShowingPageGrid = true
                     }
 
                     if viewModel.isToolSelected(.lasso) {
@@ -438,21 +450,44 @@ struct BlankNoteEditorView: View {
                     colorSwatchButton(0)
                     colorSwatchButton(4)
 
-                    Button {
-                        viewModel.updateSelectedColor(1)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(WritingChromePalette.chromeBorder)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.72))
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.black.opacity(0.2), lineWidth: 1)
-                            )
+                    ForEach(Array(viewModel.savedColorPresets.enumerated()), id: \.offset) { index, uiColor in
+                        WritingColorSwatchButton(
+                            color: Color(uiColor: uiColor),
+                            isSelected: viewModel.dynamicColor == uiColor && viewModel.selectedColorID == 999
+                        ) {
+                            viewModel.dynamicColor = uiColor
+                            viewModel.updateSelectedColor(999)
+                        }
+                        .onLongPressGesture {
+                            viewModel.removeColorPreset(at: index)
+                        }
+                    }
+
+                    HStack(spacing: 0) {
+                        ColorPicker("", selection: Binding(
+                            get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                            set: { newColor in
+                                viewModel.dynamicColor = UIColor(newColor)
+                                viewModel.updateSelectedColor(999)
+                            }
+                        ))
+                        .labelsHidden()
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                        )
+
+                        if viewModel.selectedColorID == 999 && viewModel.dynamicColor != nil {
+                            Button {
+                                viewModel.saveCurrentDynamicColor()
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(WritingChromePalette.accent)
+                                    .font(.system(size: 14))
+                                    .offset(x: -8, y: -8)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                 }
@@ -481,15 +516,113 @@ struct BlankNoteEditorView: View {
         }
     }
 
+    private var chromePaintPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                ColorPicker("", selection: Binding(
+                    get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                    set: { newColor in
+                        viewModel.dynamicColor = UIColor(newColor)
+                        viewModel.updateSelectedColor(999)
+                    }
+                ))
+                .labelsHidden()
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+                .overlay(
+                    Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(minWidth: 200)
+    }
+
     private func toolChromeButton(_ tool: BlankNoteEditorViewModel.AnnotationTool, icon: String) -> some View {
         WritingChromeIconButton(
             systemName: icon,
             isSelected: viewModel.isToolSelected(tool)
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                viewModel.selectTool(tool)
+                if viewModel.isToolSelected(tool) {
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = (activePaletteTool == tool) ? nil : tool
+                    }
+                } else {
+                    viewModel.selectTool(tool)
+                    if tool == .pen || tool == .highlighter || tool == .paint || tool == .tape {
+                        activePaletteTool = tool
+                    } else {
+                        activePaletteTool = nil
+                    }
+                }
             }
         }
+        .popover(
+            isPresented: Binding(
+                get: { activePaletteTool == tool },
+                set: { isOpen in
+                    if !isOpen && activePaletteTool == tool {
+                        activePaletteTool = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if tool == .paint {
+                chromePaintPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else if tool == .tape {
+                chromeTapePalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else {
+                chromeInkPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var chromeTapePalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "tape")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(WritingChromePalette.ink)
+                    
+                    Text("암기 테이프")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(WritingChromePalette.ink)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+
+                HStack(spacing: 10) {
+                    ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                        WritingStrokePresetButton(
+                            slotIndex: index,
+                            width: CGFloat(width * 2.0), // Show thicker for tape
+                            isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                        ) {
+                            viewModel.selectStrokePreset(at: index)
+                        } onLongPress: {
+                            editingStrokePresetIndex = index
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: 200)
     }
 
     private func colorSwatchButton(_ colorID: Int) -> some View {
@@ -775,27 +908,30 @@ struct BlankNoteEditorView: View {
     }
 
     private func navigateBackPreservingCurrentTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        dismiss()
+
         Task {
-            isManagedTransition = true
-            audioController.tearDown()
             await viewModel.closeDocument()
             libraryViewModel.loadDocuments()
-            dismiss()
         }
     }
 
     private func closeCurrentWorkspaceTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        
+        let documentID = viewModel.document.id
+        if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == documentID }) {
+            libraryViewModel.closeDocumentTab(documentID)
+        } else {
+            dismiss()
+        }
+
         Task {
-            isManagedTransition = true
-            audioController.tearDown()
             await viewModel.closeDocument()
             libraryViewModel.loadDocuments()
-
-            if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == viewModel.document.id }) {
-                libraryViewModel.closeDocumentTab(viewModel.document.id)
-            } else {
-                dismiss()
-            }
         }
     }
 
@@ -817,24 +953,6 @@ struct BlankNoteEditorView: View {
             return
         }
         libraryViewModel.closeDocumentTab(documentID)
-    }
-
-    private func handlePaintAction() {
-        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-            guard let activeTool = viewModel.activeTool else {
-                viewModel.selectTool(.pen)
-                return
-            }
-
-            switch activeTool {
-            case .pen:
-                viewModel.selectTool(.highlighter)
-            case .highlighter:
-                viewModel.selectTool(.pen)
-            case .eraser, .lasso:
-                viewModel.selectTool(.pen)
-            }
-        }
     }
 
     private func handlePasteImageAction() {
@@ -993,6 +1111,8 @@ private struct BlankNoteAnalyzePreviewSheet: View {
         return analysisCenter.result(for: viewModel.document.id, pageId: pageId)
     }
 
+    @State private var sheetDetent: PresentationDetent = .large
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -1033,7 +1153,16 @@ private struct BlankNoteAnalyzePreviewSheet: View {
 
                     AnalysisPostSolveReviewSection(
                         draft: $reviewDraft,
-                        isComplete: $isReviewFlowComplete
+                        isComplete: $isReviewFlowComplete,
+                        onBindEvidence: { stepId, callback in
+                            viewModel.evidenceBindingStepId = stepId
+                            viewModel.onEvidenceBound = { strokeId, delayMs in
+                                callback(strokeId, delayMs)
+                                viewModel.isBindingEvidence = false
+                                viewModel.evidenceBindingStepId = nil
+                            }
+                            viewModel.isBindingEvidence = true
+                        }
                     )
 
                     if let preview = viewModel.analysisPreview, let source = viewModel.analysisSource {
@@ -1140,7 +1269,11 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.35), .medium, .large], selection: $sheetDetent)
+        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.35)))
+        .onChange(of: viewModel.isBindingEvidence) { isBinding in
+            sheetDetent = isBinding ? .fraction(0.35) : .large
+        }
     }
 
     private func bundleAssetSummary(for source: BlankNoteAnalysisSource) -> String {
@@ -1249,12 +1382,15 @@ private enum AnalysisPostSolveReviewFlowStage: Equatable {
 struct AnalysisPostSolveReviewSection: View {
     @Binding var draft: AnalysisPostSolveReviewDraft
     @Binding var isComplete: Bool
+    var onBindEvidence: ((String, @escaping (String, Int) -> Void) -> Void)? = nil
+    
     @State private var reviewStage: AnalysisPostSolveReviewFlowStage = .confidence
     @State private var answeredStepIDs: Set<String> = []
 
-    init(draft: Binding<AnalysisPostSolveReviewDraft>, isComplete: Binding<Bool>) {
+    init(draft: Binding<AnalysisPostSolveReviewDraft>, isComplete: Binding<Bool>, onBindEvidence: ((String, @escaping (String, Int) -> Void) -> Void)? = nil) {
         _draft = draft
         _isComplete = isComplete
+        self.onBindEvidence = onBindEvidence
     }
 
     var body: some View {
@@ -1448,7 +1584,14 @@ struct AnalysisPostSolveReviewSection: View {
                         ForEach(step.options) { option in
                             AnalysisReviewChoiceButton(
                                 title: option.title,
-                                isSelected: draft.selectedOptionID(for: step.id) == option.id
+                                isSelected: draft.selectedOptionID(for: step.id) == option.id,
+                                boundDelayMs: draft.stepCalculatedDelays[step.id],
+                                onBindEvidence: {
+                                    onBindEvidence?(step.id) { strokeId, delayMs in
+                                        draft.stepLinkedStrokeIds[step.id] = strokeId
+                                        draft.stepCalculatedDelays[step.id] = delayMs
+                                    }
+                                }
                             ) {
                                 draft.setSelectedOptionID(option.id, for: step.id, stepIndex: currentStepIndex)
                                 resetAnsweredSteps(afterStepIndex: currentStepIndex)
@@ -1737,28 +1880,61 @@ struct AnalysisPostSolveReviewSection: View {
 private struct AnalysisReviewChoiceButton: View {
     let title: String
     let isSelected: Bool
+    var boundDelayMs: Int? = nil
+    var onBindEvidence: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(PharTypography.bodyStrong)
-                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-                .padding(.horizontal, PharTheme.Spacing.small)
-                .padding(.vertical, PharTheme.Spacing.small)
-                .background(
-                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                        .fill(isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.14) : PharTheme.ColorToken.surfaceSecondary)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                        .stroke(
-                            isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.34) : PharTheme.ColorToken.borderSoft,
-                            lineWidth: 1
-                        )
-                )
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.xxSmall) {
+                Text(title)
+                    .font(PharTypography.bodyStrong)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    .multilineTextAlignment(.leading)
+
+                if isSelected, onBindEvidence != nil {
+                    Spacer(minLength: 8)
+                    HStack {
+                        Spacer()
+                        if let delay = boundDelayMs {
+                            let formatted = String(format: "%02d:%02d", (delay / 1000) / 60, (delay / 1000) % 60)
+                            Text("⏱️ +\(formatted)에 도출됨")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(PharTheme.ColorToken.accentBlue.opacity(0.1), in: Capsule())
+                        } else {
+                            Text("📎 내 필기에서 증거 찾기 (선택)")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.clear)
+                                .overlay(
+                                    Capsule().stroke(PharTheme.ColorToken.accentBlue.opacity(0.3), lineWidth: 1)
+                                )
+                                .onTapGesture {
+                                    onBindEvidence?()
+                                }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(.horizontal, PharTheme.Spacing.small)
+            .padding(.vertical, PharTheme.Spacing.small)
+            .background(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .fill(isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.14) : PharTheme.ColorToken.surfaceSecondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .stroke(
+                        isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.34) : PharTheme.ColorToken.borderSoft,
+                        lineWidth: 1
+                    )
+            )
         }
         .buttonStyle(.plain)
     }

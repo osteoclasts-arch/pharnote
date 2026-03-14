@@ -129,6 +129,9 @@ struct PDFKitView: UIViewRepresentable {
             canvas.onInteractionDidEnd = { [weak self] _ in
                 self?.viewModel.refreshCanvasInteractionState()
             }
+            canvas.onCanvasTapped = { [weak self] point in
+                self?.viewModel.handleCanvasTap(at: point, pageIndex: pageIndex)
+            }
             configureCanvas(canvas)
 
             let container = PDFPageOverlayContainerView(

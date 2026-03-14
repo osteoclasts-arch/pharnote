@@ -621,7 +621,11 @@ struct NodeAnalysisWorkspaceView: View {
                             ForEach(step.options) { option in
                                 NodeAnalysisChoiceButton(
                                     title: option.title,
-                                    isSelected: viewModel.reviewDraft?.selectedOptionID(for: step.id) == option.id
+                                    isSelected: viewModel.reviewDraft?.selectedOptionID(for: step.id) == option.id,
+                                    boundDelayMs: viewModel.reviewDraft?.stepCalculatedDelays[step.id],
+                                    onBindEvidence: {
+                                        viewModel.startEvidenceBinding()
+                                    }
                                 ) {
                                     viewModel.selectCurrentReviewOption(option.id)
                                 }
@@ -730,6 +734,9 @@ struct NodeAnalysisWorkspaceView: View {
             }
 
             diagnosisLine(title: "핵심 진단", body: diagnosis.summary)
+            if let delayWarning = diagnosis.delayWarning {
+                diagnosisLine(title: "특이 동향", body: delayWarning)
+            }
             diagnosisLine(title: "막힌 노드", body: diagnosis.blockedNode)
             diagnosisLine(title: "왜 그렇게 판단했는지", body: diagnosis.why)
             diagnosisLine(title: "다음에 점검할 것", body: diagnosis.nextAction)
@@ -947,6 +954,8 @@ private struct NodeAnalysisChoiceButton: View {
     let title: String
     var subtitle: String? = nil
     let isSelected: Bool
+    var boundDelayMs: Int? = nil
+    var onBindEvidence: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -962,6 +971,35 @@ private struct NodeAnalysisChoiceButton: View {
                         .font(PharTypography.caption)
                         .foregroundStyle(PharTheme.ColorToken.inkSecondary)
                         .multilineTextAlignment(.leading)
+                }
+
+                if isSelected, onBindEvidence != nil {
+                    Spacer(minLength: 8)
+                    HStack {
+                        Spacer()
+                        if let delay = boundDelayMs {
+                            let formatted = String(format: "%02d:%02d", (delay / 1000) / 60, (delay / 1000) % 60)
+                            Text("⏱️ +\(formatted)에 도출됨")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(PharTheme.ColorToken.accentBlue.opacity(0.1), in: Capsule())
+                        } else {
+                            Text("📎 내 필기에서 증거 찾기 (선택)")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.clear)
+                                .overlay(
+                                    Capsule().stroke(PharTheme.ColorToken.accentBlue.opacity(0.3), lineWidth: 1)
+                                )
+                                .onTapGesture {
+                                    onBindEvidence?()
+                                }
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)

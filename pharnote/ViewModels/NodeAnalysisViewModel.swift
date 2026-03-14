@@ -25,6 +25,7 @@ final class NodeAnalysisViewModel: ObservableObject {
 
     @Published private(set) var reviewDraft: AnalysisPostSolveReviewDraft?
     @Published private(set) var reviewStage: NodeAnalysisReviewStage?
+    @Published var isBindingEvidence: Bool = false
     @Published private(set) var activeDemoPresetID: String?
     @Published private(set) var questionSourceLabel: String?
     @Published private(set) var questionSourceMessage: String?
@@ -374,6 +375,28 @@ final class NodeAnalysisViewModel: ObservableObject {
                 draft.setStepStatus(.failed, for: step.id)
             }
         }
+    }
+
+    func startEvidenceBinding() {
+        isBindingEvidence = true
+    }
+
+    func cancelEvidenceBinding() {
+        isBindingEvidence = false
+    }
+
+    func bindEvidence(strokeId: String, timestampMs: Int) {
+        guard let step = currentReviewStepDefinition else {
+            isBindingEvidence = false
+            return
+        }
+        
+        mutateReviewDraft { draft in
+            draft.stepLinkedStrokeIds[step.id] = strokeId
+            draft.stepCalculatedDelays[step.id] = timestampMs
+        }
+        
+        isBindingEvidence = false
     }
 
     func goToPreviousReviewStage() {
