@@ -107,6 +107,8 @@ nonisolated struct AnalysisDrawingStats: Codable, Hashable, Sendable {
     var inkLengthEstimate: Double
     var eraseRatio: Double
     var highlightCoverage: Double
+    var activeWritingTime: Double?
+    var pauseTime: Double?
 }
 
 nonisolated struct AnalysisTextBlock: Codable, Hashable, Sendable, Identifiable {

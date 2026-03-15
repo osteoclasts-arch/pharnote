@@ -25,6 +25,8 @@ struct DocumentEditorView: View {
             BlankNoteEditorView(document: document, initialPageKey: initialPageKey)
         case .pdf:
             PDFDocumentEditorView(document: document, initialPageKey: initialPageKey)
+        case .lesson:
+            LessonDocumentEditorView(document: document)
         }
     }
 }

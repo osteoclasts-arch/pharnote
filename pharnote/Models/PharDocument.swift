@@ -4,6 +4,7 @@ struct PharDocument: Identifiable, Codable, Hashable {
     enum DocumentType: String, Codable, CaseIterable {
         case blankNote
         case pdf
+        case lesson
     }
 
     let id: UUID
