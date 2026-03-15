@@ -67,7 +67,7 @@ actor HandwritingIndexingPipeline {
             jobs[nextIndex].updatedAt = Date()
             try await store.saveJobs(jobs)
 
-            let documents = try LibraryStore().loadIndex()
+            let documents = try await LibraryStore().loadIndex()
             guard let document = documents.first(where: { $0.id == jobs[nextIndex].documentID }) else {
                 jobs[nextIndex].status = .failed
                 jobs[nextIndex].updatedAt = Date()

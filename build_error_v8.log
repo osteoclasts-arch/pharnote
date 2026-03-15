@@ -1,0 +1,35 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project xcode/pharnote/pharnote.xcodeproj -scheme pharnote -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=46BEAFED-1ABC-40FC-BF12-CD9A9E5D2EBB" -derivedDataPath ./.derived-ios-pharnote build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+2026-03-15 18:46:37.623 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Build
+2026-03-15 18:46:37.624 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open Build log store: Error Domain=IDEFoundationErrorDomain Code=1 "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Build/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it." UserInfo={NSLocalizedDescription=Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Build/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it.}. User info: {
+    NSLocalizedDescription = "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Build/LogStoreManifest.plist': (257) The file \U201cLogStoreManifest.plist\U201d couldn\U2019t be opened because you don\U2019t have permission to view it.";
+}.
+2026-03-15 18:46:37.697 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Localization
+2026-03-15 18:46:37.697 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open Localization log store: Error Domain=IDEFoundationErrorDomain Code=1 "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Localization/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it." UserInfo={NSLocalizedDescription=Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Localization/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it.}. User info: {
+    NSLocalizedDescription = "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Localization/LogStoreManifest.plist': (257) The file \U201cLogStoreManifest.plist\U201d couldn\U2019t be opened because you don\U2019t have permission to view it.";
+}.
+2026-03-15 18:46:37.698 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Launch
+2026-03-15 18:46:37.698 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open Launch log store: Error Domain=IDEFoundationErrorDomain Code=1 "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Launch/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it." UserInfo={NSLocalizedDescription=Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Launch/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it.}. User info: {
+    NSLocalizedDescription = "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Launch/LogStoreManifest.plist': (257) The file \U201cLogStoreManifest.plist\U201d couldn\U2019t be opened because you don\U2019t have permission to view it.";
+}.
+2026-03-15 18:46:37.703 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Package
+2026-03-15 18:46:37.703 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open Package log store: Error Domain=IDEFoundationErrorDomain Code=1 "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Package/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it." UserInfo={NSLocalizedDescription=Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Package/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it.}. User info: {
+    NSLocalizedDescription = "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Package/LogStoreManifest.plist': (257) The file \U201cLogStoreManifest.plist\U201d couldn\U2019t be opened because you don\U2019t have permission to view it.";
+}.
+2026-03-15 18:46:37.950 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Test
+2026-03-15 18:46:37.950 xcodebuild[97091:31143189] [MT] IDELogStore: Failed to open Test log store: Error Domain=IDEFoundationErrorDomain Code=1 "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Test/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it." UserInfo={NSLocalizedDescription=Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Test/LogStoreManifest.plist': (257) The file “LogStoreManifest.plist” couldn’t be opened because you don’t have permission to view it.}. User info: {
+    NSLocalizedDescription = "Unable to read log store dictionary file at '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/Logs/Test/LogStoreManifest.plist': (257) The file \U201cLogStoreManifest.plist\U201d couldn\U2019t be opened because you don\U2019t have permission to view it.";
+}.
+Build Preparation
+Couldn't create workspace arena folder '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote': Unable to write to info file '<DVTFilePath:0x7e393a5e0:'/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios-pharnote/info.plist'>'.
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project pharnote with scheme pharnote and configuration Debug
+(1 failure)

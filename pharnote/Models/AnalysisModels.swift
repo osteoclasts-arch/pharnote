@@ -216,34 +216,34 @@ nonisolated struct AnalysisPostSolveReview: Codable, Hashable, Sendable {
     var analyzedAt: Date
 }
 
-nonisolated struct AnalysisReviewOptionDefinition: Hashable, Sendable, Identifiable {
+nonisolated struct AnalysisReviewOptionDefinition: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
     var searchKeywords: [String] = []
 }
 
-nonisolated struct AnalysisReviewStepVariant: Hashable, Sendable {
+nonisolated struct AnalysisReviewStepVariant: Codable, Hashable, Sendable {
     var parentOptionIDs: [String]
     var title: String?
     var guidance: String?
     var options: [AnalysisReviewOptionDefinition]
 }
 
-nonisolated struct AnalysisReviewStepDefinition: Hashable, Sendable, Identifiable {
+nonisolated struct AnalysisReviewStepDefinition: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
     var options: [AnalysisReviewOptionDefinition]
     var variants: [AnalysisReviewStepVariant] = []
 }
 
-nonisolated struct AnalysisResolvedReviewStepDefinition: Hashable, Sendable, Identifiable {
+nonisolated struct AnalysisResolvedReviewStepDefinition: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
     var guidance: String?
     var options: [AnalysisReviewOptionDefinition]
 }
 
-nonisolated struct AnalysisPostSolveReviewPromptSet: Hashable, Sendable {
+nonisolated struct AnalysisPostSolveReviewPromptSet: Codable, Hashable, Sendable {
     var subject: AnalysisReviewSubjectType
     var firstApproachOptions: [AnalysisReviewOptionDefinition]
     var stepDefinitions: [AnalysisReviewStepDefinition]
@@ -332,7 +332,17 @@ nonisolated struct AnalysisPostSolveReviewPromptSet: Hashable, Sendable {
         promptSet(for: AnalysisReviewSubjectType(studySubject: studySubject))
     }
 
+    private static var dynamicRegistry: [String: AnalysisPostSolveReviewPromptSet] = [:]
+    
+    static func register(_ promptSet: AnalysisPostSolveReviewPromptSet, for questionId: String) {
+        dynamicRegistry[questionId] = promptSet
+    }
+
     static func promptSet(for question: PastQuestionRecord?) -> AnalysisPostSolveReviewPromptSet {
+        if let questionId = question?.id, let dynamic = dynamicRegistry[questionId] {
+            return dynamic
+        }
+
         guard let question else {
             return promptSet(for: .unknown)
         }

@@ -1,0 +1,45 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project xcode/pharnote/pharnote.xcodeproj -scheme pharnote -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=6A8B99F9-78E0-4AEE-83AC-828EACB1AEA6" -derivedDataPath ./.derived-ios build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+2026-03-15 18:52:06.357 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Build
+2026-03-15 18:52:06.360 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open Build log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Build”." UserInfo={NSURL=file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Build/LogStoreManifest.plist, NSUserStringVariant=Folder, NSUnderlyingError=0x7e7c19080 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Build/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:52:06.460 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Localization
+2026-03-15 18:52:06.460 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open Localization log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Localization”." UserInfo={NSUnderlyingError=0x7e7d672a0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Localization/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Localization/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:52:06.462 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Launch
+2026-03-15 18:52:06.462 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open Launch log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Launch”." UserInfo={NSUnderlyingError=0x7e7d674e0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Launch/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Launch/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:52:06.467 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Package
+2026-03-15 18:52:06.468 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open Package log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Package”." UserInfo={NSUserStringVariant=Folder, NSURL=file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Package/LogStoreManifest.plist, NSUnderlyingError=0x7e7d67840 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Package/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:52:06.590 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open log store at /Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Test
+2026-03-15 18:52:06.591 xcodebuild[7000:31162649] [MT] IDELogStore: Failed to open Test log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Test”." UserInfo={NSURL=file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Test/LogStoreManifest.plist, NSUnderlyingError=0x7e7dc80c0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/Logs/Test/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+Build Preparation
+Couldn't create workspace arena folder '/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios': Unable to write to info file '<DVTFilePath:0x7e9972c40:'/Users/osteoclasts_/Desktop/coding/pharnote/.derived-ios/info.plist'>'.
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project pharnote with scheme pharnote and configuration Debug
+(1 failure)

@@ -33,6 +33,11 @@ struct PharnodeCloudDashboardUploadRequest: Codable, Hashable, Sendable {
     var client: PharnodeCloudClientContext
 }
 
+struct PharnodeCloudStudyEventsUploadRequest: Codable, Hashable, Sendable {
+    var events: [StudyEventRecord]
+    var client: PharnodeCloudClientContext
+}
+
 enum PharnodeCloudSyncItemKind: String, Codable, Hashable, CaseIterable, Sendable {
     case analysisBundle = "analysis_bundle"
     case dashboardSnapshot = "dashboard_snapshot"
@@ -287,6 +292,51 @@ struct PharnodeCloudAPIClient {
             configuration: configuration,
             token: token
         )
+    }
+
+    func uploadStudyEvents(
+        _ request: PharnodeCloudStudyEventsUploadRequest,
+        configuration: PharnodeCloudConfiguration,
+        token: String
+    ) async throws -> PharnodeCloudAcceptedResponse? {
+        try await sendJSON(
+            request,
+            to: "/functions/v1/pharnote-sync-study-events",
+            configuration: configuration,
+            token: token
+        )
+    }
+
+    func fetchOntology(
+        for questionId: String,
+        configuration: PharnodeCloudConfiguration,
+        token: String
+    ) async throws -> AnalysisPostSolveReviewPromptSet {
+        guard let baseURL = URL(string: configuration.baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw URLError(.badURL)
+        }
+        var endpoint = baseURL.appending(path: "/functions/v1/pharnote-get-ontology")
+        if #available(iOS 16.0, *) {
+            endpoint.append(queryItems: [URLQueryItem(name: "question_id", value: questionId)])
+        } else {
+            var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: true)
+            components?.queryItems = [URLQueryItem(name: "question_id", value: questionId)]
+            if let url = components?.url { endpoint = url }
+        }
+        
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(AnalysisPostSolveReviewPromptSet.self, from: data)
     }
 
     private func sendJSON<T: Encodable>(
@@ -698,5 +748,53 @@ final class PharnodeCloudSyncManager: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode(PharnodeCloudConfiguration.self, from: data)) ?? .default
+    }
+}
+
+@MainActor
+final class OntologyService: ObservableObject {
+    private let apiClient: PharnodeCloudAPIClient
+    private let authManager: PharnodeSupabaseAuthManager
+    private let syncManager: PharnodeCloudSyncManager
+    
+    @Published private(set) var remotePromptSets: [String: AnalysisPostSolveReviewPromptSet] = [:]
+    
+    init(
+        apiClient: PharnodeCloudAPIClient = PharnodeCloudAPIClient(),
+        authManager: PharnodeSupabaseAuthManager,
+        syncManager: PharnodeCloudSyncManager
+    ) {
+        self.apiClient = apiClient
+        self.authManager = authManager
+        self.syncManager = syncManager
+    }
+    
+    func fetchPromptSet(for questionId: String) async -> AnalysisPostSolveReviewPromptSet? {
+        // 1. Check local cache
+        if let cached = remotePromptSets[questionId] {
+            return cached
+        }
+        
+        // 2. Fetch from remote
+        guard syncManager.configuration.isEnabled else { return nil }
+        guard let token = await authManager.validAccessToken(), !token.isEmpty else { return nil }
+        
+        do {
+            let promptSet: AnalysisPostSolveReviewPromptSet = try await apiClient.fetchOntology(
+                for: questionId,
+                configuration: syncManager.configuration,
+                token: token
+            )
+            remotePromptSets[questionId] = promptSet
+            AnalysisPostSolveReviewPromptSet.register(promptSet, for: questionId)
+            return promptSet
+        } catch {
+            print("OntologyService: Fetch failed for \(questionId) - \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    func resetCache() {
+        remotePromptSets = [:]
     }
 }

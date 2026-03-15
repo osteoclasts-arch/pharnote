@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SQLite3
+import UIKit
 
 nonisolated enum StudyEventType: String, Codable, Sendable {
     case appForegrounded = "app_foregrounded"
@@ -273,6 +274,96 @@ actor StudyEventStore {
         }
     }
 
+    func fetchPendingRecords(limit: Int) throws -> [StudyEventRecord] {
+        try openIfNeeded()
+        
+        let sql = """
+        SELECT 
+            event_id, schema_version, event_type, event_time, sequence_no,
+            learner_id, device_id, installation_id, session_id, document_id,
+            page_id, document_type, app_version, build_number, platform, payload_json
+        FROM raw_events
+        WHERE sync_state = 'pending'
+        ORDER BY event_time ASC
+        LIMIT ?;
+        """
+        
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw StudyEventStoreError.prepareFailed(message: lastErrorMessage())
+        }
+        defer { sqlite3_finalize(statement) }
+        
+        sqlite3_bind_int(statement, 1, Int32(limit))
+        
+        var records: [StudyEventRecord] = []
+        let decoder = JSONDecoder()
+        
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let eventIDRaw = columnText(at: 0, in: statement),
+                  let eventID = UUID(uuidString: eventIDRaw),
+                  let eventTypeRaw = columnText(at: 2, in: statement),
+                  let eventType = StudyEventType(rawValue: eventTypeRaw),
+                  let eventTimeStr = columnText(at: 3, in: statement),
+                  let eventTime = ISO8601DateFormatter().date(from: eventTimeStr),
+                  let learnerIDRaw = columnText(at: 5, in: statement),
+                  let learnerID = UUID(uuidString: learnerIDRaw),
+                  let deviceIDRaw = columnText(at: 6, in: statement),
+                  let deviceID = UUID(uuidString: deviceIDRaw),
+                  let installationIDRaw = columnText(at: 7, in: statement),
+                  let installationID = UUID(uuidString: installationIDRaw),
+                  let payloadJSON = columnText(at: 15, in: statement),
+                  let payloadData = payloadJSON.data(using: .utf8),
+                  let payload = try? decoder.decode(StudyEventPayload.self, from: payloadData)
+            else { continue }
+            
+            let record = StudyEventRecord(
+                eventID: eventID,
+                schemaVersion: Int(sqlite3_column_int(statement, 1)),
+                eventType: eventType,
+                eventTime: eventTime,
+                sequenceNo: Int(sqlite3_column_int64(statement, 4)),
+                learnerID: learnerID,
+                deviceID: deviceID,
+                installationID: installationID,
+                sessionID: columnText(at: 8, in: statement).flatMap { UUID(uuidString: $0) },
+                documentID: columnText(at: 9, in: statement).flatMap { UUID(uuidString: $0) },
+                pageID: columnText(at: 10, in: statement).flatMap { UUID(uuidString: $0) },
+                documentType: columnText(at: 11, in: statement).flatMap { PharDocument.DocumentType(rawValue: $0) },
+                appVersion: columnText(at: 12, in: statement) ?? "",
+                buildNumber: columnText(at: 13, in: statement) ?? "",
+                platform: columnText(at: 14, in: statement) ?? "",
+                payload: payload
+            )
+            records.append(record)
+        }
+        
+        return records
+    }
+
+    func updateSyncState(eventIDs: [UUID], newState: String) throws {
+        try openIfNeeded()
+        guard !eventIDs.isEmpty else { return }
+        
+        let placeholders = Array(repeating: "?", count: eventIDs.count).joined(separator: ", ")
+        let sql = "UPDATE raw_events SET sync_state = ? WHERE event_id IN (\(placeholders));"
+        
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw StudyEventStoreError.prepareFailed(message: lastErrorMessage())
+        }
+        defer { sqlite3_finalize(statement) }
+        
+        bindText(newState, to: 1, in: statement)
+        for (index, id) in eventIDs.enumerated() {
+            bindText(id.uuidString, to: Int32(index + 2), in: statement)
+        }
+        
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw StudyEventStoreError.insertFailed(message: lastErrorMessage())
+        }
+    }
+
     private func openIfNeeded() throws {
         guard !isConfigured else { return }
 
@@ -315,6 +406,13 @@ actor StudyEventStore {
         isConfigured = true
     }
 
+    private func columnText(at index: Int32, in statement: OpaquePointer?) -> String? {
+        guard let cString = sqlite3_column_text(statement, index) else {
+            return nil
+        }
+        return String(cString: cString)
+    }
+
     private func bindText(_ value: String, to index: Int32, in statement: OpaquePointer?) {
         sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT)
     }
@@ -354,5 +452,103 @@ enum StudyEventStoreError: LocalizedError {
         case .insertFailed(let message):
             return "Event DB insert failed: \(message)"
         }
+    }
+}
+
+@MainActor
+final class StudyEventSyncEngine: ObservableObject {
+    private let store: StudyEventStore
+    private let apiClient: PharnodeCloudAPIClient
+    private let authManager: PharnodeSupabaseAuthManager
+    private let syncManager: PharnodeCloudSyncManager
+    
+    private var cancellables: Set<AnyCancellable> = []
+    private var isSyncing = false
+    
+    init(
+        store: StudyEventStore = StudyEventStore(),
+        apiClient: PharnodeCloudAPIClient = PharnodeCloudAPIClient(),
+        authManager: PharnodeSupabaseAuthManager,
+        syncManager: PharnodeCloudSyncManager
+    ) {
+        self.store = store
+        self.apiClient = apiClient
+        self.authManager = authManager
+        self.syncManager = syncManager
+        
+        setupObservers()
+    }
+    
+    private func setupObservers() {
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { await self?.syncPendingEvents() }
+            }
+            .store(in: &cancellables)
+            
+        syncManager.$configuration
+            .map { $0.isEnabled }
+            .removeDuplicates()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                Task { await self?.syncPendingEvents() }
+            }
+            .store(in: &cancellables)
+    }
+    
+    func syncPendingEvents() async {
+        guard syncManager.configuration.isEnabled else { return }
+        guard !isSyncing else { return }
+        
+        guard let token = await authManager.validAccessToken(), !token.isEmpty else {
+            return
+        }
+        
+        isSyncing = true
+        defer { isSyncing = false }
+        
+        do {
+            let batchSize = 50
+            var hasMore = true
+            
+            while hasMore {
+                let records = try await store.fetchPendingRecords(limit: batchSize)
+                guard !records.isEmpty else {
+                    hasMore = false
+                    continue
+                }
+                
+                let request = PharnodeCloudStudyEventsUploadRequest(
+                    events: records,
+                    client: makeClientContext()
+                )
+                
+                _ = try await apiClient.uploadStudyEvents(
+                    request,
+                    configuration: syncManager.configuration,
+                    token: token
+                )
+                
+                let eventIDs = records.map { $0.eventID }
+                try await store.updateSyncState(eventIDs: eventIDs, newState: "synced")
+                
+                if records.count < batchSize {
+                    hasMore = false
+                }
+            }
+        } catch {
+            print("StudyEventSyncEngine: Sync failed - \(error.localizedDescription)")
+        }
+    }
+    
+    private func makeClientContext() -> PharnodeCloudClientContext {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        return PharnodeCloudClientContext(
+            sourceApp: "pharnote",
+            appVersion: version,
+            platform: "iPadOS",
+            locale: Locale.current.identifier,
+            timezone: TimeZone.current.identifier
+        )
     }
 }

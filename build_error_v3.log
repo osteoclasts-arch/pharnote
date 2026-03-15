@@ -1,0 +1,45 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project xcode/pharnote/pharnote.xcodeproj -scheme pharnote -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=46BEAFED-1ABC-40FC-BF12-CD9A9E5D2EBB" -derivedDataPath /tmp/pharnote_derived_data build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+2026-03-15 18:45:11.751 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open log store at /tmp/pharnote_derived_data/Logs/Build
+2026-03-15 18:45:11.757 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open Build log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Build”." UserInfo={NSUnderlyingError=0x983c08c60 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///tmp/pharnote_derived_data/Logs/Build/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///tmp/pharnote_derived_data/Logs/Build/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:45:12.267 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open log store at /tmp/pharnote_derived_data/Logs/Localization
+2026-03-15 18:45:12.268 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open Localization log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Localization”." UserInfo={NSUnderlyingError=0x984310c00 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///tmp/pharnote_derived_data/Logs/Localization/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///tmp/pharnote_derived_data/Logs/Localization/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:45:12.269 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open log store at /tmp/pharnote_derived_data/Logs/Launch
+2026-03-15 18:45:12.271 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open Launch log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Launch”." UserInfo={NSUnderlyingError=0x9843d47e0 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///tmp/pharnote_derived_data/Logs/Launch/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///tmp/pharnote_derived_data/Logs/Launch/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:45:12.281 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open log store at /tmp/pharnote_derived_data/Logs/Package
+2026-03-15 18:45:12.281 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open Package log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Package”." UserInfo={NSUnderlyingError=0x983cf0030 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSURL=file:///tmp/pharnote_derived_data/Logs/Package/LogStoreManifest.plist, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///tmp/pharnote_derived_data/Logs/Package/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+2026-03-15 18:45:12.816 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open log store at /tmp/pharnote_derived_data/Logs/Test
+2026-03-15 18:45:12.816 xcodebuild[93640:31135779] [MT] IDELogStore: Failed to open Test log store: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “LogStoreManifest.plist” in the folder “Test”." UserInfo={NSURL=file:///tmp/pharnote_derived_data/Logs/Test/LogStoreManifest.plist, NSUnderlyingError=0x984290810 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}, NSUserStringVariant=Folder}. User info: {
+    NSURL = "file:///tmp/pharnote_derived_data/Logs/Test/LogStoreManifest.plist";
+    NSUnderlyingError = "Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"";
+    NSUserStringVariant = Folder;
+}.
+Build Preparation
+Couldn't create workspace arena folder '/tmp/pharnote_derived_data': Unable to write to info file '<DVTFilePath:0x98594a760:'/tmp/pharnote_derived_data/info.plist'>'.
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project pharnote with scheme pharnote and configuration Debug
+(1 failure)

@@ -1,0 +1,15 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace xcode/pharnote/pharnote.xcodeproj/project.xcworkspace -scheme pharnote -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=46BEAFED-1ABC-40FC-BF12-CD9A9E5D2EBB" build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+Build Preparation
+Couldn't create workspace arena folder '/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg': Unable to write to info file '<DVTFilePath:0x98f97e8e0:'/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-erllfgxmohchjdcjmyvnpfxgeesg/info.plist'>'.
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building workspace pharnote with scheme pharnote and configuration Debug
+(1 failure)
