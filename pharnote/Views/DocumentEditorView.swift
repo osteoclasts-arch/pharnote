@@ -806,25 +806,48 @@ final class DocumentAudioController: NSObject, ObservableObject {
             }
         }
 
-        let session = AVAudioSession.sharedInstance()
-        switch session.recordPermission {
-        case .granted:
-            permissionState = .granted
-            return true
-        case .denied:
-            permissionState = .denied
-            return false
-        case .undetermined:
-            let granted = await withCheckedContinuation { continuation in
-                session.requestRecordPermission { isGranted in
-                    continuation.resume(returning: isGranted)
+        if #available(iOS 17.0, *) {
+            let status = AVAudioApplication.shared.recordPermission
+            switch status {
+            case .granted:
+                permissionState = .granted
+                return true
+            case .denied:
+                permissionState = .denied
+                return false
+            case .undetermined:
+                let granted = await withCheckedContinuation { continuation in
+                    AVAudioApplication.requestRecordPermission { isGranted in
+                        continuation.resume(returning: isGranted)
+                    }
                 }
+                permissionState = granted ? .granted : .denied
+                return granted
+            @unknown default:
+                permissionState = .denied
+                return false
             }
-            permissionState = granted ? .granted : .denied
-            return granted
-        @unknown default:
-            permissionState = .denied
-            return false
+        } else {
+            let session = AVAudioSession.sharedInstance()
+            switch session.recordPermission {
+            case .granted:
+                permissionState = .granted
+                return true
+            case .denied:
+                permissionState = .denied
+                return false
+            case .undetermined:
+                let granted = await withCheckedContinuation { continuation in
+                    session.requestRecordPermission { isGranted in
+                        continuation.resume(returning: isGranted)
+                    }
+                }
+                permissionState = granted ? .granted : .denied
+                return granted
+            @unknown default:
+                permissionState = .denied
+                return false
+            }
         }
     }
 
@@ -1078,7 +1101,7 @@ enum DocumentWorkspaceAttachmentKind: String, Codable, Hashable, CaseIterable {
     }
 }
 
-struct DocumentWorkspaceTextEntry: Codable, Hashable, Identifiable {
+struct DocumentWorkspaceTextEntry: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
     let pageKey: String?
     let pageLabel: String?
@@ -1194,7 +1217,7 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
     }
 }
 
-struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable {
+struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
     let kind: DocumentWorkspaceAttachmentKind
     var storedFileName: String
@@ -1227,7 +1250,7 @@ struct WritingImageEditorContext: Identifiable {
     let basePlacement: DocumentWorkspaceAttachmentPlacement?
 }
 
-struct DocumentWorkspaceIndex: Codable {
+struct DocumentWorkspaceIndex: Codable, Sendable {
     let version: Int
     var textEntries: [DocumentWorkspaceTextEntry]
     var attachments: [DocumentWorkspaceAttachmentItem]
