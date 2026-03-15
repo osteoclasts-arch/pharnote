@@ -12,7 +12,7 @@ struct PDFImportPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let controller = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.pdf],
+            forOpeningContentTypes: [.pdf, .image],
             asCopy: false
         )
         controller.delegate = context.coordinator

@@ -1,15 +1,60 @@
 import SwiftUI
+import AVKit
+import Combine
 
 struct BlankNoteEditorView: View {
+    @Environment(\.presentationMode) private var presentationMode
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var analysisCenter: AnalysisCenter
+    @EnvironmentObject private var libraryViewModel: LibraryViewModel
     @StateObject private var viewModel: BlankNoteEditorViewModel
-    @State private var isBottomPanelExpanded = true
+    @StateObject private var audioController: DocumentAudioController
+    @StateObject private var workspaceController: DocumentWorkspaceController
+    @StateObject private var lectureSync = LectureSyncService.shared
+    @State private var player = AVPlayer()
+    @State private var isBottomPanelExpanded = false
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
+    @State private var isShowingShareSheet = false
+    @State private var isShowingTextComposer = false
+    @State private var isShowingPhotoPicker = false
+    @State private var isShowingFilePicker = false
+    @State private var imageEditorContext: WritingImageEditorContext?
+    @State private var editingStrokePresetIndex: Int?
+    @State private var isManagedTransition = false
+    @State private var activePaletteTool: BlankNoteEditorViewModel.AnnotationTool? = nil
+    @State private var isShowingPageGrid = false
 
-    init(document: PharDocument) {
-        _viewModel = StateObject(wrappedValue: BlankNoteEditorViewModel(document: document))
+    init(document: PharDocument, initialPageKey: String? = nil) {
+        let editorViewModel = BlankNoteEditorViewModel(
+            document: document,
+            initialPageKey: initialPageKey
+        )
+        _viewModel = StateObject(
+            wrappedValue: editorViewModel
+        )
+        _audioController = StateObject(
+            wrappedValue: DocumentAudioController(
+                document: document,
+                anchorProvider: {
+                    DocumentAudioController.Anchor(
+                        pageKey: editorViewModel.currentPageID?.uuidString.lowercased(),
+                        pageLabel: "페이지 \(max(editorViewModel.currentPageNumber, 1))"
+                    )
+                }
+            )
+        )
+        _workspaceController = StateObject(
+            wrappedValue: DocumentWorkspaceController(
+                document: document,
+                anchorProvider: {
+                    DocumentWorkspaceController.Anchor(
+                        pageKey: editorViewModel.currentPageID?.uuidString.lowercased(),
+                        pageLabel: editorViewModel.currentPageNumber > 0 ? "페이지 \(editorViewModel.currentPageNumber)" : nil
+                    )
+                }
+            )
+        )
     }
 
     var body: some View {
@@ -24,58 +69,119 @@ struct BlankNoteEditorView: View {
         .background(PharTheme.ColorToken.appBackground.ignoresSafeArea())
         .animation(PharTheme.AnimationToken.toolbarVisibility, value: isBottomPanelExpanded)
         .animation(PharTheme.AnimationToken.pageTransition, value: viewModel.currentPageID)
-        .navigationTitle(viewModel.document.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                PharToolbarIconButton(
-                    systemName: "plus.square.on.square",
-                    accessibilityLabel: "페이지 추가"
-                ) {
-                    viewModel.addPage()
-                }
-
-                PharToolbarIconButton(
-                    systemName: "trash",
-                    accessibilityLabel: "현재 페이지 삭제",
-                    isEnabled: viewModel.canDeletePage,
-                    isDestructive: true
-                ) {
-                    viewModel.deleteCurrentPage()
-                }
-
-                PharToolbarIconButton(
-                    systemName: isBottomPanelExpanded ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset",
-                    accessibilityLabel: isBottomPanelExpanded ? "하단 패널 접기" : "하단 패널 펼치기",
-                    isSelected: isBottomPanelExpanded
-                ) {
-                    withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                        isBottomPanelExpanded.toggle()
-                    }
-                }
+        .toolbar(.hidden, for: .navigationBar)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BlankNoteInsertCapturedImage"))) { note in
+            if let image = note.object as? UIImage, let data = image.pngData() {
+                workspaceController.importImageData(data, suggestedFileName: "captured_board.png", preferredPlacement: nil)
             }
         }
         .task {
             viewModel.loadInitialContentIfNeeded()
+            audioController.loadRecordingsIfNeeded()
+            workspaceController.loadIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 viewModel.saveImmediately()
+                audioController.handleBackgroundTransition()
             }
         }
         .onDisappear {
-            viewModel.closeDocument()
+            audioController.tearDown()
+            guard !isManagedTransition else { return }
+            Task {
+                await viewModel.closeDocument()
+                libraryViewModel.loadDocuments()
+            }
         }
         .onChange(of: viewModel.currentPageID) { _, _ in
             animatePageTransition()
+            workspaceController.clearAttachmentSelection()
+        }
+        .onChange(of: viewModel.isCanvasInputEnabled) { _, isEnabled in
+            if isEnabled {
+                workspaceController.clearAttachmentSelection()
+            }
         }
         .sheet(isPresented: $isShowingAnalyzeSheet) {
             BlankNoteAnalyzePreviewSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingShareSheet) {
+            WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
+        .fullScreenCover(isPresented: $isShowingPageGrid) {
+            BlankNotePageGridView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingTextComposer) {
+            WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
+                workspaceController.addTextEntry(text)
+                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                    isBottomPanelExpanded = true
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingPhotoPicker) {
+            WritingPhotoLibraryPicker { data, fileName in
+                isShowingPhotoPicker = false
+                viewModel.deactivateToolSelection()
+                DispatchQueue.main.async {
+                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
+                    imageEditorContext = WritingImageEditorContext(
+                        draft: draft,
+                        attachmentID: nil,
+                        basePlacement: nil
+                    )
+                }
+            } onCancel: {
+                isShowingPhotoPicker = false
+            }
+        }
+        .fullScreenCover(item: $imageEditorContext) { context in
+            WritingImageInsertionEditorSheet(
+                draft: context.draft,
+                basePlacement: context.basePlacement
+            ) { data, fileName, placement in
+                if let attachmentID = context.attachmentID {
+                    workspaceController.replaceImageAttachmentData(
+                        id: attachmentID,
+                        data: data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                } else {
+                    workspaceController.importImageData(
+                        data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingFilePicker) {
+            WritingAttachmentFilePicker { url in
+                isShowingFilePicker = false
+                workspaceController.importFile(from: url)
+                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                    isBottomPanelExpanded = true
+                }
+            } onCancel: {
+                isShowingFilePicker = false
+            }
         }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .alert("오디오 오류", isPresented: isAudioErrorPresented) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(audioController.errorMessage ?? "")
+        }
+        .alert("첨부 오류", isPresented: isWorkspaceErrorPresented) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(workspaceController.errorMessage ?? "")
         }
     }
 
@@ -85,40 +191,581 @@ struct BlankNoteEditorView: View {
     }
 
     private var editorCanvas: some View {
-        ZStack {
-            PharTheme.ColorToken.canvasBackground.ignoresSafeArea()
+        GeometryReader { geometry in
+            let pageWidth = min(772, max(640, geometry.size.width - 110))
+            let pageHeight = pageWidth * 1.34
 
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                .fill(PharTheme.ColorToken.canvasBackground)
-                .overlay(alignment: .topLeading) {
-                    CanvasPaperDecor()
+            ZStack(alignment: .top) {
+                WritingChromePalette.paper.ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    HStack(spacing: 24) {
+                        if viewModel.isLectureModeEnabled {
+                            lectureArea
+                                .frame(width: geometry.size.width * 0.42)
+                                .padding(.leading, 28)
+                        }
+                        
+                        VStack(spacing: 28) {
+                            editorPage(width: pageWidth, height: pageHeight)
+
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.78))
+                                .frame(width: pageWidth, height: 170)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(Color.black.opacity(0.03), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 166)
+                    .padding(.bottom, 120)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                        .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
+
+                VStack(spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        backToHomeButton
+                        WritingDocumentChipStrip(
+                            chips: workspaceChips,
+                            onSelect: handleWorkspaceChipSelection,
+                            onClose: handleWorkspaceChipClose
+                        )
+                    }
+                    chromeToolbar
+                    if viewModel.isToolSelected(.lasso) {
+                        chromeAnalyzeCallout
+                    }
                 }
-                .padding(PharTheme.Spacing.medium)
+                .padding(.top, 18)
+                .padding(.horizontal, 28)
+
+                if viewModel.isShowingNudge, let nodeId = viewModel.nudgeNodeId {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("혹시 이 부분이 헷갈리시나요?")
+                                    .font(.subheadline)
+                                    .bold()
+                                    .foregroundStyle(WritingChromePalette.ink)
+                                Text("관련 개념 검색 없이 바로 보기: \(nodeId)")
+                                    .font(.caption)
+                                    .foregroundStyle(WritingChromePalette.ink.opacity(0.8))
+                            }
+                            Spacer()
+                            Button("보기") {
+                                withAnimation {
+                                    viewModel.isShowingNudge = false
+                                }
+                                // 노드 상세 보기 로집 연결
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(WritingChromePalette.hintFill)
+                        )
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 100)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+            }
+        }
+    }
+
+    private func editorPage(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(WritingChromePalette.canvas)
+                .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
+
+            DocumentWorkspaceAttachmentCanvasLayer(
+                controller: workspaceController,
+                pageKey: viewModel.currentPageID?.uuidString.lowercased(),
+                allowsInteraction: !viewModel.isCanvasInputEnabled
+            ) { attachmentID in
+                viewModel.deactivateToolSelection()
+                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
+            }
+
+            if viewModel.isBindingEvidence {
+                Color.black.opacity(0.4)
+                    .allowsHitTesting(false)
+            }
 
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
-                .padding(PharTheme.Spacing.medium)
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
 
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
-                .padding(PharTheme.Spacing.medium)
+            if viewModel.isBindingEvidence {
+                VStack {
+                    Text("해당 사고를 적은 수식을 탭하거나 동그라미 치세요")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.75), in: Capsule())
+                        .padding(.top, 24)
+                    Spacer()
+                }
                 .allowsHitTesting(false)
+            }
 
-            VStack(spacing: PharTheme.Spacing.medium) {
-                workspaceStatusHeader
-                    .padding(.top, PharTheme.Spacing.large)
-                    .padding(.horizontal, PharTheme.Spacing.large)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
+                .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height)
+    }
 
-                Spacer(minLength: 0)
+    private var chromeToolbar: some View {
+        WritingChromeCapsule {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    WritingChromeIconButton(systemName: "chevron.backward", accentTint: true) {
+                        handleBackAction()
+                    }
 
-                floatingToolDock
-                    .padding(.horizontal, PharTheme.Spacing.large)
-                    .padding(.bottom, isBottomPanelExpanded ? PharTheme.Spacing.small : PharTheme.Spacing.large)
+                    WritingChromeIconButton(systemName: "plus.square", accentTint: true) {
+                        viewModel.addPage()
+                    }
+
+                    WritingToolbarDivider()
+
+                    toolChromeButton(.pen, icon: "pencil.tip")
+                    toolChromeButton(.highlighter, icon: "highlighter")
+                    toolChromeButton(.paint, icon: "paintbrush")
+                    toolChromeButton(.eraser, icon: "eraser")
+                    toolChromeButton(.lasso, icon: "lasso")
+                    toolChromeButton(.tape, icon: "tape")
+                    WritingChromeIconButton(systemName: "textformat", accentTint: true) {
+                        isShowingTextComposer = true
+                    }
+                    WritingChromeIconButton(
+                        systemName: audioController.isRecording ? "stop.circle.fill" : "mic.fill",
+                        accentTint: true,
+                        isSelected: audioController.isRecording
+                    ) {
+                        audioController.toggleRecording()
+                    }
+                    WritingChromeIconButton(systemName: "photo.badge.plus", accentTint: true) {
+                        isShowingPhotoPicker = true
+                    }
+                    WritingChromeIconButton(systemName: "doc.on.clipboard", accentTint: true) {
+                        handlePasteImageAction()
+                    }
+                    WritingChromeIconButton(systemName: "paperclip", accentTint: true) {
+                        isShowingFilePicker = true
+                    }
+                    WritingChromeIconButton(
+                        systemName: "square.grid.2x2",
+                        accentTint: true
+                    ) {
+                        isShowingPageGrid = true
+                    }
+
+                    if viewModel.isToolSelected(.lasso) {
+                        WritingChromeIconButton(
+                            systemName: "waveform.path.ecg.text",
+                            accentTint: true,
+                            isSelected: true,
+                            isEnabled: viewModel.canAnalyzeCurrentSelection
+                        ) {
+                            isShowingAnalyzeSheet = true
+                        }
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: viewModel.isCurrentPageBookmarked ? "bookmark.fill" : "bookmark",
+                        isSelected: viewModel.isCurrentPageBookmarked
+                    ) {
+                        viewModel.toggleCurrentPageBookmark()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.backward", accentTint: true, isEnabled: viewModel.canUndo) {
+                        viewModel.undo()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.forward", accentTint: true, isEnabled: viewModel.canRedo) {
+                        viewModel.redo()
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: "sidebar.right",
+                        accentTint: true,
+                        isSelected: isBottomPanelExpanded
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isBottomPanelExpanded.toggle()
+                        }
+                    }
+                    
+                    WritingToolbarDivider()
+                    
+                    WritingChromeIconButton(
+                        systemName: "video.fill",
+                        accentTint: true,
+                        isSelected: viewModel.isLectureModeEnabled
+                    ) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            viewModel.isLectureModeEnabled.toggle()
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private var backToHomeButton: some View {
+        Button {
+            handleBackAction()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                Text("홈")
+            }
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(WritingChromePalette.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.94))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(WritingChromePalette.chromeBorder, lineWidth: 1.2)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("홈으로 돌아가기")
+    }
+
+    private var chromeAnalyzeCallout: some View {
+        VStack(spacing: 10) {
+            WritingAnalyzeHintBubble(text: "분석 받고 싶은 문제를 태깅하세요!")
+
+            WritingAccentActionButton(
+                title: "분석하기",
+                systemName: "waveform.path.ecg.text",
+                isEnabled: viewModel.canAnalyzeCurrentSelection
+            ) {
+                isShowingAnalyzeSheet = true
+            }
+        }
+    }
+
+    private var chromeInkPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            VStack(alignment: .leading, spacing: 10) {
+                if viewModel.isToolSelected(.pen) {
+                    HStack(spacing: 8) {
+                        ForEach(WritingPenStyle.allCases) { penStyle in
+                            WritingPenStyleButton(
+                                title: penStyle.rawValue,
+                                systemName: penStyle.systemImage,
+                                isSelected: viewModel.selectedPenStyle == penStyle
+                            ) {
+                                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                                    viewModel.selectPenStyle(penStyle)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                        WritingStrokePresetButton(
+                            slotIndex: index,
+                            width: CGFloat(width),
+                            isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                        ) {
+                            viewModel.selectStrokePreset(at: index)
+                        } onLongPress: {
+                            editingStrokePresetIndex = index
+                        }
+                    }
+
+                    WritingToolbarDivider()
+
+                    colorSwatchButton(3)
+                    colorSwatchButton(2)
+                    colorSwatchButton(0)
+                    colorSwatchButton(4)
+
+                    ForEach(Array(viewModel.savedColorPresets.enumerated()), id: \.offset) { index, uiColor in
+                        WritingColorSwatchButton(
+                            color: Color(uiColor: uiColor),
+                            isSelected: viewModel.dynamicColor == uiColor && viewModel.selectedColorID == 999
+                        ) {
+                            viewModel.dynamicColor = uiColor
+                            viewModel.updateSelectedColor(999)
+                        }
+                        .onLongPressGesture {
+                            viewModel.removeColorPreset(at: index)
+                        }
+                    }
+
+                    HStack(spacing: 0) {
+                        ColorPicker("", selection: Binding(
+                            get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                            set: { newColor in
+                                viewModel.dynamicColor = UIColor(newColor)
+                                viewModel.updateSelectedColor(999)
+                            }
+                        ))
+                        .labelsHidden()
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                        )
+
+                        if viewModel.selectedColorID == 999 && viewModel.dynamicColor != nil {
+                            Button {
+                                viewModel.saveCurrentDynamicColor()
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(WritingChromePalette.accent)
+                                    .font(.system(size: 14))
+                                    .offset(x: -8, y: -8)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: 508)
+        .popover(
+            isPresented: Binding(
+                get: { editingStrokePresetIndex != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        editingStrokePresetIndex = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if let editingStrokePresetIndex {
+                WritingStrokePresetEditorView(
+                    slotIndex: editingStrokePresetIndex,
+                    width: strokePresetBinding(for: editingStrokePresetIndex)
+                )
+                .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var chromePaintPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                ColorPicker("", selection: Binding(
+                    get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                    set: { newColor in
+                        viewModel.dynamicColor = UIColor(newColor)
+                        viewModel.updateSelectedColor(999)
+                    }
+                ))
+                .labelsHidden()
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+                .overlay(
+                    Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(minWidth: 200)
+    }
+
+    private func toolChromeButton(_ tool: BlankNoteEditorViewModel.AnnotationTool, icon: String) -> some View {
+        WritingChromeIconButton(
+            systemName: icon,
+            isSelected: viewModel.isToolSelected(tool)
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                if viewModel.isToolSelected(tool) {
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = (activePaletteTool == tool) ? nil : tool
+                    }
+                } else {
+                    viewModel.selectTool(tool)
+                    if tool == .pen || tool == .highlighter || tool == .paint || tool == .tape {
+                        activePaletteTool = tool
+                    } else {
+                        activePaletteTool = nil
+                    }
+                }
+            }
+        }
+        .popover(
+            isPresented: Binding(
+                get: { activePaletteTool == tool },
+                set: { isOpen in
+                    if !isOpen && activePaletteTool == tool {
+                        activePaletteTool = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if tool == .paint {
+                chromePaintPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else if tool == .tape {
+                chromeTapePalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else {
+                chromeInkPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var chromeTapePalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "tape")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(WritingChromePalette.ink)
+                    
+                    Text("암기 테이프")
+                        .font(PharTypography.captionStrong)
+                        .foregroundStyle(WritingChromePalette.ink)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+
+                HStack(spacing: 10) {
+                    ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                        WritingStrokePresetButton(
+                            slotIndex: index,
+                            width: CGFloat(width * 2.0), // Show thicker for tape
+                            isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                        ) {
+                            viewModel.selectStrokePreset(at: index)
+                        } onLongPress: {
+                            editingStrokePresetIndex = index
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: 200)
+    }
+
+    private func colorSwatchButton(_ colorID: Int) -> some View {
+        WritingColorSwatchButton(
+            color: Color(uiColor: viewModel.uiColorForColorID(colorID)),
+            isSelected: viewModel.selectedColorID == colorID
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.updateSelectedColor(colorID)
+            }
+        }
+    }
+
+    private var lectureArea: some View {
+        VStack(spacing: 20) {
+            VideoPlayer(player: player)
+                .frame(height: 280)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
+                .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+                    lectureSync.updateTimestamp(player.currentTime().seconds)
+                }
+
+            HStack {
+                Button(action: captureSmartLayer) {
+                    Label("스마트 레이어 캡처", systemImage: "plus.viewfinder")
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(WritingChromePalette.accent)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                
+                Spacer()
+                
+                if let nodeId = lectureSync.activeNode?.conceptNodeId {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("현재 개념")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(WritingChromePalette.ink.opacity(0.6))
+                        Text(nodeId)
+                            .font(.system(size: 14, weight: .black, design: .rounded))
+                            .foregroundStyle(WritingChromePalette.ink)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .onAppear {
+            setupPlayer()
+            startSyncCheck()
+        }
+    }
+
+    private func setupPlayer() {
+        // 실제 운영 환경에서는 document와 연결된 영상 URL을 로드
+        lectureSync.startSession(sessionId: viewModel.document.title, initialNodes: [])
+    }
+
+    private func captureSmartLayer() {
+        Task {
+            do {
+                let cleanedImage = try await SmartLayerCaptureService.shared.captureAndCleanBoard(from: player)
+                viewModel.insertCapturedImage(cleanedImage)
+                print("[SmartLayer] Capture succeeded.")
+            } catch {
+                print("[SmartLayer] Capture failed: \(error)")
+                viewModel.errorMessage = "판서 추출에 실패했습니다."
+            }
+        }
+    }
+
+    private func startSyncCheck() {
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            Task { @MainActor in
+                let stats = AnalysisDrawingStats(
+                    strokeCount: viewModel.currentPageStrokeCount,
+                    inkLengthEstimate: 100,
+                    eraseRatio: 0,
+                    highlightCoverage: 0,
+                    activeWritingTime: 5,
+                    pauseTime: 20 
+                )
+                
+                if let nodeId = lectureSync.detectStallAndNudge(stats: stats, isWriting: false) {
+                    withAnimation(.spring()) {
+                        viewModel.nudgeNodeId = nodeId
+                        viewModel.isShowingNudge = true
+                    }
+                }
             }
         }
     }
@@ -266,7 +913,7 @@ struct BlankNoteEditorView: View {
 
                 Spacer(minLength: 0)
 
-                Text(viewModel.selectedTool.rawValue)
+                Text(viewModel.currentToolLabel)
                     .font(PharTypography.captionStrong)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
             }
@@ -288,6 +935,8 @@ struct BlankNoteEditorView: View {
                     Spacer(minLength: 0)
                     PharTagPill(text: "\(viewModel.pages.count) pages", tint: PharTheme.ColorToken.surfaceSecondary)
                 }
+
+                DocumentAudioPanelView(controller: audioController)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: PharTheme.Spacing.small) {
@@ -338,6 +987,28 @@ struct BlankNoteEditorView: View {
             .frame(width: 1, height: 30)
     }
 
+    private var isAudioErrorPresented: Binding<Bool> {
+        Binding(
+            get: { audioController.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    audioController.errorMessage = nil
+                }
+            }
+        )
+    }
+
+    private var isWorkspaceErrorPresented: Binding<Bool> {
+        Binding(
+            get: { workspaceController.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    workspaceController.errorMessage = nil
+                }
+            }
+        )
+    }
+
     private var isErrorPresented: Binding<Bool> {
         Binding(
             get: { viewModel.errorMessage != nil },
@@ -346,6 +1017,85 @@ struct BlankNoteEditorView: View {
                     viewModel.errorMessage = nil
                 }
             }
+        )
+    }
+
+    private var workspaceChips: [WritingWorkspaceDocumentChip] {
+        libraryViewModel.workspaceDocumentChips(currentDocument: viewModel.document)
+    }
+
+    private func strokePresetBinding(for index: Int) -> Binding<Double> {
+        Binding(
+            get: { viewModel.strokePresetConfiguration.values[index] },
+            set: { newValue in
+                viewModel.updateStrokePreset(newValue, at: index)
+            }
+        )
+    }
+
+    private var currentPageLabel: String? {
+        viewModel.currentPageNumber > 0 ? "페이지 \(viewModel.currentPageNumber)" : nil
+    }
+
+    private func handleBackAction() {
+        navigateBackPreservingCurrentTab()
+    }
+
+    private func navigateBackPreservingCurrentTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        presentationMode.wrappedValue.dismiss()
+
+        Task {
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+        }
+    }
+
+    private func closeCurrentWorkspaceTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        
+        let documentID = viewModel.document.id
+        if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == documentID }) {
+            libraryViewModel.closeDocumentTab(documentID)
+        } else {
+            presentationMode.wrappedValue.dismiss()
+        }
+
+        Task {
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+        }
+    }
+
+    private func handleWorkspaceChipSelection(_ documentID: UUID) {
+        guard documentID != viewModel.document.id else { return }
+
+        Task {
+            isManagedTransition = true
+            audioController.tearDown()
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+            libraryViewModel.activateDocumentTab(documentID)
+        }
+    }
+
+    private func handleWorkspaceChipClose(_ documentID: UUID) {
+        guard documentID != viewModel.document.id else {
+            closeCurrentWorkspaceTab()
+            return
+        }
+        libraryViewModel.closeDocumentTab(documentID)
+    }
+
+    private func handlePasteImageAction() {
+        viewModel.deactivateToolSelection()
+        guard let draft = workspaceController.pastedImageDraft() else { return }
+        imageEditorContext = WritingImageEditorContext(
+            draft: draft,
+            attachmentID: nil,
+            basePlacement: nil
         )
     }
 
@@ -377,10 +1127,10 @@ struct BlankNoteEditorView: View {
                     .font(PharTypography.eyebrow)
             }
             .frame(minWidth: 58, minHeight: PharTheme.HitArea.comfortable)
-            .foregroundStyle(viewModel.selectedTool == tool ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkPrimary)
+            .foregroundStyle(viewModel.isToolSelected(tool) ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkPrimary)
             .background(
                 RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                    .fill(viewModel.selectedTool == tool ? PharTheme.ColorToken.accentBlue.opacity(0.14) : Color.clear)
+                    .fill(viewModel.isToolSelected(tool) ? PharTheme.ColorToken.accentBlue.opacity(0.14) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -439,6 +1189,7 @@ struct BlankNoteEditorView: View {
     NavigationStack {
         BlankNoteEditorView(document: PreviewDocumentFactory.blankNoteDocument())
     }
+    .environmentObject(LibraryViewModel())
 }
 
 private enum PreviewDocumentFactory {
@@ -475,11 +1226,26 @@ private struct BlankNoteAnalyzePreviewSheet: View {
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStudyIntent: AnalysisStudyIntent = .summary
+    @State private var ocrSummary: OCRPreviewSummary?
+    @State private var isLoadingOCRSummary = false
+    @State private var reviewDraft: AnalysisPostSolveReviewDraft
+    @State private var isReviewFlowComplete = false
+
+    init(viewModel: BlankNoteEditorViewModel) {
+        self.viewModel = viewModel
+        _reviewDraft = State(
+            initialValue: AnalysisPostSolveReviewDraft(
+                subject: viewModel.document.studyMaterial?.subject
+            )
+        )
+    }
 
     private var currentResult: AnalysisResult? {
         guard let pageId = viewModel.currentAnalysisPageID else { return nil }
         return analysisCenter.result(for: viewModel.document.id, pageId: pageId)
     }
+
+    @State private var sheetDetent: PresentationDetent = .large
 
     var body: some View {
         NavigationStack {
@@ -502,7 +1268,7 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                                 .font(PharTypography.cardTitle)
                                 .foregroundStyle(PharTheme.ColorToken.inkPrimary)
 
-                            PreviewRow(title: "범위", value: AnalysisScope.page.title)
+                            PreviewRow(title: "범위", value: viewModel.currentAnalysisScope.title)
 
                             Picker("학습 의도", selection: $selectedStudyIntent) {
                                 ForEach([
@@ -519,6 +1285,20 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         }
                     }
 
+                    AnalysisPostSolveReviewSection(
+                        draft: $reviewDraft,
+                        isComplete: $isReviewFlowComplete,
+                        onBindEvidence: { stepId, callback in
+                            viewModel.evidenceBindingStepId = stepId
+                            viewModel.onEvidenceBound = { strokeId, delayMs in
+                                callback(strokeId, delayMs)
+                                viewModel.isBindingEvidence = false
+                                viewModel.evidenceBindingStepId = nil
+                            }
+                            viewModel.isBindingEvidence = true
+                        }
+                    )
+
                     if let preview = viewModel.analysisPreview, let source = viewModel.analysisSource {
                         PharSurfaceCard {
                             VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
@@ -531,6 +1311,10 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                                 PreviewRow(title: "번들 자산", value: bundleAssetSummary(for: source))
                             }
                         }
+                        OCRPreviewCard(summary: ocrSummary, isLoading: isLoadingOCRSummary)
+                            .task(id: source.pageId) {
+                                await loadOCRSummary(for: source)
+                            }
                     }
 
                     PharSurfaceCard {
@@ -573,12 +1357,19 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         .foregroundStyle(PharTheme.ColorToken.inkSecondary)
                     }
 
+                    if !isReviewFlowComplete {
+                        Text("확신도부터 단계별 복기를 마치면 분석 번들 적재가 열립니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+
                     Button {
                         Task {
-                            guard let source = viewModel.analysisSource else { return }
+                            guard var source = viewModel.analysisSource else { return }
+                            source.postSolveReview = reviewDraft.makePayload()
                             await analysisCenter.enqueueBlankNote(
                                 source: source,
-                                scope: .page,
+                                scope: viewModel.currentAnalysisScope,
                                 studyIntent: selectedStudyIntent
                             )
                         }
@@ -592,7 +1383,11 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                         }
                     }
                     .buttonStyle(PharPrimaryButtonStyle())
-                    .disabled(analysisCenter.isEnqueuing || viewModel.analysisSource == nil)
+                    .disabled(
+                        analysisCenter.isEnqueuing
+                            || viewModel.analysisSource == nil
+                            || !isReviewFlowComplete
+                    )
 
                     Spacer(minLength: 0)
                 }
@@ -608,13 +1403,23 @@ private struct BlankNoteAnalyzePreviewSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.35), .medium, .large], selection: $sheetDetent)
+        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.35)))
+        .onChange(of: viewModel.isBindingEvidence) { _, isBinding in
+            sheetDetent = isBinding ? .fraction(0.35) : .large
+        }
     }
 
     private func bundleAssetSummary(for source: BlankNoteAnalysisSource) -> String {
         let preview = source.previewImageData == nil ? "preview 없음" : "preview 포함"
         let drawing = source.drawingData == nil ? "drawing 없음" : "drawing 포함"
         return "\(preview), \(drawing)"
+    }
+
+    private func loadOCRSummary(for source: BlankNoteAnalysisSource) async {
+        isLoadingOCRSummary = true
+        ocrSummary = await analysisCenter.ocrPreview(for: source)
+        isLoadingOCRSummary = false
     }
 }
 
@@ -632,6 +1437,640 @@ private struct PreviewRow: View {
                 .font(PharTypography.bodyStrong)
                 .foregroundStyle(PharTheme.ColorToken.inkPrimary)
         }
+    }
+}
+
+struct OCRPreviewCard: View {
+    let summary: OCRPreviewSummary?
+    let isLoading: Bool
+
+    var body: some View {
+        PharSurfaceCard {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                Text("OCR 미리보기")
+                    .font(PharTypography.cardTitle)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                if isLoading {
+                    HStack(spacing: PharTheme.Spacing.small) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("OCR 결과를 준비하는 중입니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+                } else if let summary {
+                    PreviewRow(title: "인식 블록", value: "\(summary.recognizedBlockCount)")
+                    PreviewRow(title: "손글씨 블록", value: "\(summary.handwritingBlockCount)")
+                    PreviewRow(title: "인식 문자 수", value: "\(summary.recognizedCharacterCount)")
+                    PreviewRow(title: "수식 신호", value: summary.hasMathSignal ? "강함" : "약함")
+
+                    if !summary.problemCandidates.isEmpty {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                            Text("문제 후보")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                            ForEach(summary.problemCandidates, id: \.self) { candidate in
+                                Text(candidate)
+                                    .font(PharTypography.caption)
+                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.top, PharTheme.Spacing.xSmall)
+                    }
+
+                    if !summary.topLines.isEmpty {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+                            Text("대표 OCR 텍스트")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                            ForEach(summary.topLines, id: \.self) { line in
+                                Text(line)
+                                    .font(PharTypography.caption)
+                                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.top, PharTheme.Spacing.xSmall)
+                    }
+                } else {
+                    Text("아직 OCR 결과가 없습니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                }
+            }
+        }
+    }
+}
+
+private enum AnalysisPostSolveReviewFlowStage: Equatable {
+    case confidence
+    case firstApproach
+    case step(Int)
+    case stuckPoint
+    case memo
+    case complete
+}
+
+struct AnalysisPostSolveReviewSection: View {
+    @Binding var draft: AnalysisPostSolveReviewDraft
+    @Binding var isComplete: Bool
+    var onBindEvidence: ((String, @escaping (String, Int) -> Void) -> Void)? = nil
+    
+    @State private var reviewStage: AnalysisPostSolveReviewFlowStage = .confidence
+    @State private var answeredStepIDs: Set<String> = []
+
+    init(draft: Binding<AnalysisPostSolveReviewDraft>, isComplete: Binding<Bool>, onBindEvidence: ((String, @escaping (String, Int) -> Void) -> Void)? = nil) {
+        _draft = draft
+        _isComplete = isComplete
+        self.onBindEvidence = onBindEvidence
+    }
+
+    var body: some View {
+        PharSurfaceCard {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
+                    VStack(alignment: .leading, spacing: PharTheme.Spacing.xxSmall) {
+                        Text("풀이 직후 복기")
+                            .font(PharTypography.cardTitle)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        Text(progressLabel)
+                            .font(PharTypography.captionStrong)
+                            .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    PharTagPill(
+                        text: draft.promptSet.subject.title,
+                        tint: PharTheme.ColorToken.accentMint.opacity(0.20)
+                    )
+                }
+
+                Text(
+                    draft.promptSet.overviewText
+                        ?? "문항을 막 푼 직후의 생각을 한 번에 다 쓰게 하지 않고, 확신도부터 한 단계씩 정리합니다."
+                )
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                    Text(stageTitle)
+                        .font(PharTypography.sectionTitle)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+
+                    stageContent
+                }
+
+                navigationControls
+            }
+        }
+        .onAppear {
+            syncCompletionState()
+        }
+    }
+
+    private var progressLabel: String {
+        switch reviewStage {
+        case .complete:
+            return "복기 완료"
+        default:
+            return "복기 \(currentStageNumber) / \(totalInteractiveStages)"
+        }
+    }
+
+    private var totalInteractiveStages: Int {
+        draft.promptSet.stepDefinitions.count + 4
+    }
+
+    private var currentStageNumber: Int {
+        switch reviewStage {
+        case .confidence:
+            return 1
+        case .firstApproach:
+            return 2
+        case .step(let index):
+            return index + 3
+        case .stuckPoint:
+            return draft.promptSet.stepDefinitions.count + 3
+        case .memo, .complete:
+            return totalInteractiveStages
+        }
+    }
+
+    private var stageTitle: String {
+        switch reviewStage {
+        case .confidence:
+            return "풀이 직후 확신도"
+        case .firstApproach:
+            return "문제를 보자마자 먼저 한 생각"
+        case .step(let index):
+            guard let step = draft.resolvedStepDefinition(at: index) else {
+                return "단계별 복기"
+            }
+            return step.title
+        case .stuckPoint:
+            return "가장 막혔던 지점"
+        case .memo:
+            return "짧은 메모"
+        case .complete:
+            return "복기 입력 준비 완료"
+        }
+    }
+
+    @ViewBuilder
+    private var stageContent: some View {
+        switch reviewStage {
+        case .confidence:
+            confidenceStage
+        case .firstApproach:
+            firstApproachStage
+        case .step:
+            if let step = currentStepDefinition {
+                reviewStepStage(for: step)
+            }
+        case .stuckPoint:
+            stuckPointStage
+        case .memo:
+            memoStage
+        case .complete:
+            completionStage
+        }
+    }
+
+    private var confidenceStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            HStack {
+                Text("지금 답에 얼마나 확신이 있었나요?")
+                    .font(PharTypography.captionStrong)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                Spacer(minLength: 0)
+                Text("\(Int(draft.confidenceAfter.rounded()))")
+                    .font(PharTypography.bodyStrong.monospacedDigit())
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+            }
+
+            Slider(value: $draft.confidenceAfter, in: 0 ... 100, step: 1)
+
+            HStack {
+                Text("거의 감")
+                Spacer(minLength: 0)
+                Text("거의 확신")
+            }
+            .font(PharTypography.caption)
+            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+        }
+    }
+
+    private var firstApproachStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text(
+                draft.promptSet.firstApproachGuidance
+                    ?? "처음 떠올린 접근 하나를 고르면 다음 복기 단계로 넘어갑니다."
+            )
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(draft.promptSet.firstApproachOptions) { option in
+                    AnalysisReviewChoiceButton(
+                        title: option.title,
+                        isSelected: draft.firstApproachID == option.id
+                    ) {
+                        draft.setFirstApproachID(option.id)
+                        resetAnsweredSteps(afterStepIndex: -1)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewStepStage(for step: AnalysisResolvedReviewStepDefinition) -> some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text(
+                step.guidance
+                    ?? draft.promptSet.guidance(for: step.id)
+                    ?? "이 단계의 상태를 먼저 고르고, 시도했다면 가장 가까운 행동 신호를 하나 남깁니다."
+            )
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(reviewStatusOptions, id: \.rawValue) { status in
+                    AnalysisReviewChoiceButton(
+                        title: status.title,
+                        isSelected: answeredStepIDs.contains(step.id) && draft.stepStatus(for: step.id) == status
+                    ) {
+                        answeredStepIDs.insert(step.id)
+                        draft.setStepStatus(status, for: step.id, stepIndex: currentStepIndex)
+                    }
+                }
+            }
+
+            if answeredStepIDs.contains(step.id) {
+                if draft.stepStatus(for: step.id) == .notTried {
+                    Text("이 단계는 시도하지 않은 것으로 기록됩니다.")
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                } else {
+                    LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                        ForEach(step.options) { option in
+                            AnalysisReviewChoiceButton(
+                                title: option.title,
+                                isSelected: draft.selectedOptionID(for: step.id) == option.id,
+                                boundDelayMs: draft.stepCalculatedDelays[step.id],
+                                onBindEvidence: {
+                                    onBindEvidence?(step.id) { strokeId, delayMs in
+                                        draft.stepLinkedStrokeIds[step.id] = strokeId
+                                        draft.stepCalculatedDelays[step.id] = delayMs
+                                    }
+                                }
+                            ) {
+                                draft.setSelectedOptionID(option.id, for: step.id, stepIndex: currentStepIndex)
+                                resetAnsweredSteps(afterStepIndex: currentStepIndex)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var stuckPointStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("가장 막혔다고 느낀 단계를 고르세요. 비워두면 복기 결과를 보고 자동으로 추론합니다.")
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            AnalysisReviewChoiceButton(
+                title: "자동 추론에 맡기기",
+                isSelected: draft.primaryStuckPointID == nil
+            ) {
+                draft.primaryStuckPointID = nil
+            }
+
+            LazyVGrid(columns: reviewColumns, alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(draft.preferredStuckSteps) { step in
+                    AnalysisReviewChoiceButton(
+                        title: step.title,
+                        isSelected: draft.primaryStuckPointID == step.id
+                    ) {
+                        draft.primaryStuckPointID = step.id
+                    }
+                }
+            }
+        }
+    }
+
+    private var memoStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("남겨둘 한 줄이 있으면 적고, 없으면 바로 완료해도 됩니다.")
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            TextEditor(text: $draft.freeMemo)
+                .frame(minHeight: 96)
+                .scrollContentBackground(.hidden)
+                .padding(PharTheme.Spacing.xSmall)
+                .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
+        }
+    }
+
+    private var completionStage: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("확신도와 사고과정 복기가 모두 정리됐습니다. 아래 적재 버튼으로 분석 큐에 보낼 수 있습니다.")
+                .font(PharTypography.body)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            PreviewRow(title: "확신도", value: "\(Int(draft.confidenceAfter.rounded())) / 100")
+            PreviewRow(title: "첫 접근", value: firstApproachTitle)
+            PreviewRow(title: "단계 요약", value: stepStatusSummary)
+            PreviewRow(title: "막힌 지점", value: stuckPointTitle)
+
+            if trimmedMemo.isEmpty {
+                Text("메모 없음")
+                    .font(PharTypography.caption)
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+            } else {
+                Text(trimmedMemo)
+                    .font(PharTypography.body)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    .padding(PharTheme.Spacing.small)
+                    .background(PharTheme.ColorToken.surfaceSecondary.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var navigationControls: some View {
+        if case .complete = reviewStage {
+            Button("이전 단계 수정") {
+                moveToPreviousStage()
+            }
+            .buttonStyle(PharSoftButtonStyle())
+        } else {
+            HStack(spacing: PharTheme.Spacing.small) {
+                if reviewStage != .confidence {
+                    Button("이전") {
+                        moveToPreviousStage()
+                    }
+                    .buttonStyle(PharSoftButtonStyle())
+                }
+
+                Button(nextButtonTitle) {
+                    moveToNextStage()
+                }
+                .buttonStyle(PharPrimaryButtonStyle())
+                .disabled(!canAdvanceToNextStage)
+            }
+        }
+    }
+
+    private var currentStepDefinition: AnalysisResolvedReviewStepDefinition? {
+        guard case let .step(index) = reviewStage,
+              draft.promptSet.stepDefinitions.indices.contains(index) else {
+            return nil
+        }
+        return draft.resolvedStepDefinition(at: index)
+    }
+
+    private var currentRawStepDefinition: AnalysisReviewStepDefinition? {
+        guard case let .step(index) = reviewStage,
+              draft.promptSet.stepDefinitions.indices.contains(index) else {
+            return nil
+        }
+        return draft.promptSet.stepDefinitions[index]
+    }
+
+    private var currentStepIndex: Int {
+        guard case let .step(index) = reviewStage else {
+            return 0
+        }
+        return index
+    }
+
+    private var reviewStatusOptions: [AnalysisReviewStepStatus] {
+        guard let currentRawStepDefinition,
+              !currentRawStepDefinition.variants.isEmpty else {
+            return AnalysisReviewStepStatus.allCases
+        }
+        return [.clear, .partial, .failed]
+    }
+
+    private var canAdvanceToNextStage: Bool {
+        switch reviewStage {
+        case .confidence:
+            return true
+        case .firstApproach:
+            return draft.firstApproachID != nil
+        case .step:
+            guard let step = currentStepDefinition,
+                  answeredStepIDs.contains(step.id) else {
+                return false
+            }
+            if let currentRawStepDefinition,
+               !currentRawStepDefinition.variants.isEmpty {
+                return draft.selectedOptionID(for: step.id) != nil
+            }
+            return draft.stepStatus(for: step.id) == .notTried || draft.selectedOptionID(for: step.id) != nil
+        case .stuckPoint, .memo:
+            return true
+        case .complete:
+            return false
+        }
+    }
+
+    private var nextButtonTitle: String {
+        switch reviewStage {
+        case .confidence:
+            return "첫 접근 고르기"
+        case .firstApproach:
+            return draft.promptSet.stepDefinitions.first.map { "\($0.title)으로 이동" } ?? "막힌 지점 고르기"
+        case .step(let index):
+            return index + 1 < draft.promptSet.stepDefinitions.count ? "다음 단계" : "막힌 지점 고르기"
+        case .stuckPoint:
+            return "메모로 이동"
+        case .memo:
+            return "복기 완료"
+        case .complete:
+            return "완료"
+        }
+    }
+
+    private var firstApproachTitle: String {
+        guard let optionID = draft.firstApproachID,
+              let option = draft.promptSet.firstApproachOptions.first(where: { $0.id == optionID }) else {
+            return "선택 안 함"
+        }
+        return option.title
+    }
+
+    private var stepStatusSummary: String {
+        let failedCount = draft.promptSet.stepDefinitions.filter {
+            draft.stepStatus(for: $0.id) == .failed
+        }.count
+        let partialCount = draft.promptSet.stepDefinitions.filter {
+            draft.stepStatus(for: $0.id) == .partial
+        }.count
+
+        if failedCount == 0 && partialCount == 0 {
+            return "막힘 없이 기록됨"
+        }
+
+        return "막힘 \(failedCount)단계 · 애매 \(partialCount)단계"
+    }
+
+    private var stuckPointTitle: String {
+        guard let stepID = draft.primaryStuckPointID else {
+            return "자동 추론"
+        }
+        return draft.promptSet.stepTitle(for: stepID)
+    }
+
+    private var trimmedMemo: String {
+        draft.freeMemo.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var reviewColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: PharTheme.Spacing.small),
+            GridItem(.flexible(), spacing: PharTheme.Spacing.small)
+        ]
+    }
+
+    private func moveToNextStage() {
+        guard canAdvanceToNextStage else { return }
+
+        switch reviewStage {
+        case .confidence:
+            setStage(.firstApproach)
+        case .firstApproach:
+            if draft.promptSet.stepDefinitions.isEmpty {
+                setStage(.stuckPoint)
+            } else {
+                setStage(.step(0))
+            }
+        case .step(let index):
+            if index + 1 < draft.promptSet.stepDefinitions.count {
+                setStage(.step(index + 1))
+            } else {
+                setStage(.stuckPoint)
+            }
+        case .stuckPoint:
+            setStage(.memo)
+        case .memo:
+            setStage(.complete)
+        case .complete:
+            break
+        }
+    }
+
+    private func moveToPreviousStage() {
+        switch reviewStage {
+        case .confidence:
+            break
+        case .firstApproach:
+            setStage(.confidence)
+        case .step(let index):
+            if index == 0 {
+                setStage(.firstApproach)
+            } else {
+                setStage(.step(index - 1))
+            }
+        case .stuckPoint:
+            if draft.promptSet.stepDefinitions.isEmpty {
+                setStage(.firstApproach)
+            } else {
+                setStage(.step(draft.promptSet.stepDefinitions.count - 1))
+            }
+        case .memo:
+            setStage(.stuckPoint)
+        case .complete:
+            setStage(.memo)
+        }
+    }
+
+    private func setStage(_ stage: AnalysisPostSolveReviewFlowStage) {
+        reviewStage = stage
+        syncCompletionState()
+    }
+
+    private func syncCompletionState() {
+        isComplete = reviewStage == .complete
+    }
+
+    private func resetAnsweredSteps(afterStepIndex index: Int) {
+        let stepIDsToReset = draft.promptSet.stepDefinitions
+            .enumerated()
+            .filter { $0.offset > index }
+            .map(\.element.id)
+        answeredStepIDs.subtract(stepIDsToReset)
+    }
+}
+
+private struct AnalysisReviewChoiceButton: View {
+    let title: String
+    let isSelected: Bool
+    var boundDelayMs: Int? = nil
+    var onBindEvidence: (() -> Void)? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.xxSmall) {
+                Text(title)
+                    .font(PharTypography.bodyStrong)
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    .multilineTextAlignment(.leading)
+
+                if isSelected, onBindEvidence != nil {
+                    Spacer(minLength: 8)
+                    HStack {
+                        Spacer()
+                        if let delay = boundDelayMs {
+                            let formatted = String(format: "%02d:%02d", (delay / 1000) / 60, (delay / 1000) % 60)
+                            Text("⏱️ +\(formatted)에 도출됨")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(PharTheme.ColorToken.accentBlue.opacity(0.1), in: Capsule())
+                        } else {
+                            Text("📎 내 필기에서 증거 찾기 (선택)")
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.clear)
+                                .overlay(
+                                    Capsule().stroke(PharTheme.ColorToken.accentBlue.opacity(0.3), lineWidth: 1)
+                                )
+                                .onTapGesture {
+                                    onBindEvidence?()
+                                }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(.horizontal, PharTheme.Spacing.small)
+            .padding(.vertical, PharTheme.Spacing.small)
+            .background(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .fill(isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.14) : PharTheme.ColorToken.surfaceSecondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .stroke(
+                        isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.34) : PharTheme.ColorToken.borderSoft,
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

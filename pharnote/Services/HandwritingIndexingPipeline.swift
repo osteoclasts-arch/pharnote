@@ -2,11 +2,16 @@ import Foundation
 
 actor HandwritingIndexingPipeline {
     private let store: HandwritingSearchStore
+    private let ocrService: DocumentOCRService
     private var workerTask: Task<Void, Never>?
     private var isRunning = false
 
-    init(store: HandwritingSearchStore = HandwritingSearchStore()) {
+    init(
+        store: HandwritingSearchStore = HandwritingSearchStore(),
+        ocrService: DocumentOCRService = DocumentOCRService()
+    ) {
         self.store = store
+        self.ocrService = ocrService
     }
 
     func startIfNeeded() {
@@ -44,7 +49,7 @@ actor HandwritingIndexingPipeline {
                 createdAt: now,
                 updatedAt: now,
                 status: .queued,
-                note: "OCR connector not configured yet."
+                note: "OCR queued."
             )
             jobs.append(job)
             try await store.saveJobs(jobs)
@@ -62,13 +67,57 @@ actor HandwritingIndexingPipeline {
             jobs[nextIndex].updatedAt = Date()
             try await store.saveJobs(jobs)
 
-            // 단계 7: OCR 엔진 미연동 상태. 배경 작업 파이프라인/스토리지만 먼저 구성.
-            jobs[nextIndex].status = .pendingOCR
+            let documents = try LibraryStore().loadIndex()
+            guard let document = documents.first(where: { $0.id == jobs[nextIndex].documentID }) else {
+                jobs[nextIndex].status = .failed
+                jobs[nextIndex].updatedAt = Date()
+                jobs[nextIndex].note = "Document not found."
+                try await store.saveJobs(jobs)
+                return
+            }
+
+            guard let recognizedText = await ocrService.recognizeIndexedText(document: document, pageKey: jobs[nextIndex].pageKey),
+                  !recognizedText.isEmpty else {
+                jobs[nextIndex].status = .failed
+                jobs[nextIndex].updatedAt = Date()
+                jobs[nextIndex].note = "No OCR text detected."
+                try await store.saveJobs(jobs)
+                return
+            }
+
+            let payloadPath = try await store.saveHandwritingTextPayload(recognizedText, job: jobs[nextIndex])
+            var records = try await store.loadRecords()
+            records.removeAll {
+                $0.documentID == jobs[nextIndex].documentID && $0.pageKey == jobs[nextIndex].pageKey
+            }
+            records.append(
+                HandwritingIndexRecord(
+                    id: UUID(),
+                    documentID: jobs[nextIndex].documentID,
+                    pageKey: jobs[nextIndex].pageKey,
+                    indexedAt: Date(),
+                    textPayloadPath: payloadPath,
+                    engineVersion: DocumentOCRService.engineVersion
+                )
+            )
+            try await store.saveRecords(records)
+
+            jobs[nextIndex].status = .completed
             jobs[nextIndex].updatedAt = Date()
-            jobs[nextIndex].note = "OCR engine integration is planned for a later stage."
+            jobs[nextIndex].note = "OCR indexed."
             try await store.saveJobs(jobs)
         } catch {
-            // Retry 가능한 백그라운드 잡이므로 오류는 저장하지 않고 다음 주기 재시도.
+            do {
+                var jobs = try await store.loadJobs()
+                if let index = jobs.firstIndex(where: { $0.status == .processing }) {
+                    jobs[index].status = .failed
+                    jobs[index].updatedAt = Date()
+                    jobs[index].note = error.localizedDescription
+                    try await store.saveJobs(jobs)
+                }
+            } catch {
+                // Indexing failure is persisted on best effort only.
+            }
         }
     }
 }

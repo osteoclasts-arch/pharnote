@@ -14,7 +14,7 @@ enum StudyMaterialProvider: String, Codable, CaseIterable, Hashable, Identifiabl
 
     var id: String { rawValue }
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .unspecified: return "미지정"
         case .sdijBooks: return "시대인재북스"
@@ -28,7 +28,7 @@ enum StudyMaterialProvider: String, Codable, CaseIterable, Hashable, Identifiabl
         }
     }
 
-    var displayOrder: Int {
+    nonisolated var displayOrder: Int {
         switch self {
         case .unspecified: return 0
         case .sdijBooks: return 1
@@ -81,7 +81,7 @@ enum StudySubject: String, Codable, CaseIterable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .unspecified: return "미지정"
         case .korean: return "국어"
@@ -97,7 +97,7 @@ enum StudySubject: String, Codable, CaseIterable, Hashable, Identifiable {
         }
     }
 
-    var displayOrder: Int {
+    nonisolated var displayOrder: Int {
         switch self {
         case .unspecified: return 0
         case .korean: return 1
@@ -164,7 +164,7 @@ enum StudySectionStatus: String, Codable, Hashable {
     case current
     case completed
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .upcoming:
             return "예정"
@@ -184,15 +184,15 @@ struct StudySectionProgress: Codable, Hashable, Identifiable {
     var status: StudySectionStatus
     var completionRatio: Double
 
-    var pageCount: Int {
+    nonisolated var pageCount: Int {
         max(endPage - startPage + 1, 1)
     }
 
-    var percentComplete: Int {
+    nonisolated var percentComplete: Int {
         Int((completionRatio * 100).rounded())
     }
 
-    func contains(page: Int) -> Bool {
+    nonisolated func contains(page: Int) -> Bool {
         page >= startPage && page <= endPage
     }
 }
@@ -205,24 +205,24 @@ struct StudyProgressSnapshot: Codable, Hashable {
     var lastStudiedAt: Date
     var sections: [StudySectionProgress]
 
-    var percentComplete: Int {
+    nonisolated var percentComplete: Int {
         Int((completionRatio * 100).rounded())
     }
 
-    var totalSectionCount: Int {
+    nonisolated var totalSectionCount: Int {
         sections.count
     }
 
-    var completedSectionCount: Int {
+    nonisolated var completedSectionCount: Int {
         sections.filter { $0.status == .completed }.count
     }
 
-    var currentSection: StudySectionProgress? {
+    nonisolated var currentSection: StudySectionProgress? {
         sections.first(where: { $0.status == .current })
             ?? sections.first(where: { $0.contains(page: currentPage) })
     }
 
-    var nextSection: StudySectionProgress? {
+    nonisolated var nextSection: StudySectionProgress? {
         guard let currentSection else {
             return sections.first(where: { $0.status == .upcoming || $0.startPage > currentPage })
         }
@@ -232,11 +232,11 @@ struct StudyProgressSnapshot: Codable, Hashable {
             .first
     }
 
-    var currentSectionTitle: String? {
+    nonisolated var currentSectionTitle: String? {
         currentSection?.title
     }
 
-    var sectionProgressLabel: String? {
+    nonisolated var sectionProgressLabel: String? {
         guard totalSectionCount > 0 else { return nil }
         if let currentSection {
             let currentOrdinal = sections.firstIndex(where: { $0.id == currentSection.id }).map { $0 + 1 } ?? (completedSectionCount + 1)
@@ -248,18 +248,18 @@ struct StudyProgressSnapshot: Codable, Hashable {
         return "단원 0/\(totalSectionCount)"
     }
 
-    var nextSectionTitle: String? {
+    nonisolated var nextSectionTitle: String? {
         nextSection?.title
     }
 
-    var dashboardHeadline: String {
+    nonisolated var dashboardHeadline: String {
         if let sectionProgressLabel {
             return "\(sectionProgressLabel) · \(percentComplete)%"
         }
         return "진도 \(currentPage)/\(max(totalPages, 1)) · \(percentComplete)%"
     }
 
-    var dashboardSubheadline: String? {
+    nonisolated var dashboardSubheadline: String? {
         guard totalSectionCount > 0 else { return nil }
         var parts: [String] = ["완료 \(completedSectionCount)개"]
         if let nextSectionTitle {

@@ -1,0 +1,36 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project xcode-clean/pharnote/pharnote.xcodeproj -scheme pharnote -sdk iphonesimulator -configuration Debug build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+2026-03-15 11:56:47.640 xcodebuild[64126:31024434] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+{ platform:iOS Simulator, arch:arm64, id:F8EFCE51-30BF-4F2E-84B8-06BA4E7B0678, OS:26.2, name:iPad (A16) }
+{ platform:iOS Simulator, arch:arm64, id:B42E0D10-49CE-44FC-9E96-2F0D797F0EB0, OS:26.2, name:iPad Air 11-inch (M3) }
+{ platform:iOS Simulator, arch:arm64, id:4FD82409-3C53-4898-9902-0D1ACD2F7AE3, OS:26.2, name:iPad Air 13-inch (M3) }
+{ platform:iOS Simulator, arch:arm64, id:6A8B99F9-78E0-4AEE-83AC-828EACB1AEA6, OS:26.2, name:iPad Pro 11-inch (M5) }
+{ platform:iOS Simulator, arch:arm64, id:FA14DF98-D4F6-479D-BAC4-A2A234DC3CDA, OS:26.2, name:iPad Pro 13-inch (M5) }
+{ platform:iOS Simulator, arch:arm64, id:5D87988B-23CE-4B3B-9AA2-F2140F604763, OS:26.2, name:iPad mini (A17 Pro) }
+{ platform:iOS Simulator, arch:arm64, id:1EB5B72A-C1D1-439C-9FF7-5C3B388F98F8, OS:26.2, name:iPhone 16e }
+{ platform:iOS Simulator, arch:arm64, id:2ECC2B43-DD8C-472A-9075-7222C4FD979B, OS:26.2, name:iPhone 17 }
+{ platform:iOS Simulator, arch:arm64, id:46BEAFED-1ABC-40FC-BF12-CD9A9E5D2EBB, OS:26.2, name:iPhone 17 Pro }
+{ platform:iOS Simulator, arch:arm64, id:B51D5653-6879-454D-BC08-17555486D907, OS:26.2, name:iPhone 17 Pro Max }
+{ platform:iOS Simulator, arch:arm64, id:FEF0E947-ADF3-45C1-9816-94F62CB38181, OS:26.2, name:iPhone Air }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00008103-000551D0113B001E, name:My Mac }
+{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+{ platform:iOS, arch:arm64, id:00008130-001670DA2E62001C, name:밍쪼아빠의 iPhone }
+Build Preparation
+Couldn't create workspace arena folder '/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-asrfimuhkjgewmczomsvcyzhrpcy': Unable to write to info file '<DVTFilePath:0xacfe6abe0:'/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-asrfimuhkjgewmczomsvcyzhrpcy/info.plist'>'.
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project pharnote with scheme pharnote and configuration Debug
+(1 failure)
+2026-03-15 11:56:47.708 xcodebuild[64126:31024497] Error saving log: Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted" UserInfo={NSFilePath=/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-asrfimuhkjgewmczomsvcyzhrpcy/Logs/Build/D9EB0B07-A3F8-4DF2-B39A-8FFF71ECEB44.xcactivitylog, NSLocalizedDescription=Operation not permitted} | User info: {
+    NSFilePath = "/Users/osteoclasts_/Library/Developer/Xcode/DerivedData/pharnote-asrfimuhkjgewmczomsvcyzhrpcy/Logs/Build/D9EB0B07-A3F8-4DF2-B39A-8FFF71ECEB44.xcactivitylog";
+    NSLocalizedDescription = "Operation not permitted";
+}

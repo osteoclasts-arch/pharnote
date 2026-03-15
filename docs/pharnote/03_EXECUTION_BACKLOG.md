@@ -183,15 +183,158 @@ Raise the app from impressive prototype to dependable product.
 - predictable recovery,
 - no major performance cliffs.
 
+## Approved Next Implementation Track
+This track is approved for the current product state after the recent save, tab, and writing stability work.
+
+The sequencing rule is simple:
+1. prioritize features that reduce study friction in long PDF and handwriting sessions,
+2. then add features that increase the amount of structured study evidence,
+3. only then add review-loop surfaces that turn evidence into learning workflows.
+
+## Sprint A: PDF Study Navigation Layer
+### Goal
+Make long-form PDF study feel deliberate, navigable, and safe from accidental ink.
+
+### Tasks
+1. add a workspace sidebar with `thumbnails`, `outline`, `bookmarks`, and `recordings` modes,
+2. add bookmark-only filtering and a clearer bookmarked-page affordance,
+3. support native PDF internal and external hyperlink navigation,
+4. add an explicit `Read Only` mode that disables writing while keeping navigation, search, and audio available,
+5. surface current section and progress more clearly inside the workspace.
+
+### Code areas
+- `pharnote/Views/PDFDocumentEditorView.swift`
+- `pharnote/Views/PDFKitView.swift`
+- `pharnote/ViewModels/PDFEditorViewModel.swift`
+- `pharnote/Views/DocumentEditorView.swift`
+
+### Exit criteria
+- a long PDF can be reopened and navigated quickly,
+- accidental writing during reading/review is avoidable,
+- bookmarks and section context are visible enough to support return study.
+
+### Estimate
+- 1 sprint
+
+## Sprint B: Gesture-First Ink Flow
+### Goal
+Reduce tool-switch friction during problem solving.
+
+### Tasks
+1. add `Scribble to Erase`,
+2. add `Circle to Select`,
+3. add a `Ruler` tool if the math workflow remains a primary focus,
+4. improve gesture feedback so the user can tell when a stroke became erase/select intent,
+5. keep gesture recognition out of the critical stroke path so writing latency stays flat.
+
+### Code areas
+- `pharnote/Views/PencilPassthroughCanvasView.swift`
+- `pharnote/Views/PencilCanvasView.swift`
+- `pharnote/Views/PDFKitView.swift`
+- `pharnote/ViewModels/BlankNoteEditorViewModel.swift`
+- `pharnote/ViewModels/PDFEditorViewModel.swift`
+
+### Exit criteria
+- common erase/select actions happen without explicit tool switching,
+- the gesture layer feels additive rather than surprising,
+- writing latency does not regress.
+
+### Estimate
+- 1 sprint
+
+## Sprint C: Audio Replay
+### Goal
+Turn audio from a file attachment into time-linked study context.
+
+### Tasks
+1. timestamp stroke batches, page changes, and major navigation events while recording,
+2. add replay mode that follows the recorded page and progressively restores stroke context,
+3. show recording anchors inside the PDF sidebar and note page chrome,
+4. allow jumping from a recording to the page and approximate moment it was created,
+5. preserve replay metadata as local study evidence for later pharnode analysis.
+
+### Code areas
+- `pharnote/Views/DocumentEditorView.swift`
+- `pharnote/Views/BlankNoteEditorView.swift`
+- `pharnote/Views/PDFDocumentEditorView.swift`
+- `pharnote/ViewModels/BlankNoteEditorViewModel.swift`
+- `pharnote/ViewModels/PDFEditorViewModel.swift`
+- `pharnote/Services/StudyEventLogger.swift`
+
+### Exit criteria
+- a recording can guide the user back through the associated page work,
+- replay is meaningfully better than raw audio playback,
+- replay events are captured as structured local metadata.
+
+### Estimate
+- 1 to 2 sprints
+
+## Sprint D: Internal Link Layer
+### Goal
+Connect summary notes, source problems, and review pages into one study graph.
+
+### Tasks
+1. add a local model for `document link` and `page link`,
+2. support inserting links from selected text, page actions, or bookmarks,
+3. render tappable internal links in blank notes and PDF workspaces,
+4. add lightweight backlink surfaces so related pages can be reopened quickly,
+5. keep the data model compatible with future `concept node` linking in pharnode.
+
+### Code areas
+- `pharnote/Models/PharDocument.swift`
+- `pharnote/Services/LibraryStore.swift`
+- `pharnote/Views/BlankNoteEditorView.swift`
+- `pharnote/Views/PDFDocumentEditorView.swift`
+- `pharnote/ViewModels/LibraryViewModel.swift`
+
+### Exit criteria
+- users can jump between related study artifacts in one or two taps,
+- linked pages feel useful for review rather than decorative,
+- the feature is ready to bridge into pharnode concept mapping later.
+
+### Estimate
+- 1 sprint
+
+## Sprint E: Study Sets and Smart Review
+### Goal
+Turn writing and PDF work into repeatable review loops.
+
+### Tasks
+1. generate candidate study cards from OCR text, highlights, bookmarks, and later analysis output,
+2. let the user edit and confirm cards before they enter review,
+3. build a due-review queue with simple spaced repetition scheduling,
+4. add `jump back to source page` from every card,
+5. surface due reviews on Home without turning the app into a tutoring dashboard.
+
+### Code areas
+- `pharnote/Models/StudyMaterialSupport.swift`
+- `pharnote/Services/SearchInfrastructure.swift`
+- `pharnote/Services/DocumentOCRService.swift`
+- `pharnote/Views/LibraryView.swift`
+- `pharnote/Views/ContentView.swift`
+- `pharnote/Models/AnalysisModels.swift`
+
+### Exit criteria
+- the user can create cards from real study artifacts,
+- reviews can be completed and resumed later,
+- every review item retains a clear path back to the original note or PDF page.
+
+### Estimate
+- 2 to 3 sprints
+
+## Explicitly Deferred
+These can matter later, but they should not outrank the approved track above.
+
+1. handwriting spellcheck,
+2. full handwriting reflow or edit mode,
+3. collaboration-first surfaces,
+4. decorative marketplace or sticker-style feature work,
+5. broad AI assistant surfaces that interrupt writing flow.
+
 ## Immediate Next Implementation Step
-Start with Phase 1.
+Start with `Sprint A: PDF Study Navigation Layer`.
 
-### Recommended first coding slice
-1. redesign the design tokens,
-2. rebuild `LibraryView` into a branded study home,
-3. normalize visible app naming to `pharnote` where currently inconsistent.
-
-### Why this is first
-- it creates a visible product identity quickly,
-- it does not block later architecture,
-- it establishes the UI language future work must follow.
+### Why this is next
+1. it has the highest effect on real exam-study sessions,
+2. it compounds the value of the current OCR search, material organization, audio, and progress features,
+3. it creates the navigation substrate later sprints need for replay, linking, and review.

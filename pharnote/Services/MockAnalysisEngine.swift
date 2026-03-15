@@ -8,7 +8,7 @@ actor AnalysisPipelineEngine {
         let classification = classify(features: features, bundle: bundle)
         let scores = score(features: features, classification: classification, bundle: bundle)
         let concepts = makeConceptNodes(features: features, bundle: bundle, masteryScore: scores.masteryScore, confidenceScore: scores.confidenceScore)
-        let evidence = makeEvidence(features: features, classification: classification, scores: scores)
+        let evidence = makeEvidence(bundle: bundle, features: features, classification: classification, scores: scores)
         let misconceptions = makeMisconceptions(features: features, classification: classification, scores: scores)
         let reviewPlan = makeReviewPlan(features: features, classification: classification, scores: scores)
         let actions = makeRecommendedActions(classification: classification, concepts: concepts, reviewPlan: reviewPlan, scores: scores)
@@ -66,9 +66,19 @@ actor AnalysisPipelineEngine {
         let lectureSignal = countOccurrences(in: joinedText, patterns: ["선생", "강의", "설명", "예시", "질문", "판서"])
         let reviewSignal = countOccurrences(in: joinedText, patterns: ["복습", "재확인", "다시", "오답", "체크", "헷갈"])
 
-        let inferredSubject = inferSubject(from: bundle.document.subject, text: loweredText)
+        let inferredSubject = inferSubject(
+            from: bundle.document.subject ?? bundle.behavior.postSolveReview?.subject.title,
+            text: loweredText
+        )
         let inferredUnit = inferUnit(subject: inferredSubject, text: loweredText)
         let inferredConcepts = inferConcepts(subject: inferredSubject, text: loweredText, manualTags: bundle.content.manualTags)
+        let reviewResponses = bundle.behavior.postSolveReview?.reviewPath ?? []
+        let reviewAnsweredCount = reviewResponses.filter { $0.status != .notTried }.count
+        let reviewFailedStepCount = reviewResponses.filter { $0.status == .failed }.count
+        let reviewPartialStepCount = reviewResponses.filter { $0.status == .partial }.count
+        let selfReportedConfidence = bundle.behavior.postSolveReview?.confidenceAfter.map {
+            clamped(Double($0) / 100.0, min: 0, max: 1)
+        }
 
         let engagementScore = normalized(
             dwellMinutes / 4.5
@@ -81,12 +91,15 @@ actor AnalysisPipelineEngine {
                 + Double(bundle.behavior.undoCount + bundle.behavior.redoCount) / 12.0
                 + Double(bundle.behavior.lassoActions) / 6.0
                 + max(0, Double(problemSignal - summarySignal)) / 18.0
+                + Double(reviewFailedStepCount) * 0.22
+                + Double(reviewPartialStepCount) * 0.12
         )
         let coverageScore = normalized(
             Double(textLength) / 320.0
                 + Double(strokeCount) / 90.0
                 + highlightCoverage * 1.6
                 + Double(min(bundle.content.pdfTextBlocks.count, 5)) / 5.0
+                + Double(reviewAnsweredCount) / 8.0
         )
 
         return NormalizedAnalysisFeatures(
@@ -110,6 +123,12 @@ actor AnalysisPipelineEngine {
             hasPdfText: !bundle.content.pdfTextBlocks.isEmpty,
             hasManualTags: !bundle.content.manualTags.isEmpty,
             hasBookmarks: !bundle.content.bookmarks.isEmpty,
+            hasStructuredReview: bundle.behavior.postSolveReview != nil,
+            reviewAnsweredCount: reviewAnsweredCount,
+            reviewFailedStepCount: reviewFailedStepCount,
+            reviewPartialStepCount: reviewPartialStepCount,
+            selfReportedConfidence: selfReportedConfidence,
+            primaryStuckPoint: bundle.behavior.postSolveReview?.primaryStuckPoint,
             sourceText: joinedText
         )
     }
@@ -218,6 +237,17 @@ actor AnalysisPipelineEngine {
         if features.hasBookmarks {
             confidenceBase += 0.03
         }
+        if features.hasStructuredReview {
+            confidenceBase += 0.03
+        }
+        if let selfReportedConfidence = features.selfReportedConfidence {
+            masteryBase += (selfReportedConfidence - 0.5) * 0.18
+            confidenceBase += (selfReportedConfidence - 0.5) * 0.22
+        }
+
+        masteryBase -= Double(features.reviewFailedStepCount) / 18.0
+        masteryBase -= Double(features.reviewPartialStepCount) / 28.0
+        confidenceBase -= Double(features.reviewFailedStepCount) / 20.0
 
         let masteryScore = clamped(masteryBase, min: 0.24, max: 0.95)
         let confidenceScore = clamped(confidenceBase, min: 0.28, max: 0.96)
@@ -249,6 +279,7 @@ actor AnalysisPipelineEngine {
     }
 
     private func makeEvidence(
+        bundle: AnalysisBundle,
         features: NormalizedAnalysisFeatures,
         classification: AnalysisClassification,
         scores: ScoredSignals
@@ -281,6 +312,37 @@ actor AnalysisPipelineEngine {
                     title: "과목 인식",
                     detail: classification.unitLabel.map { "`\(subject)` · `\($0)` 맥락으로 해석했습니다." } ?? "`\(subject)` 과목 문맥으로 해석했습니다.",
                     strength: classification.confidenceScore
+                )
+            )
+        }
+
+        if let review = bundle.behavior.postSolveReview {
+            var parts: [String] = []
+            if let confidenceAfter = review.confidenceAfter {
+                parts.append("직후 자신감 \(confidenceAfter)%")
+            }
+            if let firstApproach = review.firstApproach {
+                parts.append("첫 접근 `\(humanizedReviewIdentifier(firstApproach))`")
+            }
+            if let primaryStuckPoint = review.primaryStuckPoint {
+                parts.append("가장 막힌 단계 `\(readableReviewStepLabel(primaryStuckPoint))`")
+            }
+            if features.reviewFailedStepCount > 0 || features.reviewPartialStepCount > 0 {
+                parts.append("review 경로에서 막힘 \(features.reviewFailedStepCount)개, 애매함 \(features.reviewPartialStepCount)개")
+            }
+            if let freeMemo = review.freeMemo?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !freeMemo.isEmpty {
+                parts.append("메모 \(String(freeMemo.prefix(32)))")
+            }
+
+            items.append(
+                AnalysisEvidenceItem(
+                    id: UUID(),
+                    title: "풀이 직후 자가 리뷰",
+                    detail: parts.isEmpty
+                        ? "풀이 직후 회고 입력이 함께 저장되었습니다."
+                        : parts.joined(separator: ", ") + "를 함께 수집했습니다.",
+                    strength: clamped(0.46 + Double(features.reviewAnsweredCount) * 0.08, min: 0.46, max: 0.9)
                 )
             )
         }
@@ -504,7 +566,15 @@ actor AnalysisPipelineEngine {
         let pageLabel = "p.\(bundle.page.pageIndex + 1)"
         let subjectLine = classification.subjectLabel.map { "과목은 `\($0)`" } ?? "과목은 아직 미확정"
         let unitLine = classification.unitLabel.map { "단원은 `\($0)`" } ?? "단원 힌트는 부족"
-        return "\(pageLabel) 기준으로 `\(classification.studyMode.title)` 흐름으로 읽었습니다. \(subjectLine), \(unitLine)입니다. 현재 이해 상태는 \(masteryDescriptor(scores.masteryScore)), 근거 상태는 \(confidenceDescriptor(scores.confidenceScore))으로 보이며, \(reviewPlan.reviewReason)"
+        let reviewLine: String
+        if let review = bundle.behavior.postSolveReview {
+            let stuckLine = review.primaryStuckPoint.map { "가장 막힌 단계는 `\(readableReviewStepLabel($0))`" } ?? "막힌 단계는 미선택"
+            let confidenceLine = review.confidenceAfter.map { "직후 자신감은 \($0)%" } ?? "직후 자신감은 미기록"
+            reviewLine = " 자가 리뷰 기준 \(confidenceLine)이며, \(stuckLine)로 남겼습니다."
+        } else {
+            reviewLine = ""
+        }
+        return "\(pageLabel) 기준으로 `\(classification.studyMode.title)` 흐름으로 읽었습니다. \(subjectLine), \(unitLine)입니다. 현재 이해 상태는 \(masteryDescriptor(scores.masteryScore)), 근거 상태는 \(confidenceDescriptor(scores.confidenceScore))으로 보이며, \(reviewPlan.reviewReason)\(reviewLine)"
     }
 
     private func inferSubject(from existing: String?, text: String) -> String? {
@@ -650,6 +720,27 @@ actor AnalysisPipelineEngine {
         "\(Int((value * 100).rounded()))%"
     }
 
+    private func readableReviewStepLabel(_ identifier: String) -> String {
+        switch identifier {
+        case "condition_parse":
+            return "조건 해석"
+        case "strategy_choice":
+            return "풀이 방향"
+        case "execution":
+            return "전개/풀이"
+        case "verification":
+            return "검산"
+        default:
+            return humanizedReviewIdentifier(identifier)
+        }
+    }
+
+    private func humanizedReviewIdentifier(_ identifier: String) -> String {
+        identifier
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func masteryDescriptor(_ score: Double) -> String {
         switch score {
         case 0.8...:
@@ -700,6 +791,12 @@ private struct NormalizedAnalysisFeatures {
     var hasPdfText: Bool
     var hasManualTags: Bool
     var hasBookmarks: Bool
+    var hasStructuredReview: Bool
+    var reviewAnsweredCount: Int
+    var reviewFailedStepCount: Int
+    var reviewPartialStepCount: Int
+    var selfReportedConfidence: Double?
+    var primaryStuckPoint: String?
     var sourceText: String
 }
 

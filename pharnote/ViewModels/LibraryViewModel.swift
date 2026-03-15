@@ -1,8 +1,20 @@
 import Combine
 import Foundation
+import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class LibraryViewModel: ObservableObject {
+    private struct PersistedOpenDocumentTab: Codable {
+        let documentID: UUID
+        let initialPageKey: String?
+    }
+
+    private struct PersistedWorkspaceState: Codable {
+        let openTabs: [PersistedOpenDocumentTab]
+        let activeDocumentTabID: UUID?
+    }
+
     struct StudySectionDraft: Identifiable, Hashable {
         let id: UUID
         var title: String
@@ -22,10 +34,26 @@ final class LibraryViewModel: ObservableObject {
         let documents: [PharDocument]
     }
 
+    struct OCRSearchResultRow: Identifiable, Hashable {
+        let id: UUID
+        let document: PharDocument
+        let pageKey: String
+        let pageLabel: String
+        let snippet: String
+        let indexedAt: Date
+    }
+
+    struct OCRSearchNavigationTarget: Hashable {
+        let document: PharDocument
+        let pageKey: String
+    }
+
     @Published private(set) var documents: [PharDocument] = []
     @Published var selectedFolder: LibraryFolder? = .all
     @Published var searchQuery: String = ""
-    @Published var navigationPath: [PharDocument] = []
+    @Published var navigationPath = NavigationPath()
+    @Published private(set) var openDocumentTabs: [DocumentEditorLaunchTarget] = []
+    @Published private(set) var activeDocumentTabID: UUID?
     @Published var errorMessage: String?
     @Published var pendingPDFImportSelection: PendingPDFImportSelection?
     @Published var selectedStudySubject: StudySubject?
@@ -34,10 +62,15 @@ final class LibraryViewModel: ObservableObject {
     @Published var catalogImportPreview: StudyMaterialCatalogImportPreview?
     @Published private(set) var dashboardSnapshot: PharnodeDashboardSnapshot?
     @Published private(set) var dashboardSnapshotJSONString: String?
+    @Published private(set) var ocrSearchResults: [OCRSearchResultRow] = []
 
     private let store: LibraryStore
     private let catalogManager: StudyMaterialCatalogManager
+    private let userDefaults: UserDefaults
     private var materialRecognizer: StudyMaterialRecognizer
+    private var searchTask: Task<Void, Never>?
+    private var didRestoreWorkspaceState = false
+    private let workspaceStateDefaultsKey = "pharnote.workspace-state"
 
     convenience init() {
         self.init(store: LibraryStore(), materialRecognizer: nil, catalogManager: nil)
@@ -46,13 +79,15 @@ final class LibraryViewModel: ObservableObject {
     init(
         store: LibraryStore,
         materialRecognizer: StudyMaterialRecognizer? = nil,
-        catalogManager: StudyMaterialCatalogManager? = nil
+        catalogManager: StudyMaterialCatalogManager? = nil,
+        userDefaults: UserDefaults = .standard
     ) {
         self.store = store
         let resolvedCatalogManager = catalogManager ?? StudyMaterialCatalogManager()
         self.catalogManager = resolvedCatalogManager
         self.catalogSummary = resolvedCatalogManager.summary()
         self.materialRecognizer = materialRecognizer ?? StudyMaterialRecognizer(catalogStore: resolvedCatalogManager.makeStore())
+        self.userDefaults = userDefaults
         loadDocuments()
     }
 
@@ -79,6 +114,10 @@ final class LibraryViewModel: ObservableObject {
 
     var continueStudyingDocuments: [PharDocument] {
         Array(filteredDocuments.prefix(4))
+    }
+
+    var hasSearchQuery: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var highlightedBlankNotes: [PharDocument] {
@@ -154,7 +193,13 @@ final class LibraryViewModel: ObservableObject {
     func loadDocuments() {
         do {
             documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+            if didRestoreWorkspaceState {
+                reconcileOpenDocumentTabs()
+            } else {
+                restoreWorkspaceStateIfNeeded()
+            }
             refreshDashboardSnapshot()
+            refreshOCRSearchResults()
         } catch {
             errorMessage = "문서 인덱스 로드 실패: \(error.localizedDescription)"
         }
@@ -165,7 +210,7 @@ final class LibraryViewModel: ObservableObject {
             let newDocument = try store.createBlankNote(title: nextBlankNoteTitle())
             documents.insert(newDocument, at: 0)
             refreshDashboardSnapshot()
-            navigationPath.append(newDocument)
+            openDocument(newDocument)
         } catch {
             errorMessage = "새 문서 생성 실패: \(error.localizedDescription)"
         }
@@ -189,6 +234,24 @@ final class LibraryViewModel: ObservableObject {
             pendingPDFImportSelection = PendingPDFImportSelection(document: newDocument, suggestion: suggestion)
         } catch {
             errorMessage = "PDF 가져오기 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func importDocument(from sourceURL: URL) {
+        switch importedFileKind(for: sourceURL) {
+        case .pdf:
+            importPDF(from: sourceURL)
+        case .image:
+            do {
+                let newDocument = try store.importImageAsPDF(from: sourceURL)
+                documents.insert(newDocument, at: 0)
+                refreshDashboardSnapshot()
+                openDocument(newDocument)
+            } catch {
+                errorMessage = "이미지 가져오기 실패: \(error.localizedDescription)"
+            }
+        case .unsupported:
+            errorMessage = "지원하지 않는 파일 형식입니다. PDF 또는 이미지 파일을 선택해 주세요."
         }
     }
 
@@ -217,7 +280,7 @@ final class LibraryViewModel: ObservableObject {
             replaceDocument(saved)
             refreshDashboardSnapshot()
             pendingPDFImportSelection = nil
-            navigationPath.append(saved)
+            openDocument(saved)
         } catch {
             errorMessage = "교재 메타데이터 저장 실패: \(error.localizedDescription)"
         }
@@ -227,7 +290,7 @@ final class LibraryViewModel: ObservableObject {
         guard let pending = pendingPDFImportSelection else { return }
         pendingPDFImportSelection = nil
         if openDocument {
-            navigationPath.append(pending.document)
+            self.openDocument(pending.document)
         }
     }
 
@@ -293,6 +356,91 @@ final class LibraryViewModel: ObservableObject {
             dashboardSnapshot = nil
             dashboardSnapshotJSONString = nil
             errorMessage = "대시보드 스냅샷 로드 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func refreshOCRSearchResults() {
+        searchTask?.cancel()
+
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            ocrSearchResults = []
+            return
+        }
+
+        let documents = self.documents
+        searchTask = Task { @MainActor [query] in
+            let hits = await SearchInfrastructure.shared.searchHandwriting(query: query, limit: 20)
+            guard !Task.isCancelled else { return }
+
+            let mappedResults = hits.compactMap { hit -> OCRSearchResultRow? in
+                guard let document = documents.first(where: { $0.id == hit.documentID }) else { return nil }
+                guard self.matchesSelectedFolder(document) else { return nil }
+                return OCRSearchResultRow(
+                    id: hit.id,
+                    document: document,
+                    pageKey: hit.pageKey,
+                    pageLabel: pageLabel(for: hit.pageKey),
+                    snippet: hit.snippet,
+                    indexedAt: hit.indexedAt
+                )
+            }
+
+            ocrSearchResults = mappedResults.sorted { $0.indexedAt > $1.indexedAt }
+        }
+    }
+
+    func openOCRSearchResult(_ result: OCRSearchResultRow) {
+        openDocument(result.document, initialPageKey: result.pageKey)
+    }
+
+    func openDocument(_ document: PharDocument, initialPageKey: String? = nil) {
+        let target = DocumentEditorLaunchTarget(document: document, initialPageKey: initialPageKey)
+        if let existingIndex = openDocumentTabs.firstIndex(where: { $0.document.id == document.id }) {
+            openDocumentTabs.remove(at: existingIndex)
+        }
+        openDocumentTabs.append(target)
+        activeDocumentTabID = document.id
+        setNavigationTarget(target)
+        persistWorkspaceState()
+    }
+
+    func activateDocumentTab(_ documentID: UUID) {
+        guard let existingIndex = openDocumentTabs.firstIndex(where: { $0.document.id == documentID }) else { return }
+        let target = openDocumentTabs.remove(at: existingIndex)
+        openDocumentTabs.append(target)
+        activeDocumentTabID = documentID
+        setNavigationTarget(target)
+        persistWorkspaceState()
+    }
+
+    func closeDocumentTab(_ documentID: UUID) {
+        guard let existingIndex = openDocumentTabs.firstIndex(where: { $0.document.id == documentID }) else { return }
+        let wasActive = activeDocumentTabID == documentID
+        openDocumentTabs.remove(at: existingIndex)
+
+        if wasActive {
+            let nextTarget = openDocumentTabs.last
+            activeDocumentTabID = nextTarget?.document.id
+            setNavigationTarget(nextTarget)
+        } else if activeDocumentTabID == nil, let nextTarget = openDocumentTabs.last {
+            activeDocumentTabID = nextTarget.document.id
+            setNavigationTarget(nextTarget)
+        }
+
+        persistWorkspaceState()
+    }
+
+    func workspaceDocumentChips(currentDocument: PharDocument) -> [WritingWorkspaceDocumentChip] {
+        let sourceTabs = openDocumentTabs.isEmpty ? [DocumentEditorLaunchTarget(document: currentDocument, initialPageKey: nil)] : openDocumentTabs
+        let activeDocumentID = activeDocumentTabID ?? currentDocument.id
+
+        return sourceTabs.map { target in
+            WritingWorkspaceDocumentChip(
+                id: target.document.id,
+                title: target.document.title,
+                isCurrent: target.document.id == activeDocumentID
+            )
         }
     }
 
@@ -409,6 +557,35 @@ final class LibraryViewModel: ObservableObject {
         return "빈 노트 \(nextNumber)"
     }
 
+    private enum ImportedFileKind {
+        case pdf
+        case image
+        case unsupported
+    }
+
+    private func importedFileKind(for sourceURL: URL) -> ImportedFileKind {
+        if let contentType = try? sourceURL.resourceValues(forKeys: [.contentTypeKey]).contentType {
+            if contentType.conforms(to: .pdf) {
+                return .pdf
+            }
+            if contentType.conforms(to: .image) {
+                return .image
+            }
+        }
+
+        let pathExtension = sourceURL.pathExtension.lowercased()
+        if let inferredType = UTType(filenameExtension: pathExtension) {
+            if inferredType.conforms(to: .pdf) {
+                return .pdf
+            }
+            if inferredType.conforms(to: .image) {
+                return .image
+            }
+        }
+
+        return .unsupported
+    }
+
     private func updatedStudyMaterial(
         for document: PharDocument,
         resolvedTitle: String,
@@ -487,6 +664,130 @@ final class LibraryViewModel: ObservableObject {
             documents[index] = document
             documents.sort { $0.updatedAt > $1.updatedAt }
         }
+        if let tabIndex = openDocumentTabs.firstIndex(where: { $0.document.id == document.id }) {
+            let existing = openDocumentTabs[tabIndex]
+            openDocumentTabs[tabIndex] = DocumentEditorLaunchTarget(document: document, initialPageKey: existing.initialPageKey)
+            if activeDocumentTabID == document.id && !navigationPath.isEmpty {
+                setNavigationTarget(openDocumentTabs[tabIndex])
+            }
+        }
+        persistWorkspaceState()
+    }
+
+    private func reconcileOpenDocumentTabs() {
+        guard !openDocumentTabs.isEmpty else { return }
+
+        openDocumentTabs = openDocumentTabs.compactMap { target in
+            guard let updatedDocument = documents.first(where: { $0.id == target.document.id }) else { return nil }
+            return DocumentEditorLaunchTarget(document: updatedDocument, initialPageKey: target.initialPageKey)
+        }
+
+        if let activeDocumentTabID,
+           !openDocumentTabs.contains(where: { $0.document.id == activeDocumentTabID }) {
+            self.activeDocumentTabID = openDocumentTabs.last?.document.id
+        }
+
+        if let activeDocumentTabID,
+           let activeTarget = openDocumentTabs.first(where: { $0.document.id == activeDocumentTabID }) {
+            // "홈 화면" 상태(!navigationPath.isEmpty == false)일 때 자동으로 다시 들어가는 현상을 방지합니다.
+            // 사용자가 명시적으로 탭(activeDocumentTabID)을 선택했거나, 초기 복원 과정에서만 네비게이션을 수행해야 합니다.
+            // 현재 navigationPath가 비어있다는 것은 사용자가 의도적으로 홈으로 나왔음을 의미할 수 있습니다.
+            
+            if !navigationPath.isEmpty {
+                // 이미 무언가 열려있는 상태에서 탭 전환 등으로 인한 정합성 맞추기
+                if !isAlreadyNavigated(to: activeTarget) {
+                    setNavigationTarget(activeTarget)
+                }
+            }
+        } else if openDocumentTabs.isEmpty {
+            activeDocumentTabID = nil
+            if !navigationPath.isEmpty {
+                setNavigationTarget(nil)
+            }
+        }
+
+        persistWorkspaceState()
+    }
+
+    private func setNavigationTarget(_ target: DocumentEditorLaunchTarget?) {
+        var newPath = NavigationPath()
+        if let target {
+            newPath.append(target)
+        }
+        navigationPath = newPath
+    }
+
+    private func isAlreadyNavigated(to target: DocumentEditorLaunchTarget) -> Bool {
+        // navigationPath가 비어있으면 홈 화면이므로, 어떤 문서 타겟과도 "이미 네비게이션된" 상태가 아닙니다.
+        if navigationPath.isEmpty {
+            return false
+        }
+        
+        // 현재 활성화된 탭 ID가 타겟과 일치하면 이미 화면이 떠 있는 것으로 간주합니다.
+        return activeDocumentTabID == target.document.id
+    }
+
+    private func restoreWorkspaceStateIfNeeded() {
+        didRestoreWorkspaceState = true
+
+        guard let data = userDefaults.data(forKey: workspaceStateDefaultsKey) else {
+            reconcileOpenDocumentTabs()
+            return
+        }
+
+        let decoder = JSONDecoder()
+        guard let persistedState = try? decoder.decode(PersistedWorkspaceState.self, from: data) else {
+            userDefaults.removeObject(forKey: workspaceStateDefaultsKey)
+            reconcileOpenDocumentTabs()
+            return
+        }
+
+        openDocumentTabs = persistedState.openTabs.compactMap { persistedTab in
+            guard let document = documents.first(where: { $0.id == persistedTab.documentID }) else { return nil }
+            return DocumentEditorLaunchTarget(document: document, initialPageKey: persistedTab.initialPageKey)
+        }
+
+        if let activeID = persistedState.activeDocumentTabID,
+           openDocumentTabs.contains(where: { $0.document.id == activeID }) {
+            activeDocumentTabID = activeID
+        } else {
+            activeDocumentTabID = openDocumentTabs.last?.document.id
+        }
+
+        if let activeDocumentTabID,
+           let activeTarget = openDocumentTabs.first(where: { $0.document.id == activeDocumentTabID }) {
+            setNavigationTarget(activeTarget)
+        } else {
+            setNavigationTarget(nil)
+        }
+
+        persistWorkspaceState()
+    }
+
+    private func persistWorkspaceState() {
+        let openTabs = openDocumentTabs.map {
+            PersistedOpenDocumentTab(
+                documentID: $0.document.id,
+                initialPageKey: $0.initialPageKey
+            )
+        }
+
+        guard !openTabs.isEmpty || activeDocumentTabID != nil else {
+            userDefaults.removeObject(forKey: workspaceStateDefaultsKey)
+            return
+        }
+
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(
+            PersistedWorkspaceState(
+                openTabs: openTabs,
+                activeDocumentTabID: activeDocumentTabID
+            )
+        ) else {
+            return
+        }
+
+        userDefaults.set(data, forKey: workspaceStateDefaultsKey)
     }
 
     private func documentsForCurrentFolder(matching query: String) -> [PharDocument] {
@@ -548,5 +849,24 @@ final class LibraryViewModel: ObservableObject {
                 }
                 return lhs.documents.count > rhs.documents.count
             }
+    }
+
+    private func pageLabel(for pageKey: String) -> String {
+        if pageKey.hasPrefix("pdf-page-"),
+           let index = Int(pageKey.replacingOccurrences(of: "pdf-page-", with: "")) {
+            return "p.\(index + 1)"
+        }
+        return "필기 페이지"
+    }
+
+    private func matchesSelectedFolder(_ document: PharDocument) -> Bool {
+        switch selectedFolder ?? .all {
+        case .all:
+            return true
+        case .blankNotes:
+            return document.type == .blankNote
+        case .pdfs:
+            return document.type == .pdf
+        }
     }
 }

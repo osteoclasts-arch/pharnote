@@ -1,0 +1,66 @@
+{
+  "available_columns": [
+    "answer",
+    "content",
+    "exam_type",
+    "id",
+    "metadata",
+    "month",
+    "question_number",
+    "solution",
+    "subject",
+    "year"
+  ],
+  "backend": "fixture",
+  "excluded_capabilities": [
+    "choices"
+  ],
+  "introspection_mode": "fixture",
+  "metadata_keys": [
+    "chapter",
+    "is_common",
+    "keywords",
+    "paper_section",
+    "points",
+    "section",
+    "section_type",
+    "unit"
+  ],
+  "resolved_fields": {
+    "answer": "answer",
+    "choices": null,
+    "common_section": null,
+    "concept_tags": null,
+    "exam_type": "exam_type",
+    "metadata": "metadata",
+    "month": "month",
+    "points": null,
+    "question_number": "question_number",
+    "record_id": "id",
+    "solution_outline": "solution",
+    "stem": "content",
+    "subject": "subject",
+    "year": "year"
+  },
+  "resolved_metadata_fields": {
+    "answer": null,
+    "choices": null,
+    "common_section": "paper_section",
+    "concept_tags": "keywords",
+    "exam_type": null,
+    "metadata": null,
+    "month": null,
+    "points": "points",
+    "question_number": null,
+    "record_id": null,
+    "solution_outline": null,
+    "stem": null,
+    "subject": null,
+    "year": null
+  },
+  "sample_row_count": 6,
+  "table_name": "past_questions",
+  "warnings": [
+    "capability_unresolved:choices"
+  ]
+}

@@ -7,12 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-			93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F642F5474A1007D741C /* PharTheme.swift */; };
+		93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F642F5474A1007D741C /* PharTheme.swift */; };
 		93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */; };
 		93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7C2F5474A1007D741C /* PDFKitView.swift */; };
 		93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F812F5474A1007D741C /* pharnoteApp.swift */; };
 		93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */; };
 		93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F662F5474A1007D741C /* BlankNoteContent.swift */; };
+		BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */; };
 		93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */; };
 		93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F742F5474A1007D741C /* LibraryViewModel.swift */; };
 		93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6E2F5474A1007D741C /* LibraryStore.swift */; };
@@ -26,39 +27,54 @@
 		93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */; };
 		93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */; };
 		93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */; };
+		CC0001BB2F5700000000CC02 /* BlankNotePageGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */; };
 		93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */; };
 		93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */; };
 		93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F692F5474A1007D741C /* PharDocument.swift */; };
 		93FC7F992F5474A1007D741C /* DocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F782F5474A1007D741C /* DocumentEditorView.swift */; };
 		93FC7F9A2F5474A1007D741C /* PDFImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */; };
-			93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */; };
-			93FC7F9C2F5474A1007D741C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93FC7F802F5474A1007D741C /* Assets.xcassets */; };
-			AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000112F56000100AA0001 /* PersistenceController.swift */; };
-			AA0000022F56000100AA0001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000122F56000100AA0001 /* ContentView.swift */; };
-			AA0000032F56000100AA0001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000132F56000100AA0001 /* SettingsView.swift */; };
-			AA0000042F56000100AA0001 /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000142F56000100AA0001 /* NoteListView.swift */; };
-			AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000152F56000100AA0001 /* NoteDetailView.swift */; };
-			AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */; };
-			AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000172F56000100AA0001 /* AnalysisModels.swift */; };
-			AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */; };
-			AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000192F56000100AA0001 /* AnalysisCenter.swift */; };
-			AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */; };
-			AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */; };
-			AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */; };
-			AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000292F56000100AA0001 /* StudyEventLogger.swift */; };
-			AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */; };
-			AA0000322F56000100AA0001 /* StudyMaterialCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */; };
-			AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */; };
-			AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000382F56000100AA0001 /* CatalogImportPicker.swift */; };
-			AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */; };
-			AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */; };
+		93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */; };
+		93FC7F9C2F5474A1007D741C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93FC7F802F5474A1007D741C /* Assets.xcassets */; };
+		AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000112F56000100AA0001 /* PersistenceController.swift */; };
+		AA0000022F56000100AA0001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000122F56000100AA0001 /* ContentView.swift */; };
+		AA0000032F56000100AA0001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000132F56000100AA0001 /* SettingsView.swift */; };
+		AA0000042F56000100AA0001 /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000142F56000100AA0001 /* NoteListView.swift */; };
+		AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000152F56000100AA0001 /* NoteDetailView.swift */; };
+		AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */; };
+		AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000172F56000100AA0001 /* AnalysisModels.swift */; };
+		AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */; };
+		AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000192F56000100AA0001 /* AnalysisCenter.swift */; };
+		AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */; };
+		AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */; };
+		AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */; };
+		AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000292F56000100AA0001 /* StudyEventLogger.swift */; };
+		AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */; };
+		AA0000322F56000100AA0001 /* StudyMaterialCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */; };
+		AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */; };
+		AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000382F56000100AA0001 /* CatalogImportPicker.swift */; };
+		AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */; };
+		AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */; };
+		AA0000432F56000100AA0001 /* DocumentOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000442F56000100AA0001 /* DocumentOCRService.swift */; };
+		AA0000452F56000100AA0001 /* PastQuestionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000462F56000100AA0001 /* PastQuestionModels.swift */; };
+		AA0000472F56000100AA0001 /* PastQuestionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000482F56000100AA0001 /* PastQuestionsService.swift */; };
+		AA0000492F56000100AA0001 /* PastQuestionsDebugViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000502F56000100AA0001 /* PastQuestionsDebugViewModel.swift */; };
+		AA0000512F56000100AA0001 /* PastQuestionsDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000522F56000100AA0001 /* PastQuestionsDebugView.swift */; };
+		AA0000532F56000100AA0001 /* NodeAnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000572F56000100AA0001 /* NodeAnalysisModels.swift */; };
+		AA0000542F56000100AA0001 /* NodeAnalysisStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */; };
+		AA0000552F56000100AA0001 /* NodeAnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */; };
+		AA0000562F56000100AA0001 /* NodeAnalysisWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */; };
+		B4F000012F56000100B4F002 /* LessonSyncNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000012F56000100B4F001 /* LessonSyncNode.swift */; };
+		B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000022F56000100B4F001 /* LectureSyncService.swift */; };
+		B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */; };
+		B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-			93FC7F1B2F5473E9007D741C /* pharnote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = pharnote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		93FC7F1B2F5473E9007D741C /* pharnote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = pharnote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93FC7F632F5474A1007D741C /* PharControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharControls.swift; sourceTree = "<group>"; };
 		93FC7F642F5474A1007D741C /* PharTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharTheme.swift; sourceTree = "<group>"; };
 		93FC7F662F5474A1007D741C /* BlankNoteContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteContent.swift; sourceTree = "<group>"; };
+		BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingPenStyle.swift; sourceTree = "<group>"; };
 		93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchModels.swift; sourceTree = "<group>"; };
 		93FC7F682F5474A1007D741C /* LibraryFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolder.swift; sourceTree = "<group>"; };
 		93FC7F692F5474A1007D741C /* PharDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharDocument.swift; sourceTree = "<group>"; };
@@ -73,34 +89,48 @@
 		93FC7F742F5474A1007D741C /* LibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewModel.swift; sourceTree = "<group>"; };
 		93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFEditorViewModel.swift; sourceTree = "<group>"; };
 		93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteEditorView.swift; sourceTree = "<group>"; };
+		CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNotePageGridView.swift; sourceTree = "<group>"; };
 		93FC7F782F5474A1007D741C /* DocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorView.swift; sourceTree = "<group>"; };
 		93FC7F792F5474A1007D741C /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentEditorView.swift; sourceTree = "<group>"; };
 		93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImportPicker.swift; sourceTree = "<group>"; };
 		93FC7F7C2F5474A1007D741C /* PDFKitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFKitView.swift; sourceTree = "<group>"; };
 		93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilCanvasView.swift; sourceTree = "<group>"; };
-			93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilPassthroughCanvasView.swift; sourceTree = "<group>"; };
-			93FC7F802F5474A1007D741C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-			93FC7F812F5474A1007D741C /* pharnoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = pharnoteApp.swift; sourceTree = "<group>"; };
-			AA0000112F56000100AA0001 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
-			AA0000122F56000100AA0001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-			AA0000132F56000100AA0001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-			AA0000142F56000100AA0001 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
-			AA0000152F56000100AA0001 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
-			AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Note+CoreDataClass.swift"; sourceTree = "<group>"; };
-			AA0000172F56000100AA0001 /* AnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisModels.swift; sourceTree = "<group>"; };
-			AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisQueueStore.swift; sourceTree = "<group>"; };
-			AA0000192F56000100AA0001 /* AnalysisCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisCenter.swift; sourceTree = "<group>"; };
-			AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnalysisEngine.swift; sourceTree = "<group>"; };
-			AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisInsightsView.swift; sourceTree = "<group>"; };
-			AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisHistoryView.swift; sourceTree = "<group>"; };
-			AA0000292F56000100AA0001 /* StudyEventLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyEventLogger.swift; sourceTree = "<group>"; };
-			AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialSupport.swift; sourceTree = "<group>"; };
-			AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = StudyMaterialCatalog.json; sourceTree = "<group>"; };
-			AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialCatalogManager.swift; sourceTree = "<group>"; };
-			AA0000382F56000100AA0001 /* CatalogImportPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogImportPicker.swift; sourceTree = "<group>"; };
-			AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeCloudSync.swift; sourceTree = "<group>"; };
-			AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeSupabaseAuth.swift; sourceTree = "<group>"; };
+		93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilPassthroughCanvasView.swift; sourceTree = "<group>"; };
+		93FC7F802F5474A1007D741C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		93FC7F812F5474A1007D741C /* pharnoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = pharnoteApp.swift; sourceTree = "<group>"; };
+		AA0000112F56000100AA0001 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		AA0000122F56000100AA0001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AA0000132F56000100AA0001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA0000142F56000100AA0001 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
+		AA0000152F56000100AA0001 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
+		AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Note+CoreDataClass.swift"; sourceTree = "<group>"; };
+		AA0000172F56000100AA0001 /* AnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisModels.swift; sourceTree = "<group>"; };
+		AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisQueueStore.swift; sourceTree = "<group>"; };
+		AA0000192F56000100AA0001 /* AnalysisCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisCenter.swift; sourceTree = "<group>"; };
+		AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnalysisEngine.swift; sourceTree = "<group>"; };
+		AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisInsightsView.swift; sourceTree = "<group>"; };
+		AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisHistoryView.swift; sourceTree = "<group>"; };
+		AA0000292F56000100AA0001 /* StudyEventLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyEventLogger.swift; sourceTree = "<group>"; };
+		AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialSupport.swift; sourceTree = "<group>"; };
+		AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = StudyMaterialCatalog.json; sourceTree = "<group>"; };
+		AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialCatalogManager.swift; sourceTree = "<group>"; };
+		AA0000382F56000100AA0001 /* CatalogImportPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogImportPicker.swift; sourceTree = "<group>"; };
+		AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeCloudSync.swift; sourceTree = "<group>"; };
+		AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnodeSupabaseAuth.swift; sourceTree = "<group>"; };
+		AA0000442F56000100AA0001 /* DocumentOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentOCRService.swift; sourceTree = "<group>"; };
+		AA0000462F56000100AA0001 /* PastQuestionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastQuestionModels.swift; sourceTree = "<group>"; };
+		AA0000482F56000100AA0001 /* PastQuestionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastQuestionsService.swift; sourceTree = "<group>"; };
+		AA0000502F56000100AA0001 /* PastQuestionsDebugViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastQuestionsDebugViewModel.swift; sourceTree = "<group>"; };
+		AA0000522F56000100AA0001 /* PastQuestionsDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastQuestionsDebugView.swift; sourceTree = "<group>"; };
+		AA0000572F56000100AA0001 /* NodeAnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisModels.swift; sourceTree = "<group>"; };
+		AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisStore.swift; sourceTree = "<group>"; };
+		AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisViewModel.swift; sourceTree = "<group>"; };
+		AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisWorkspaceView.swift; sourceTree = "<group>"; };
+		B4F000012F56000100B4F001 /* LessonSyncNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonSyncNode.swift; sourceTree = "<group>"; };
+		B4F000022F56000100B4F001 /* LectureSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureSyncService.swift; sourceTree = "<group>"; };
+		B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartLayerCaptureService.swift; sourceTree = "<group>"; };
+		B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonDocumentEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -148,98 +178,97 @@
 			path = DesignSystem;
 			sourceTree = "<group>";
 		};
-			93FC7F6A2F5474A1007D741C /* Models */ = {
+		93FC7F6A2F5474A1007D741C /* Models */ = {
 			isa = PBXGroup;
 			children = (
 				AA0000172F56000100AA0001 /* AnalysisModels.swift */,
 				93FC7F662F5474A1007D741C /* BlankNoteContent.swift */,
+					BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */,
 				93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */,
 				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
+				AA0000572F56000100AA0001 /* NodeAnalysisModels.swift */,
+				AA0000462F56000100AA0001 /* PastQuestionModels.swift */,
+				B4F000012F56000100B4F001 /* LessonSyncNode.swift */,
 				93FC7F692F5474A1007D741C /* PharDocument.swift */,
 				AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
-			};
-			AA0000212F56000100AA0001 /* CoreData */ = {
-				isa = PBXGroup;
-				children = (
-					AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */,
-				);
-				path = CoreData;
-				sourceTree = "<group>";
-			};
-			AA0000342F56000100AA0001 /* Resources */ = {
-				isa = PBXGroup;
-				children = (
-					AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */,
-				);
-				path = Resources;
-				sourceTree = "<group>";
-			};
-			93FC7F722F5474A1007D741C /* Services */ = {
-				isa = PBXGroup;
-				children = (
-					AA0000192F56000100AA0001 /* AnalysisCenter.swift */,
-					AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */,
-					AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */,
-					AA0000292F56000100AA0001 /* StudyEventLogger.swift */,
-					AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */,
-					AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */,
-					AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */,
-					93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */,
-					93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */,
-					93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */,
-					93FC7F6E2F5474A1007D741C /* LibraryStore.swift */,
-					93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */,
-					93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */,
-					93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */,
-					AA0000112F56000100AA0001 /* PersistenceController.swift */,
-				);
-				path = Services;
-				sourceTree = "<group>";
-			};
+		};
+		93FC7F722F5474A1007D741C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000192F56000100AA0001 /* AnalysisCenter.swift */,
+				AA0000182F56000100AA0001 /* AnalysisQueueStore.swift */,
+				AA0000242F56000100AA0001 /* MockAnalysisEngine.swift */,
+				AA0000292F56000100AA0001 /* StudyEventLogger.swift */,
+				AA0000402F56000100AA0001 /* PharnodeCloudSync.swift */,
+				AA0000422F56000100AA0001 /* PharnodeSupabaseAuth.swift */,
+				AA0000442F56000100AA0001 /* DocumentOCRService.swift */,
+				AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */,
+				AA0000482F56000100AA0001 /* PastQuestionsService.swift */,
+				AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */,
+				93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */,
+				93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */,
+				93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */,
+				93FC7F6E2F5474A1007D741C /* LibraryStore.swift */,
+				93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */,
+				93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */,
+				B4F000022F56000100B4F001 /* LectureSyncService.swift */,
+				B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */,
+				93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */,
+				AA0000112F56000100AA0001 /* PersistenceController.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 		93FC7F762F5474A1007D741C /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
 				93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */,
 				93FC7F742F5474A1007D741C /* LibraryViewModel.swift */,
+				AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */,
+				AA0000502F56000100AA0001 /* PastQuestionsDebugViewModel.swift */,
 				93FC7F752F5474A1007D741C /* PDFEditorViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
-			93FC7F7F2F5474A1007D741C /* Views */ = {
-				isa = PBXGroup;
-				children = (
-						AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */,
-						AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */,
-						AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
-						AA0000122F56000100AA0001 /* ContentView.swift */,
-					93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */,
-					93FC7F782F5474A1007D741C /* DocumentEditorView.swift */,
-					93FC7F792F5474A1007D741C /* LibraryView.swift */,
-					AA0000152F56000100AA0001 /* NoteDetailView.swift */,
-					AA0000142F56000100AA0001 /* NoteListView.swift */,
-					93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */,
-					93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
-					93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
-					93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
-					93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
-					AA0000132F56000100AA0001 /* SettingsView.swift */,
-				);
-				path = Views;
-				sourceTree = "<group>";
-			};
-			93FC7F822F5474A1007D741C /* pharnote */ = {
-				isa = PBXGroup;
-				children = (
-					AA0000212F56000100AA0001 /* CoreData */,
-					93FC7F652F5474A1007D741C /* DesignSystem */,
-					93FC7F6A2F5474A1007D741C /* Models */,
-					AA0000342F56000100AA0001 /* Resources */,
-					93FC7F722F5474A1007D741C /* Services */,
-					93FC7F762F5474A1007D741C /* ViewModels */,
+		93FC7F7F2F5474A1007D741C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */,
+				AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */,
+				AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
+				AA0000122F56000100AA0001 /* ContentView.swift */,
+				93FC7F772F5474A1007D741C /* BlankNoteEditorView.swift */,
+				CC0001AA2F5700000000CC01 /* BlankNotePageGridView.swift */,
+				93FC7F782F5474A1007D741C /* DocumentEditorView.swift */,
+				93FC7F792F5474A1007D741C /* LibraryView.swift */,
+				AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */,
+				AA0000152F56000100AA0001 /* NoteDetailView.swift */,
+				AA0000142F56000100AA0001 /* NoteListView.swift */,
+				AA0000522F56000100AA0001 /* PastQuestionsDebugView.swift */,
+				93FC7F7A2F5474A1007D741C /* PDFDocumentEditorView.swift */,
+				93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
+				93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
+				93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
+				B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */,
+				93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
+				AA0000132F56000100AA0001 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		93FC7F822F5474A1007D741C /* pharnote */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000212F56000100AA0001 /* CoreData */,
+				93FC7F652F5474A1007D741C /* DesignSystem */,
+				93FC7F6A2F5474A1007D741C /* Models */,
+				AA0000342F56000100AA0001 /* Resources */,
+				93FC7F722F5474A1007D741C /* Services */,
+				93FC7F762F5474A1007D741C /* ViewModels */,
 				93FC7F7F2F5474A1007D741C /* Views */,
 				93FC7F802F5474A1007D741C /* Assets.xcassets */,
 				93FC7F812F5474A1007D741C /* pharnoteApp.swift */,
@@ -247,6 +276,22 @@
 			name = pharnote;
 			path = /Users/osteoclasts_/Desktop/coding/pharnote/pharnote;
 			sourceTree = "<absolute>";
+		};
+		AA0000212F56000100AA0001 /* CoreData */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000162F56000100AA0001 /* Note+CoreDataClass.swift */,
+			);
+			path = CoreData;
+			sourceTree = "<group>";
+		};
+		AA0000342F56000100AA0001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -320,36 +365,44 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-			93FC7F172F5473E9007D741C /* Sources */ = {
-				isa = PBXSourcesBuildPhase;
-				buildActionMask = 2147483647;
-				files = (
-					AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
-					AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,
-					AA0000022F56000100AA0001 /* ContentView.swift in Sources */,
-					AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */,
-					AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */,
-					AA0000042F56000100AA0001 /* NoteListView.swift in Sources */,
-					AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */,
-					AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */,
-						AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */,
-						AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */,
-						AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */,
-						AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */,
-						AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */,
-						AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
-						AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */,
-						AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */,
-						AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */,
-						AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */,
-						93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */,
-					93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */,
-					93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */,
+		93FC7F172F5473E9007D741C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
+				AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,
+				AA0000022F56000100AA0001 /* ContentView.swift in Sources */,
+				AA0000092F56000100AA0001 /* AnalysisCenter.swift in Sources */,
+				AA0000052F56000100AA0001 /* NoteDetailView.swift in Sources */,
+				AA0000042F56000100AA0001 /* NoteListView.swift in Sources */,
+				AA0000082F56000100AA0001 /* AnalysisQueueStore.swift in Sources */,
+				AA0000222F56000100AA0001 /* MockAnalysisEngine.swift in Sources */,
+				AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */,
+				AA0000392F56000100AA0001 /* PharnodeCloudSync.swift in Sources */,
+				AA0000412F56000100AA0001 /* PharnodeSupabaseAuth.swift in Sources */,
+				AA0000432F56000100AA0001 /* DocumentOCRService.swift in Sources */,
+				AA0000532F56000100AA0001 /* NodeAnalysisModels.swift in Sources */,
+				AA0000452F56000100AA0001 /* PastQuestionModels.swift in Sources */,
+				AA0000542F56000100AA0001 /* NodeAnalysisStore.swift in Sources */,
+				AA0000472F56000100AA0001 /* PastQuestionsService.swift in Sources */,
+				AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */,
+				AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */,
+				AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
+				AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */,
+				AA0000232F56000100AA0001 /* AnalysisInsightsView.swift in Sources */,
+				AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */,
+				AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */,
+				93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */,
+				93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */,
+				93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */,
 				93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */,
 				93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */,
 				93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */,
+				BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */,
 				93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */,
 				93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */,
+				AA0000552F56000100AA0001 /* NodeAnalysisViewModel.swift in Sources */,
+				AA0000492F56000100AA0001 /* PastQuestionsDebugViewModel.swift in Sources */,
 				93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */,
 				93FC7F8C2F5474A1007D741C /* PharControls.swift in Sources */,
 				93FC7F8D2F5474A1007D741C /* LibraryView.swift in Sources */,
@@ -358,15 +411,22 @@
 				93FC7F902F5474A1007D741C /* PencilPassthroughCanvasView.swift in Sources */,
 				93FC7F912F5474A1007D741C /* HandwritingSearchStore.swift in Sources */,
 				93FC7F922F5474A1007D741C /* LibraryFolder.swift in Sources */,
+				AA0000562F56000100AA0001 /* NodeAnalysisWorkspaceView.swift in Sources */,
+				AA0000512F56000100AA0001 /* PastQuestionsDebugView.swift in Sources */,
 				93FC7F932F5474A1007D741C /* PDFDocumentEditorView.swift in Sources */,
 				93FC7F942F5474A1007D741C /* SearchInfrastructure.swift in Sources */,
 				93FC7F952F5474A1007D741C /* BlankNoteEditorView.swift in Sources */,
+				CC0001BB2F5700000000CC02 /* BlankNotePageGridView.swift in Sources */,
 				93FC7F962F5474A1007D741C /* PDFOverlayStore.swift in Sources */,
 				93FC7F972F5474A1007D741C /* HandwritingSearchModels.swift in Sources */,
 				93FC7F982F5474A1007D741C /* PharDocument.swift in Sources */,
 				93FC7F992F5474A1007D741C /* DocumentEditorView.swift in Sources */,
 				93FC7F9A2F5474A1007D741C /* PDFImportPicker.swift in Sources */,
 				93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */,
+				B4F000012F56000100B4F002 /* LessonSyncNode.swift in Sources */,
+				B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */,
+				B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */,
+				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -497,21 +557,32 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ../../pharnote/pharnote.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 1;
-					ENABLE_PREVIEWS = YES;
-					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = pharnote;
-					INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4Z57MNVFP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = pharnote;
+					INFOPLIST_KEY_NSMicrophoneUsageDescription = "문서에 음성 메모를 녹음하려면 마이크 접근이 필요합니다.";
+					INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
+					INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
+					INFOPLIST_KEY_PAST_QUESTIONS_API_BASE_URL = "$(PAST_QUESTIONS_API_BASE_URL)";
+					INFOPLIST_KEY_PAST_QUESTIONS_SUPABASE_ANON_KEY = "$(PAST_QUESTIONS_SUPABASE_ANON_KEY)";
+					INFOPLIST_KEY_PAST_QUESTIONS_SUPABASE_URL = "$(PAST_QUESTIONS_SUPABASE_URL)";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/Frameworks",
+					);
+					MARKETING_VERSION = 1.0;
+					PAST_QUESTIONS_API_BASE_URL = "https://tutorgpt.site";
+					PAST_QUESTIONS_SUPABASE_ANON_KEY = "";
+					PAST_QUESTIONS_SUPABASE_URL = "";
 				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -529,21 +600,32 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ../../pharnote/pharnote.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 1;
-					ENABLE_PREVIEWS = YES;
-					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = pharnote;
-					INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4Z57MNVFP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = pharnote;
+					INFOPLIST_KEY_NSMicrophoneUsageDescription = "문서에 음성 메모를 녹음하려면 마이크 접근이 필요합니다.";
+					INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
+					INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
+					INFOPLIST_KEY_PAST_QUESTIONS_API_BASE_URL = "$(PAST_QUESTIONS_API_BASE_URL)";
+					INFOPLIST_KEY_PAST_QUESTIONS_SUPABASE_ANON_KEY = "$(PAST_QUESTIONS_SUPABASE_ANON_KEY)";
+					INFOPLIST_KEY_PAST_QUESTIONS_SUPABASE_URL = "$(PAST_QUESTIONS_SUPABASE_URL)";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/Frameworks",
+					);
+					MARKETING_VERSION = 1.0;
+					PAST_QUESTIONS_API_BASE_URL = "https://tutorgpt.site";
+					PAST_QUESTIONS_SUPABASE_ANON_KEY = "";
+					PAST_QUESTIONS_SUPABASE_URL = "";
 				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

@@ -4,6 +4,7 @@ struct PharDocument: Identifiable, Codable, Hashable {
     enum DocumentType: String, Codable, CaseIterable {
         case blankNote
         case pdf
+        case lesson
     }
 
     let id: UUID
@@ -37,17 +38,17 @@ struct PharDocument: Identifiable, Codable, Hashable {
 }
 
 extension PharDocument {
-    var studySubjectTitle: String? {
+    nonisolated var studySubjectTitle: String? {
         guard let studyMaterial, studyMaterial.subject != .unspecified else { return nil }
         return studyMaterial.subject.title
     }
 
-    var studyProviderTitle: String? {
+    nonisolated var studyProviderTitle: String? {
         guard let studyMaterial, studyMaterial.provider != .unspecified else { return nil }
         return studyMaterial.provider.title
     }
 
-    var materialSummaryLine: String? {
+    nonisolated var materialSummaryLine: String? {
         guard let studyMaterial else { return nil }
         let parts = [
             studyMaterial.provider == .unspecified ? nil : studyMaterial.provider.title,
@@ -56,7 +57,7 @@ extension PharDocument {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    var progressSummaryLine: String? {
+    nonisolated var progressSummaryLine: String? {
         guard let progress else { return nil }
         if let sectionProgressLabel = progress.sectionProgressLabel {
             return "\(sectionProgressLabel) · \(progress.percentComplete)%"
@@ -64,11 +65,11 @@ extension PharDocument {
         return "진도 \(progress.currentPage)/\(max(progress.totalPages, 1)) · \(progress.percentComplete)%"
     }
 
-    var progressDetailLine: String? {
+    nonisolated var progressDetailLine: String? {
         progress?.dashboardSubheadline
     }
 
-    var analysisSubjectLabel: String? {
+    nonisolated var analysisSubjectLabel: String? {
         studySubjectTitle
     }
 }

@@ -3,10 +3,17 @@ import Combine
 
 @MainActor
 final class SearchInfrastructure: ObservableObject {
-    private let handwritingPipeline: HandwritingIndexingPipeline
+    static let shared = SearchInfrastructure()
 
-    init(handwritingPipeline: HandwritingIndexingPipeline = HandwritingIndexingPipeline()) {
+    private let handwritingPipeline: HandwritingIndexingPipeline
+    private let handwritingStore: HandwritingSearchStore
+
+    init(
+        handwritingPipeline: HandwritingIndexingPipeline = HandwritingIndexingPipeline(),
+        handwritingStore: HandwritingSearchStore = HandwritingSearchStore()
+    ) {
         self.handwritingPipeline = handwritingPipeline
+        self.handwritingStore = handwritingStore
     }
 
     func start() {
@@ -25,5 +32,9 @@ final class SearchInfrastructure: ObservableObject {
         Task {
             await handwritingPipeline.enqueue(documentID: documentID, pageKey: pageKey)
         }
+    }
+
+    func searchHandwriting(query: String, limit: Int = 20) async -> [HandwritingSearchHit] {
+        (try? await handwritingStore.search(query: query, limit: limit)) ?? []
     }
 }

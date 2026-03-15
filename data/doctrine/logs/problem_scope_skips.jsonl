@@ -1,0 +1,2 @@
+{"common_section_detection_method": "metadata:paper_section", "exam_type": "6월 모의평가", "month": 6, "points_detection_method": "metadata:points", "question_number": 12, "record_id": "pq_out_scope_points", "row_index": 4, "skip_reason": "points_unavailable_or_out_of_scope", "year": 2025}
+{"common_section_detection_method": "metadata:paper_section", "exam_type": "9월 모의평가", "month": 9, "points_detection_method": "metadata:points", "question_number": 27, "record_id": "pq_out_scope_elective", "row_index": 5, "skip_reason": "common_section_out_of_scope_or_unavailable", "year": 2025}

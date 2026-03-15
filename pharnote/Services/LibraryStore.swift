@@ -1,5 +1,6 @@
 import Foundation
 import PDFKit
+import UIKit
 
 struct PharnodeDashboardSnapshot: Codable, Hashable {
     let version: Int
@@ -52,6 +53,7 @@ final class LibraryStore {
     enum StoreError: LocalizedError {
         case documentsPathIsNotDirectory
         case invalidPDFSource
+        case invalidImageSource
 
         var errorDescription: String? {
             switch self {
@@ -59,6 +61,8 @@ final class LibraryStore {
                 return "Documents 경로가 디렉토리가 아닙니다."
             case .invalidPDFSource:
                 return "유효한 PDF 파일이 아닙니다."
+            case .invalidImageSource:
+                return "유효한 이미지 파일이 아닙니다."
             }
         }
     }
@@ -71,13 +75,23 @@ final class LibraryStore {
     private let fileManager: FileManager
     private let indexFileName = "LibraryIndex.json"
     private let dashboardFileName = "PharnodeDashboardSnapshot.json"
+    private let ubiquityContainerIdentifier = "iCloud.nodephar.pharnote"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
     }
 
-    private var documentsDirectory: URL {
+    private var localDocumentsDirectory: URL {
         fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private var ubiquitousDocumentsDirectory: URL? {
+        fileManager.url(forUbiquityContainerIdentifier: ubiquityContainerIdentifier)?
+            .appendingPathComponent("Documents", isDirectory: true)
+    }
+
+    private var documentsDirectory: URL {
+        ubiquitousDocumentsDirectory ?? localDocumentsDirectory
     }
 
     private var indexFileURL: URL {
@@ -99,7 +113,7 @@ final class LibraryStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(LibraryIndex.self, from: data)
-        return decoded.documents
+        return decoded.documents.map { normalizeDocumentPath($0, relativeTo: documentsDirectory) }
     }
 
     func saveIndex(_ documents: [PharDocument]) throws {
@@ -245,6 +259,75 @@ final class LibraryStore {
     }
 
     @discardableResult
+    func importImageAsPDF(from sourceURL: URL) throws -> PharDocument {
+        try ensureDocumentsDirectoryExists()
+
+        let scopedAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if scopedAccess {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let now = Date()
+        let id = UUID()
+        let packageURL = documentsDirectory.appendingPathComponent("\(id.uuidString).pharnote", isDirectory: true)
+        try fileManager.createDirectory(at: packageURL, withIntermediateDirectories: false)
+
+        let destinationPDFURL = packageURL.appendingPathComponent("Original.pdf", isDirectory: false)
+
+        var coordinationError: NSError?
+        var importError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(readingItemAt: sourceURL, options: [], error: &coordinationError) { coordinatedURL in
+            do {
+                let imageData = try Data(contentsOf: coordinatedURL)
+                guard let image = UIImage(data: imageData) else {
+                    throw StoreError.invalidImageSource
+                }
+                let pdfData = makeSinglePagePDFData(from: image)
+                try pdfData.write(to: destinationPDFURL, options: .atomic)
+            } catch {
+                importError = error
+            }
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+        if let importError {
+            throw importError
+        }
+
+        let title = sourceURL.deletingPathExtension().lastPathComponent.isEmpty
+            ? "이미지 \(id.uuidString.prefix(6))"
+            : sourceURL.deletingPathExtension().lastPathComponent
+
+        let initialProgress = StudyProgressSnapshot(
+            currentPage: 1,
+            totalPages: 1,
+            furthestPage: 1,
+            completionRatio: 1,
+            lastStudiedAt: now,
+            sections: []
+        )
+
+        var documents = try loadIndex()
+        let document = PharDocument(
+            id: id,
+            title: title,
+            createdAt: now,
+            updatedAt: now,
+            type: .pdf,
+            path: packageURL.path,
+            progress: initialProgress
+        )
+        documents.append(document)
+        try saveIndex(documents)
+        return document
+    }
+
+    @discardableResult
     func updateDocument(_ updatedDocument: PharDocument) throws -> PharDocument {
         var documents = try loadIndex()
         guard let index = documents.firstIndex(where: { $0.id == updatedDocument.id }) else {
@@ -318,15 +401,48 @@ final class LibraryStore {
     }
 
     private func ensureDocumentsDirectoryExists() throws {
+        if let ubiquitousDocumentsDirectory {
+            try ensureDirectoryExists(at: ubiquitousDocumentsDirectory)
+            try migrateLocalDocumentsIfNeeded(to: ubiquitousDocumentsDirectory)
+        }
+
+        try ensureDirectoryExists(at: documentsDirectory)
+    }
+
+    private func ensureDirectoryExists(at directoryURL: URL) throws {
         var isDirectory: ObjCBool = false
-        let exists = fileManager.fileExists(atPath: documentsDirectory.path, isDirectory: &isDirectory)
+        let exists = fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory)
 
         if exists && !isDirectory.boolValue {
             throw StoreError.documentsPathIsNotDirectory
         }
 
         if !exists {
-            try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        }
+    }
+
+    private func migrateLocalDocumentsIfNeeded(to destinationURL: URL) throws {
+        guard destinationURL.path != localDocumentsDirectory.path else { return }
+
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: localDocumentsDirectory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return
+        }
+
+        let localContents = try fileManager.contentsOfDirectory(
+            at: localDocumentsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+
+        guard !localContents.isEmpty else { return }
+
+        for itemURL in localContents {
+            let destinationItemURL = destinationURL.appendingPathComponent(itemURL.lastPathComponent, isDirectory: false)
+            guard !fileManager.fileExists(atPath: destinationItemURL.path) else { continue }
+            try fileManager.copyItem(at: itemURL, to: destinationItemURL)
         }
     }
 
@@ -341,7 +457,7 @@ final class LibraryStore {
             version: 1,
             generatedAt: Date(),
             materials: documents
-                .filter { $0.type == .pdf || $0.studyMaterial != nil }
+                .filter { $0.type == .pdf || $0.type == .lesson || $0.studyMaterial != nil }
                 .sorted { $0.updatedAt > $1.updatedAt }
                 .map {
                     PharnodeDashboardMaterialProgress(
@@ -496,5 +612,31 @@ final class LibraryStore {
         }
 
         return sections
+    }
+
+    private func makeSinglePagePDFData(from image: UIImage) -> Data {
+        let imageSize = image.size
+        let pageRect = CGRect(
+            origin: .zero,
+            size: CGSize(
+                width: max(imageSize.width, 1),
+                height: max(imageSize.height, 1)
+            )
+        )
+
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { context in
+            context.beginPage()
+            image.draw(in: pageRect)
+        }
+    }
+
+    private func normalizeDocumentPath(_ document: PharDocument, relativeTo rootURL: URL) -> PharDocument {
+        let lastPathComponent = URL(fileURLWithPath: document.path).lastPathComponent
+        guard !lastPathComponent.isEmpty else { return document }
+
+        var normalized = document
+        normalized.path = rootURL.appendingPathComponent(lastPathComponent, isDirectory: true).path
+        return normalized
     }
 }

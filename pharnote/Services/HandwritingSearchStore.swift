@@ -80,4 +80,59 @@ actor HandwritingSearchStore {
         try payloadData.write(to: payloadURL, options: .atomic)
         return payloadURL.path
     }
+
+    func search(query: String, limit: Int = 20) throws -> [HandwritingSearchHit] {
+        try prepareDirectoriesIfNeeded()
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return [] }
+
+        let lowercasedQuery = trimmedQuery.lowercased()
+        let records = try loadRecords().sorted { $0.indexedAt > $1.indexedAt }
+        var hits: [HandwritingSearchHit] = []
+
+        for record in records {
+            guard let payloadData = try? Data(contentsOf: URL(fileURLWithPath: record.textPayloadPath)),
+                  let payloadText = String(data: payloadData, encoding: .utf8) else {
+                continue
+            }
+
+            let lowercasedPayload = payloadText.lowercased()
+            guard let range = lowercasedPayload.range(of: lowercasedQuery) else { continue }
+
+            let utf16Lower = lowercasedPayload.utf16
+            let prefixLength = utf16Lower.distance(from: utf16Lower.startIndex, to: range.lowerBound.samePosition(in: utf16Lower) ?? utf16Lower.startIndex)
+            let snippet = snippetAroundMatch(in: payloadText, location: prefixLength, length: trimmedQuery.utf16.count)
+
+            hits.append(
+                HandwritingSearchHit(
+                    id: UUID(),
+                    documentID: record.documentID,
+                    pageKey: record.pageKey,
+                    indexedAt: record.indexedAt,
+                    snippet: snippet,
+                    matchedText: trimmedQuery
+                )
+            )
+
+            if hits.count >= limit {
+                break
+            }
+        }
+
+        return hits
+    }
+
+    private func snippetAroundMatch(in text: String, location: Int, length: Int) -> String {
+        let characters = Array(text)
+        guard !characters.isEmpty else { return text }
+
+        let safeLocation = max(0, min(location, characters.count - 1))
+        let start = max(0, safeLocation - 30)
+        let end = min(characters.count, safeLocation + max(length, 1) + 30)
+        let snippet = String(characters[start..<end]).replacingOccurrences(of: "\n", with: " ")
+
+        let prefix = start > 0 ? "…" : ""
+        let suffix = end < characters.count ? "…" : ""
+        return prefix + snippet + suffix
+    }
 }

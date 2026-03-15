@@ -1,59 +1,128 @@
 import SwiftUI
 import UIKit
 
+private enum PDFWorkspaceSidebarMode: String, CaseIterable, Identifiable {
+    case thumbnails
+    case outline
+    case bookmarks
+    case recordings
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .thumbnails:
+            return "페이지"
+        case .outline:
+            return "아웃라인"
+        case .bookmarks:
+            return "북마크"
+        case .recordings:
+            return "오디오"
+        }
+    }
+
+    var systemName: String {
+        switch self {
+        case .thumbnails:
+            return "square.grid.2x2"
+        case .outline:
+            return "list.bullet.indent"
+        case .bookmarks:
+            return "bookmark"
+        case .recordings:
+            return "waveform"
+        }
+    }
+}
+
 struct PDFDocumentEditorView: View {
+    @Environment(\.presentationMode) private var presentationMode
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var analysisCenter: AnalysisCenter
+    @EnvironmentObject private var libraryViewModel: LibraryViewModel
     @StateObject private var viewModel: PDFEditorViewModel
-    @State private var isBottomPanelExpanded = true
+    @StateObject private var audioController: DocumentAudioController
+    @StateObject private var workspaceController: DocumentWorkspaceController
+    @State private var isSidebarExpanded = false
+    @State private var selectedSidebarMode: PDFWorkspaceSidebarMode = .thumbnails
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
     @State private var isShowingSectionEditor = false
+    @State private var isShowingShareSheet = false
+    @State private var isShowingTextComposer = false
+    @State private var isShowingPhotoPicker = false
+    @State private var isShowingFilePicker = false
+    @State private var imageEditorContext: WritingImageEditorContext?
+    @State private var editingStrokePresetIndex: Int?
+    @State private var isManagedTransition = false
+    @State private var activePaletteTool: PDFEditorViewModel.AnnotationTool? = nil
 
-    init(document: PharDocument) {
-        _viewModel = StateObject(wrappedValue: PDFEditorViewModel(document: document))
+    init(document: PharDocument, initialPageKey: String? = nil) {
+        let editorViewModel = PDFEditorViewModel(
+            document: document,
+            initialPageKey: initialPageKey
+        )
+        _viewModel = StateObject(
+            wrappedValue: editorViewModel
+        )
+        _audioController = StateObject(
+            wrappedValue: DocumentAudioController(
+                document: document,
+                anchorProvider: {
+                    DocumentAudioController.Anchor(
+                        pageKey: "pdf-page-\(editorViewModel.currentPageIndex)",
+                        pageLabel: "페이지 \(editorViewModel.currentPageNumber)"
+                    )
+                }
+            )
+        )
+        _workspaceController = StateObject(
+            wrappedValue: DocumentWorkspaceController(
+                document: document,
+                anchorProvider: {
+                    DocumentWorkspaceController.Anchor(
+                        pageKey: "pdf-page-\(editorViewModel.currentPageIndex)",
+                        pageLabel: "페이지 \(editorViewModel.currentPageNumber)"
+                    )
+                }
+            )
+        )
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            editorCanvas
-
-            if isBottomPanelExpanded {
-                workspacePanel
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
+        editorCanvas
         .background(PharTheme.ColorToken.appBackground.ignoresSafeArea())
-        .animation(PharTheme.AnimationToken.toolbarVisibility, value: isBottomPanelExpanded)
+        .animation(PharTheme.AnimationToken.toolbarVisibility, value: isSidebarExpanded)
         .animation(PharTheme.AnimationToken.pageTransition, value: viewModel.currentPageIndex)
-        .navigationTitle(viewModel.document.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                PharToolbarIconButton(
-                    systemName: isBottomPanelExpanded ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset",
-                    accessibilityLabel: isBottomPanelExpanded ? "하단 패널 접기" : "하단 패널 펼치기",
-                    isSelected: isBottomPanelExpanded
-                ) {
-                    withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                        isBottomPanelExpanded.toggle()
-                    }
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             viewModel.loadPDFIfNeeded()
+            audioController.loadRecordingsIfNeeded()
+            workspaceController.loadIfNeeded()
         }
         .onDisappear {
-            viewModel.closeDocument()
+            audioController.tearDown()
+            guard !isManagedTransition else { return }
+            Task {
+                await viewModel.closeDocument()
+                libraryViewModel.loadDocuments()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 viewModel.saveAllOverlayPagesImmediately()
+                audioController.handleBackgroundTransition()
             }
         }
         .onChange(of: viewModel.currentPageIndex) { _, _ in
             animatePageTransition()
+            workspaceController.clearAttachmentSelection()
+        }
+        .onChange(of: viewModel.isCanvasInputEnabled) { _, isEnabled in
+            if isEnabled {
+                workspaceController.clearAttachmentSelection()
+            }
         }
         .sheet(isPresented: $isShowingAnalyzeSheet) {
             PDFAnalyzePreviewSheet(viewModel: viewModel)
@@ -61,10 +130,79 @@ struct PDFDocumentEditorView: View {
         .sheet(isPresented: $isShowingSectionEditor) {
             PDFSectionMappingSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $isShowingShareSheet) {
+            WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
+        .sheet(isPresented: $isShowingTextComposer) {
+            WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
+                workspaceController.addTextEntry(text)
+                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                    isSidebarExpanded = true
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingPhotoPicker) {
+            WritingPhotoLibraryPicker { data, fileName in
+                isShowingPhotoPicker = false
+                viewModel.deactivateToolSelection()
+                DispatchQueue.main.async {
+                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
+                    imageEditorContext = WritingImageEditorContext(
+                        draft: draft,
+                        attachmentID: nil,
+                        basePlacement: nil
+                    )
+                }
+            } onCancel: {
+                isShowingPhotoPicker = false
+            }
+        }
+        .fullScreenCover(item: $imageEditorContext) { context in
+            WritingImageInsertionEditorSheet(
+                draft: context.draft,
+                basePlacement: context.basePlacement
+            ) { data, fileName, placement in
+                if let attachmentID = context.attachmentID {
+                    workspaceController.replaceImageAttachmentData(
+                        id: attachmentID,
+                        data: data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                } else {
+                    workspaceController.importImageData(
+                        data,
+                        suggestedFileName: fileName,
+                        preferredPlacement: placement
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingFilePicker) {
+            WritingAttachmentFilePicker { url in
+                isShowingFilePicker = false
+                workspaceController.importFile(from: url)
+                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                    isSidebarExpanded = true
+                }
+            } onCancel: {
+                isShowingFilePicker = false
+            }
+        }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .alert("오디오 오류", isPresented: isAudioErrorPresented) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(audioController.errorMessage ?? "")
+        }
+        .alert("첨부 오류", isPresented: isWorkspaceErrorPresented) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(workspaceController.errorMessage ?? "")
         }
     }
 
@@ -74,8 +212,8 @@ struct PDFDocumentEditorView: View {
     }
 
     private var editorCanvas: some View {
-        ZStack {
-            PharTheme.ColorToken.canvasBackground.ignoresSafeArea()
+        ZStack(alignment: .top) {
+            WritingChromePalette.paper.ignoresSafeArea()
 
             RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
                 .fill(
@@ -98,7 +236,13 @@ struct PDFDocumentEditorView: View {
                 }
                 .padding(PharTheme.Spacing.medium)
 
-            PDFKitView(viewModel: viewModel)
+            PDFKitView(
+                viewModel: viewModel,
+                workspaceController: workspaceController
+            ) { attachmentID in
+                viewModel.deactivateToolSelection()
+                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
+            }
                 .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
                 .padding(PharTheme.Spacing.medium)
 
@@ -107,17 +251,756 @@ struct PDFDocumentEditorView: View {
                 .padding(PharTheme.Spacing.medium)
                 .allowsHitTesting(false)
 
-            VStack(spacing: PharTheme.Spacing.medium) {
-                workspaceStatusHeader
-                    .padding(.top, PharTheme.Spacing.large)
-                    .padding(.horizontal, PharTheme.Spacing.large)
-
-                Spacer(minLength: 0)
-
-                floatingToolDock
-                    .padding(.horizontal, PharTheme.Spacing.large)
-                    .padding(.bottom, isBottomPanelExpanded ? PharTheme.Spacing.small : PharTheme.Spacing.large)
+            VStack(spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    backToHomeButton
+                    WritingDocumentChipStrip(
+                        chips: workspaceChips,
+                        onSelect: handleWorkspaceChipSelection,
+                        onClose: handleWorkspaceChipClose
+                    )
+                }
+                chromeToolbar
+                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
+                    chromeAnalyzeCallout
+                }
+                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
+                    chromeSelectionBar
+                }
             }
+            .padding(.top, 18)
+            .padding(.horizontal, 28)
+
+            if isSidebarExpanded {
+                HStack {
+                    Spacer(minLength: 0)
+                    workspaceSidebar
+                }
+                .padding(.top, 116)
+                .padding(.trailing, 18)
+                .padding(.bottom, 18)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer(minLength: 0)
+                    WritingShareFAB {
+                        isShowingShareSheet = true
+                    }
+                    .padding(.trailing, isSidebarExpanded ? 366 : 28)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var chromeToolbar: some View {
+        WritingChromeCapsule {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    WritingChromeIconButton(systemName: "chevron.backward", accentTint: true) {
+                        handleBackAction()
+                    }
+
+                    WritingChromeIconButton(systemName: "plus.square", accentTint: true) {
+                        isShowingSectionEditor = true
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: viewModel.isReadOnlyMode ? "lock.fill" : "lock.open",
+                        accentTint: true,
+                        isSelected: viewModel.isReadOnlyMode
+                    ) {
+                        viewModel.toggleReadOnlyMode()
+                    }
+
+                    WritingToolbarDivider()
+
+                    toolChromeButton(.pen, icon: "pencil.tip", isEnabled: !viewModel.isReadOnlyMode)
+                    toolChromeButton(.highlighter, icon: "highlighter", isEnabled: !viewModel.isReadOnlyMode)
+                    toolChromeButton(.paint, icon: "paintbrush", isEnabled: !viewModel.isReadOnlyMode)
+                    toolChromeButton(.eraser, icon: "eraser", isEnabled: !viewModel.isReadOnlyMode)
+                    toolChromeButton(.lasso, icon: "lasso", isEnabled: !viewModel.isReadOnlyMode)
+
+                    WritingChromeIconButton(systemName: "textformat", accentTint: true) {
+                        isShowingTextComposer = true
+                    }
+                    WritingChromeIconButton(
+                        systemName: audioController.isRecording ? "stop.circle.fill" : "mic.fill",
+                        accentTint: true,
+                        isSelected: audioController.isRecording
+                    ) {
+                        audioController.toggleRecording()
+                    }
+                    WritingChromeIconButton(systemName: "photo.badge.plus", accentTint: true) {
+                        isShowingPhotoPicker = true
+                    }
+                    WritingChromeIconButton(systemName: "doc.on.clipboard", accentTint: true) {
+                        handlePasteImageAction()
+                    }
+                    WritingChromeIconButton(systemName: "paperclip", accentTint: true) {
+                        isShowingFilePicker = true
+                    }
+                    WritingChromeIconButton(
+                        systemName: "square.grid.2x2",
+                        accentTint: true,
+                        isSelected: isSidebarExpanded
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isSidebarExpanded.toggle()
+                        }
+                    }
+
+                    if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
+                        WritingChromeIconButton(
+                            systemName: "waveform.path.ecg.text",
+                            accentTint: true,
+                            isSelected: true,
+                            isEnabled: viewModel.canAnalyzeCurrentSelection
+                        ) {
+                            isShowingAnalyzeSheet = true
+                        }
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: viewModel.isCurrentPageBookmarked ? "bookmark.fill" : "bookmark",
+                        isSelected: viewModel.isCurrentPageBookmarked
+                    ) {
+                        viewModel.toggleCurrentPageBookmark()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.backward", accentTint: true, isEnabled: viewModel.canUndo) {
+                        viewModel.undo()
+                    }
+
+                    WritingChromeIconButton(systemName: "arrow.uturn.forward", accentTint: true, isEnabled: viewModel.canRedo) {
+                        viewModel.redo()
+                    }
+
+                    WritingChromeIconButton(
+                        systemName: "sidebar.right",
+                        accentTint: true,
+                        isSelected: isSidebarExpanded
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isSidebarExpanded.toggle()
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private var backToHomeButton: some View {
+        Button {
+            handleBackAction()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                Text("홈")
+            }
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(WritingChromePalette.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.94))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(WritingChromePalette.chromeBorder, lineWidth: 1.2)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("홈으로 돌아가기")
+    }
+
+    private var chromeAnalyzeCallout: some View {
+        WritingAnalyzeHintBubble(text: "분석 받고 싶은 문제를 태깅하세요!")
+    }
+
+    private var chromeInkPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            VStack(alignment: .leading, spacing: 10) {
+                if viewModel.isToolSelected(.pen) {
+                    HStack(spacing: 8) {
+                        ForEach(WritingPenStyle.allCases) { penStyle in
+                            WritingPenStyleButton(
+                                title: penStyle.rawValue,
+                                systemName: penStyle.systemImage,
+                                isSelected: viewModel.selectedPenStyle == penStyle
+                            ) {
+                                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                                    viewModel.selectPenStyle(penStyle)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                        WritingStrokePresetButton(
+                            slotIndex: index,
+                            width: CGFloat(width),
+                            isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                        ) {
+                            viewModel.selectStrokePreset(at: index)
+                        } onLongPress: {
+                            editingStrokePresetIndex = index
+                        }
+                    }
+
+                    WritingToolbarDivider()
+
+                    colorSwatchButton(3)
+                    colorSwatchButton(2)
+                    colorSwatchButton(0)
+                    colorSwatchButton(4)
+
+                    Button {
+                        viewModel.updateSelectedColor(1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(WritingChromePalette.chromeBorder)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.72))
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: 508)
+        .popover(
+            isPresented: Binding(
+                get: { editingStrokePresetIndex != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        editingStrokePresetIndex = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if let editingStrokePresetIndex {
+                WritingStrokePresetEditorView(
+                    slotIndex: editingStrokePresetIndex,
+                    width: strokePresetBinding(for: editingStrokePresetIndex)
+                )
+                .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var chromeSelectionBar: some View {
+        WritingChromeCapsule(fill: .white) {
+            HStack(spacing: 10) {
+                WritingAccentActionButton(
+                    title: "분석하기",
+                    systemName: "waveform.path.ecg.text",
+                    isEnabled: viewModel.canAnalyzeCurrentSelection
+                ) {
+                    isShowingAnalyzeSheet = true
+                }
+
+                selectionPill("복사", systemName: "doc.on.doc", isEnabled: viewModel.canCopy) {
+                    viewModel.copySelection()
+                }
+                selectionPill("잘라내기", systemName: "scissors", isEnabled: viewModel.canCut) {
+                    viewModel.cutSelection()
+                }
+                selectionPill("붙여넣기", systemName: "doc.on.clipboard", isEnabled: viewModel.canPaste) {
+                    viewModel.pasteSelection()
+                }
+                selectionPill("삭제", systemName: "trash", isEnabled: viewModel.canDelete) {
+                    viewModel.deleteSelection()
+                }
+            }
+        }
+    }
+
+    private func selectionPill(_ title: String, systemName: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(WritingChromePalette.ink)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(WritingChromePalette.paper)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(WritingChromePalette.chipBorder, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.38)
+    }
+
+    private var chromePaintPalette: some View {
+        WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
+            HStack(spacing: 10) {
+                colorSwatchButton(3)
+                colorSwatchButton(2)
+                colorSwatchButton(0)
+                colorSwatchButton(4)
+
+                Button {
+                    viewModel.updateSelectedColor(1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(WritingChromePalette.chromeBorder)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle().fill(Color.white.opacity(0.72))
+                        )
+                        .overlay(
+                            Circle().stroke(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(minWidth: 200)
+    }
+
+    private func toolChromeButton(_ tool: PDFEditorViewModel.AnnotationTool, icon: String, isEnabled: Bool = true) -> some View {
+        WritingChromeIconButton(
+            systemName: icon,
+            isSelected: viewModel.isToolSelected(tool),
+            isEnabled: isEnabled
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                if viewModel.isToolSelected(tool) {
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = (activePaletteTool == tool) ? nil : tool
+                    }
+                } else {
+                    viewModel.selectTool(tool)
+                    if tool == .pen || tool == .highlighter || tool == .paint {
+                        activePaletteTool = tool
+                    } else {
+                        activePaletteTool = nil
+                    }
+                }
+            }
+        }
+        .popover(
+            isPresented: Binding(
+                get: { activePaletteTool == tool },
+                set: { isOpen in
+                    if !isOpen && activePaletteTool == tool {
+                        activePaletteTool = nil
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if tool == .paint {
+                chromePaintPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            } else {
+                chromeInkPalette
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private func colorSwatchButton(_ colorID: Int) -> some View {
+        WritingColorSwatchButton(
+            color: viewModel.swiftUIColorForColorID(colorID),
+            isSelected: viewModel.selectedColorID == colorID
+        ) {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                viewModel.updateSelectedColor(colorID)
+            }
+        }
+    }
+
+    private var workspaceSidebar: some View {
+        PharPanelContainer {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Study Sidebar")
+                            .font(PharTypography.captionStrong)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        Text("페이지 이동, 검색, 북마크, 녹음을 한 패널에서 유지합니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    PharToolbarIconButton(systemName: "xmark", accessibilityLabel: "사이드바 닫기") {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            isSidebarExpanded = false
+                        }
+                    }
+                }
+
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    PharTagPill(text: "\(viewModel.pageCount) pages", tint: PharTheme.ColorToken.surfaceSecondary)
+                    if !viewModel.pdfTextSearchResults.isEmpty {
+                        PharTagPill(
+                            text: "\(viewModel.pdfTextSearchResults.count) hits",
+                            tint: PharTheme.ColorToken.accentButter.opacity(0.22),
+                            foreground: PharTheme.ColorToken.inkPrimary
+                        )
+                    }
+                    PharTagPill(
+                        text: viewModel.isReadOnlyMode ? "Read Only" : "Annotate",
+                        tint: viewModel.isReadOnlyMode
+                            ? PharTheme.ColorToken.accentBlue.opacity(0.16)
+                            : PharTheme.ColorToken.accentMint.opacity(0.20),
+                        foreground: PharTheme.ColorToken.inkPrimary
+                    )
+                }
+
+                workspacePanelSection {
+                    VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                        HStack(spacing: PharTheme.Spacing.xSmall) {
+                            PharTagPill(
+                                text: "페이지 \(viewModel.currentPageNumber)/\(max(viewModel.pageCount, 1))",
+                                tint: PharTheme.ColorToken.accentBlue.opacity(0.12),
+                                foreground: PharTheme.ColorToken.accentBlue
+                            )
+                            if viewModel.isCurrentPageBookmarked {
+                                PharTagPill(
+                                    text: "북마크",
+                                    tint: PharTheme.ColorToken.accentPeach.opacity(0.22),
+                                    foreground: PharTheme.ColorToken.inkPrimary
+                                )
+                            }
+                            if viewModel.currentPageHasUnsavedChanges {
+                                PharTagPill(
+                                    text: "편집 중",
+                                    tint: PharTheme.ColorToken.accentButter.opacity(0.24),
+                                    foreground: PharTheme.ColorToken.inkPrimary
+                                )
+                            }
+                        }
+
+                        if let currentSectionTitle = viewModel.currentSectionTitle {
+                            Text(currentSectionTitle)
+                                .font(PharTypography.bodyStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        }
+                        if let sectionProgressSubheadline = viewModel.sectionProgressSubheadline {
+                            Text(sectionProgressSubheadline)
+                                .font(PharTypography.caption)
+                                .foregroundStyle(PharTheme.ColorToken.subtleText)
+                        }
+
+                        ProgressView(value: viewModel.overallCompletionRatio)
+                            .tint(PharTheme.ColorToken.accentBlue)
+
+                        HStack(spacing: PharTheme.Spacing.xSmall) {
+                            PharToolbarIconButton(
+                                systemName: "chevron.left",
+                                accessibilityLabel: "이전 페이지",
+                                isEnabled: viewModel.canGoPrevious
+                            ) {
+                                viewModel.goToPreviousPage()
+                            }
+
+                            PharToolbarIconButton(
+                                systemName: "chevron.right",
+                                accessibilityLabel: "다음 페이지",
+                                isEnabled: viewModel.canGoNext
+                            ) {
+                                viewModel.goToNextPage()
+                            }
+
+                            TextField("페이지", text: $viewModel.pageJumpInput)
+                                .textFieldStyle(.roundedBorder)
+                                .keyboardType(.numberPad)
+                                .frame(width: 80)
+
+                            Button("이동") {
+                                viewModel.goToInputPage()
+                            }
+                            .buttonStyle(PharSoftButtonStyle())
+
+                            Spacer(minLength: 0)
+
+                            Button(viewModel.isReadOnlyMode ? "필기 모드" : "읽기 전용") {
+                                viewModel.toggleReadOnlyMode()
+                            }
+                            .buttonStyle(PharSoftButtonStyle())
+                        }
+                    }
+                }
+
+                workspacePanelSection {
+                    VStack(spacing: PharTheme.Spacing.xSmall) {
+                        HStack(spacing: PharTheme.Spacing.xSmall) {
+                            TextField("PDF 텍스트 검색", text: $viewModel.pdfTextSearchQuery)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    viewModel.performPDFTextSearch()
+                                }
+
+                            Button("검색") {
+                                viewModel.performPDFTextSearch()
+                            }
+                            .buttonStyle(PharPrimaryButtonStyle())
+                        }
+
+                        HStack(spacing: PharTheme.Spacing.xSmall) {
+                            PharToolbarIconButton(
+                                systemName: "xmark.circle",
+                                accessibilityLabel: "검색 초기화",
+                                isEnabled: !(viewModel.pdfTextSearchQuery.isEmpty && viewModel.pdfTextSearchResults.isEmpty)
+                            ) {
+                                viewModel.clearPDFTextSearch()
+                            }
+
+                            PharToolbarIconButton(
+                                systemName: "chevron.up",
+                                accessibilityLabel: "이전 검색 결과",
+                                isEnabled: viewModel.canGoToPreviousPDFTextResult
+                            ) {
+                                viewModel.goToPreviousPDFTextResult()
+                            }
+
+                            PharToolbarIconButton(
+                                systemName: "chevron.down",
+                                accessibilityLabel: "다음 검색 결과",
+                                isEnabled: viewModel.canGoToNextPDFTextResult
+                            ) {
+                                viewModel.goToNextPDFTextResult()
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Text("\(viewModel.currentPDFTextSearchResultIndex.map { $0 + 1 } ?? 0)/\(viewModel.pdfTextSearchResults.count)")
+                                .font(PharTypography.captionStrong.monospacedDigit())
+                                .foregroundStyle(PharTheme.ColorToken.subtleText)
+                        }
+
+                        if !viewModel.pdfTextSearchResults.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: PharTheme.Spacing.xSmall) {
+                                    ForEach(Array(viewModel.pdfTextSearchResults.enumerated()), id: \.element.id) { index, result in
+                                        Button {
+                                            viewModel.goToPDFTextSearchResult(at: index)
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("p.\(result.pageIndex + 1)")
+                                                    .font(PharTypography.captionStrong)
+                                                Text(result.snippet)
+                                                    .font(PharTypography.caption)
+                                                    .lineLimit(1)
+                                                    .frame(width: 156, alignment: .leading)
+                                            }
+                                            .padding(.horizontal, PharTheme.Spacing.small)
+                                            .padding(.vertical, PharTheme.Spacing.xSmall)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.small, style: .continuous)
+                                                    .fill(
+                                                        viewModel.currentPDFTextSearchResultIndex == index
+                                                        ? PharTheme.ColorToken.accentBlue.opacity(0.18)
+                                                        : PharTheme.ColorToken.surfaceSecondary
+                                                    )
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, PharTheme.Spacing.xxxSmall)
+                            }
+                        }
+                    }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PharTheme.Spacing.xSmall) {
+                        ForEach(PDFWorkspaceSidebarMode.allCases) { mode in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.16)) {
+                                    selectedSidebarMode = mode
+                                }
+                            } label: {
+                                Label(mode.title, systemImage: mode.systemName)
+                                    .font(PharTypography.captionStrong)
+                                    .foregroundStyle(
+                                        selectedSidebarMode == mode
+                                        ? Color.white
+                                        : PharTheme.ColorToken.inkPrimary
+                                    )
+                                    .padding(.horizontal, PharTheme.Spacing.small)
+                                    .padding(.vertical, PharTheme.Spacing.xSmall)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(
+                                                selectedSidebarMode == mode
+                                                ? PharTheme.ColorToken.accentBlue
+                                                : PharTheme.ColorToken.surfaceSecondary
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                sidebarModeContent
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .frame(width: 340)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private var sidebarModeContent: some View {
+        switch selectedSidebarMode {
+        case .thumbnails:
+            sidebarPageList(pageIndices: Array(0..<viewModel.pageCount), emptyMessage: "표시할 페이지가 없습니다.")
+        case .outline:
+            sidebarOutlineList
+        case .bookmarks:
+            sidebarPageList(pageIndices: viewModel.sortedBookmarkedPageIndices, emptyMessage: "북마크한 페이지가 아직 없습니다.")
+        case .recordings:
+            sidebarRecordingList
+        }
+    }
+
+    private func sidebarPageList(pageIndices: [Int], emptyMessage: String) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: PharTheme.Spacing.small) {
+                if pageIndices.isEmpty {
+                    PDFSidebarEmptyState(
+                        title: emptyMessage,
+                        subtitle: selectedSidebarMode == .bookmarks
+                            ? "중요한 문제나 다시 볼 페이지를 북마크해 두세요."
+                            : "PDF를 다시 불러오면 페이지 목록이 나타납니다."
+                    )
+                } else {
+                    ForEach(pageIndices, id: \.self) { pageIndex in
+                        HStack(spacing: PharTheme.Spacing.xSmall) {
+                            Button {
+                                withAnimation(PharTheme.AnimationToken.pageTransition) {
+                                    viewModel.goToPage(index: pageIndex)
+                                }
+                            } label: {
+                                PDFSidebarPageRow(
+                                    image: viewModel.thumbnail(at: pageIndex),
+                                    title: viewModel.pageTitle(for: pageIndex),
+                                    subtitle: viewModel.pageSubtitle(for: pageIndex),
+                                    pageNumber: pageIndex + 1,
+                                    isSelected: viewModel.currentPageIndex == pageIndex,
+                                    isBookmarked: viewModel.isPageBookmarked(pageIndex),
+                                    isDirty: viewModel.isPageDirty(pageIndex)
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                viewModel.toggleBookmark(for: pageIndex)
+                            } label: {
+                                Image(systemName: viewModel.isPageBookmarked(pageIndex) ? "bookmark.fill" : "bookmark")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(
+                                        viewModel.isPageBookmarked(pageIndex)
+                                        ? PharTheme.ColorToken.accentBlue
+                                        : PharTheme.ColorToken.subtleText
+                                    )
+                                    .frame(width: 32, height: 32)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, PharTheme.Spacing.xxxSmall)
+        }
+    }
+
+    private var sidebarOutlineList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: PharTheme.Spacing.xSmall) {
+                if viewModel.outlineEntries.isEmpty {
+                    PDFSidebarEmptyState(
+                        title: "아웃라인이 없습니다.",
+                        subtitle: "PDF 목차가 없으면 저장된 단원 정보로 대체됩니다."
+                    )
+                } else {
+                    ForEach(viewModel.outlineEntries) { entry in
+                        Button {
+                            withAnimation(PharTheme.AnimationToken.pageTransition) {
+                                viewModel.goToPage(index: entry.pageIndex)
+                            }
+                        } label: {
+                            PDFOutlineSidebarRow(
+                                title: entry.title,
+                                subtitle: "페이지 \(entry.pageIndex + 1)",
+                                depth: entry.depth,
+                                isSelected: viewModel.currentPageIndex == entry.pageIndex,
+                                showsSectionBadge: entry.source == .studySection
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.vertical, PharTheme.Spacing.xxxSmall)
+        }
+    }
+
+    private var sidebarRecordingList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: PharTheme.Spacing.small) {
+                if audioController.recordings.isEmpty {
+                    PDFSidebarEmptyState(
+                        title: "오디오 메모가 아직 없습니다.",
+                        subtitle: "상단 마이크 버튼으로 현재 페이지 기준 녹음을 남길 수 있습니다."
+                    )
+                } else {
+                    ForEach(audioController.recordings) { recording in
+                        PDFSidebarRecordingCard(
+                            recording: recording,
+                            isPlaying: audioController.playingRecordingID == recording.id,
+                            onOpenPage: {
+                                if let pageKey = recording.pageKey {
+                                    withAnimation(PharTheme.AnimationToken.pageTransition) {
+                                        viewModel.goToPage(pageKey: pageKey)
+                                    }
+                                }
+                            },
+                            onTogglePlayback: {
+                                audioController.togglePlayback(for: recording)
+                            },
+                            onDelete: {
+                                audioController.deleteRecording(recording)
+                            }
+                        )
+                    }
+                }
+            }
+            .padding(.vertical, PharTheme.Spacing.xxxSmall)
         }
     }
 
@@ -223,14 +1106,14 @@ struct PDFDocumentEditorView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if viewModel.selectedTool == .lasso {
+            if viewModel.isToolSelected(.lasso) {
                 selectionActionsBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             mainToolDock
         }
-        .animation(PharTheme.AnimationToken.toolbarVisibility, value: viewModel.selectedTool)
+        .animation(PharTheme.AnimationToken.toolbarVisibility, value: viewModel.currentToolLabel)
     }
 
     private var mainToolDock: some View {
@@ -309,7 +1192,7 @@ struct PDFDocumentEditorView: View {
 
                 Spacer(minLength: 0)
 
-                Text(viewModel.selectedTool.rawValue)
+                Text(viewModel.currentToolLabel)
                     .font(PharTypography.captionStrong)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
             }
@@ -487,6 +1370,10 @@ struct PDFDocumentEditorView: View {
                     }
                 }
 
+                workspacePanelSection {
+                    DocumentAudioPanelView(controller: audioController)
+                }
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: PharTheme.Spacing.small) {
                         ForEach(0..<viewModel.pageCount, id: \.self) { index in
@@ -524,7 +1411,7 @@ struct PDFDocumentEditorView: View {
                 .frame(height: 156)
             }
         }
-        .frame(height: 358)
+        .frame(height: 492)
     }
 
     private var dockDivider: some View {
@@ -539,6 +1426,28 @@ struct PDFDocumentEditorView: View {
             set: { isPresented in
                 if !isPresented {
                     viewModel.errorMessage = nil
+                }
+            }
+        )
+    }
+
+    private var isAudioErrorPresented: Binding<Bool> {
+        Binding(
+            get: { audioController.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    audioController.errorMessage = nil
+                }
+            }
+        )
+    }
+
+    private var isWorkspaceErrorPresented: Binding<Bool> {
+        Binding(
+            get: { workspaceController.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    workspaceController.errorMessage = nil
                 }
             }
         )
@@ -570,7 +1479,7 @@ struct PDFDocumentEditorView: View {
         }
         .buttonStyle(
             PharToolbarButtonStyle(
-                isSelected: viewModel.selectedTool == tool,
+                isSelected: viewModel.isToolSelected(tool),
                 isDestructive: false
             )
         )
@@ -661,12 +1570,93 @@ struct PDFDocumentEditorView: View {
             pageTransitionFlashOpacity = 0
         }
     }
+
+    private var workspaceChips: [WritingWorkspaceDocumentChip] {
+        libraryViewModel.workspaceDocumentChips(currentDocument: viewModel.document)
+    }
+
+    private func strokePresetBinding(for index: Int) -> Binding<Double> {
+        Binding(
+            get: { viewModel.strokePresetConfiguration.values[index] },
+            set: { newValue in
+                viewModel.updateStrokePreset(newValue, at: index)
+            }
+        )
+    }
+
+    private var currentPageLabel: String {
+        "페이지 \(viewModel.currentPageNumber)"
+    }
+
+    private func handleBackAction() {
+        navigateBackPreservingCurrentTab()
+    }
+
+    private func navigateBackPreservingCurrentTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        presentationMode.wrappedValue.dismiss()
+
+        Task {
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+        }
+    }
+
+    private func closeCurrentWorkspaceTab() {
+        isManagedTransition = true
+        audioController.tearDown()
+        
+        let documentID = viewModel.document.id
+        if libraryViewModel.openDocumentTabs.contains(where: { $0.document.id == documentID }) {
+            libraryViewModel.closeDocumentTab(documentID)
+        } else {
+            presentationMode.wrappedValue.dismiss()
+        }
+
+        Task {
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+        }
+    }
+
+    private func handleWorkspaceChipSelection(_ documentID: UUID) {
+        guard documentID != viewModel.document.id else { return }
+
+        Task {
+            isManagedTransition = true
+            audioController.tearDown()
+            await viewModel.closeDocument()
+            libraryViewModel.loadDocuments()
+            libraryViewModel.activateDocumentTab(documentID)
+        }
+    }
+
+    private func handleWorkspaceChipClose(_ documentID: UUID) {
+        guard documentID != viewModel.document.id else {
+            closeCurrentWorkspaceTab()
+            return
+        }
+        libraryViewModel.closeDocumentTab(documentID)
+    }
+
+
+    private func handlePasteImageAction() {
+        viewModel.deactivateToolSelection()
+        guard let draft = workspaceController.pastedImageDraft() else { return }
+        imageEditorContext = WritingImageEditorContext(
+            draft: draft,
+            attachmentID: nil,
+            basePlacement: nil
+        )
+    }
 }
 
 #Preview("PDFEditor") {
     NavigationStack {
         PDFDocumentEditorView(document: PreviewDocumentFactory.pdfDocument())
     }
+    .environmentObject(LibraryViewModel())
 }
 
 private enum PreviewDocumentFactory {
@@ -709,6 +1699,19 @@ private struct PDFAnalyzePreviewSheet: View {
     @EnvironmentObject private var analysisCenter: AnalysisCenter
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStudyIntent: AnalysisStudyIntent = .problemSolving
+    @State private var ocrSummary: OCRPreviewSummary?
+    @State private var isLoadingOCRSummary = false
+    @State private var reviewDraft: AnalysisPostSolveReviewDraft
+    @State private var isReviewFlowComplete = false
+
+    init(viewModel: PDFEditorViewModel) {
+        self.viewModel = viewModel
+        _reviewDraft = State(
+            initialValue: AnalysisPostSolveReviewDraft(
+                subject: viewModel.document.studyMaterial?.subject
+            )
+        )
+    }
 
     private var currentResult: AnalysisResult? {
         guard let pageId = viewModel.currentAnalysisPageID else { return nil }
@@ -736,7 +1739,7 @@ private struct PDFAnalyzePreviewSheet: View {
                                 .font(PharTypography.cardTitle)
                                 .foregroundStyle(PharTheme.ColorToken.inkPrimary)
 
-                            PDFPreviewRow(title: "범위", value: AnalysisScope.page.title)
+                            PDFPreviewRow(title: "범위", value: viewModel.currentAnalysisScope.title)
 
                             Picker("학습 의도", selection: $selectedStudyIntent) {
                                 ForEach([
@@ -753,6 +1756,11 @@ private struct PDFAnalyzePreviewSheet: View {
                         }
                     }
 
+                    AnalysisPostSolveReviewSection(
+                        draft: $reviewDraft,
+                        isComplete: $isReviewFlowComplete
+                    )
+
                     if let preview = viewModel.analysisPreview, let source = viewModel.analysisSource {
                         PharSurfaceCard {
                             VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
@@ -768,6 +1776,10 @@ private struct PDFAnalyzePreviewSheet: View {
                                 PDFPreviewRow(title: "최근 수정", value: preview.updatedAt.formatted(date: .abbreviated, time: .shortened))
                             }
                         }
+                        OCRPreviewCard(summary: ocrSummary, isLoading: isLoadingOCRSummary)
+                            .task(id: source.pageId) {
+                                await loadOCRSummary(for: source)
+                            }
                     }
 
                     PharSurfaceCard {
@@ -810,12 +1822,19 @@ private struct PDFAnalyzePreviewSheet: View {
                         .foregroundStyle(PharTheme.ColorToken.inkSecondary)
                     }
 
+                    if !isReviewFlowComplete {
+                        Text("확신도부터 단계별 복기를 마치면 분석 번들 적재가 열립니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                    }
+
                     Button {
                         Task {
-                            guard let source = viewModel.analysisSource else { return }
+                            guard var source = viewModel.analysisSource else { return }
+                            source.postSolveReview = reviewDraft.makePayload()
                             await analysisCenter.enqueuePDFPage(
                                 source: source,
-                                scope: .page,
+                                scope: viewModel.currentAnalysisScope,
                                 studyIntent: selectedStudyIntent
                             )
                         }
@@ -829,7 +1848,11 @@ private struct PDFAnalyzePreviewSheet: View {
                         }
                     }
                     .buttonStyle(PharPrimaryButtonStyle())
-                    .disabled(analysisCenter.isEnqueuing || viewModel.analysisSource == nil)
+                    .disabled(
+                        analysisCenter.isEnqueuing
+                            || viewModel.analysisSource == nil
+                            || !isReviewFlowComplete
+                    )
 
                     Spacer(minLength: 0)
                 }
@@ -852,6 +1875,12 @@ private struct PDFAnalyzePreviewSheet: View {
         let preview = source.previewImageData == nil ? "preview 없음" : "preview 포함"
         let drawing = source.drawingData == nil ? "drawing 없음" : "drawing 포함"
         return "\(preview), \(drawing)"
+    }
+
+    private func loadOCRSummary(for source: PDFPageAnalysisSource) async {
+        isLoadingOCRSummary = true
+        ocrSummary = await analysisCenter.ocrPreview(for: source)
+        isLoadingOCRSummary = false
     }
 }
 
@@ -1077,5 +2106,245 @@ private struct PDFPageThumbnailCell: View {
                 .foregroundStyle(isSelected ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.subtleText)
         }
         .padding(.vertical, PharTheme.Spacing.xxxSmall)
+    }
+}
+
+private struct PDFSidebarPageRow: View {
+    let image: UIImage?
+    let title: String
+    let subtitle: String?
+    let pageNumber: Int
+    let isSelected: Bool
+    let isBookmarked: Bool
+    let isDirty: Bool
+
+    var body: some View {
+        HStack(spacing: PharTheme.Spacing.small) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .fill(PharTheme.ColorToken.canvasBackground)
+                    .frame(width: 58, height: 74)
+
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(6)
+                        .frame(width: 58, height: 74)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 58, height: 74)
+                }
+
+                if isBookmarked {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                        .padding(6)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .stroke(
+                        isSelected ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.border.opacity(0.34),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(PharTypography.bodyStrong)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        .lineLimit(1)
+
+                    if isDirty {
+                        Circle()
+                            .fill(PharTheme.ColorToken.warning)
+                            .frame(width: 7, height: 7)
+                    }
+                }
+
+                Text("p.\(pageNumber)")
+                    .font(PharTypography.captionStrong)
+                    .foregroundStyle(isSelected ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.subtleText)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(PharTypography.caption)
+                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, PharTheme.Spacing.small)
+        .padding(.vertical, PharTheme.Spacing.xSmall)
+        .background(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .fill(
+                    isSelected
+                    ? PharTheme.ColorToken.accentBlue.opacity(0.12)
+                    : PharTheme.ColorToken.surfacePrimary.opacity(0.92)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .stroke(
+                    isSelected ? PharTheme.ColorToken.accentBlue.opacity(0.34) : PharTheme.ColorToken.border.opacity(0.24),
+                    lineWidth: 1
+                )
+        )
+    }
+}
+
+private struct PDFOutlineSidebarRow: View {
+    let title: String
+    let subtitle: String
+    let depth: Int
+    let isSelected: Bool
+    let showsSectionBadge: Bool
+
+    var body: some View {
+        HStack(spacing: PharTheme.Spacing.small) {
+            Color.clear
+                .frame(width: CGFloat(depth) * 12, height: 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(PharTypography.bodyStrong)
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        .lineLimit(2)
+
+                    if showsSectionBadge {
+                        PharTagPill(
+                            text: "단원",
+                            tint: PharTheme.ColorToken.accentMint.opacity(0.24),
+                            foreground: PharTheme.ColorToken.inkPrimary
+                        )
+                    }
+                }
+
+                Text(subtitle)
+                    .font(PharTypography.caption)
+                    .foregroundStyle(isSelected ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.subtleText)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, PharTheme.Spacing.small)
+        .padding(.vertical, PharTheme.Spacing.xSmall)
+        .background(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .fill(
+                    isSelected
+                    ? PharTheme.ColorToken.accentBlue.opacity(0.12)
+                    : PharTheme.ColorToken.surfacePrimary.opacity(0.86)
+                )
+        )
+    }
+}
+
+private struct PDFSidebarRecordingCard: View {
+    let recording: DocumentAudioRecording
+    let isPlaying: Bool
+    let onOpenPage: () -> Void
+    let onTogglePlayback: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        PharSurfaceCard(fill: PharTheme.ColorToken.surfacePrimary.opacity(0.92)) {
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recording.displayTitle)
+                            .font(PharTypography.bodyStrong)
+                            .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                            .lineLimit(1)
+
+                        Text(recording.formattedCreatedAt)
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    PharTagPill(
+                        text: recording.formattedDuration,
+                        tint: PharTheme.ColorToken.surfaceSecondary,
+                        foreground: PharTheme.ColorToken.inkPrimary
+                    )
+
+                    if let pageLabel = recording.pageLabel {
+                        PharTagPill(
+                            text: pageLabel,
+                            tint: PharTheme.ColorToken.accentBlue.opacity(0.12),
+                            foreground: PharTheme.ColorToken.accentBlue
+                        )
+                    }
+                }
+
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    if recording.pageKey != nil {
+                        Button("해당 페이지") {
+                            onOpenPage()
+                        }
+                        .buttonStyle(PharSoftButtonStyle())
+                    }
+
+                    if isPlaying {
+                        Button {
+                            onTogglePlayback()
+                        } label: {
+                            Label("재생 중지", systemImage: "stop.fill")
+                        }
+                        .buttonStyle(PharPrimaryButtonStyle())
+                    } else {
+                        Button {
+                            onTogglePlayback()
+                        } label: {
+                            Label("재생", systemImage: "play.fill")
+                        }
+                        .buttonStyle(PharSoftButtonStyle())
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct PDFSidebarEmptyState: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
+            Text(title)
+                .font(PharTypography.bodyStrong)
+                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+            Text(subtitle)
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.subtleText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(PharTheme.Spacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
+        )
     }
 }

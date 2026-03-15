@@ -1,0 +1,2 @@
+{"source_id":"orbi_post_331","source_type":"community","author":"orbi_user_x","problem_ids":["2024_06_mock_common_q15","2025_09_mock_common_q14"],"title":"공통 함수 조건 처리","body":"조건을 따로 전개하지 말고 하나의 함수에 걸린 제약으로 묶어라. 선지를 먼저 보고 끌려가면 안 된다. 침착하게 풀어라."}
+{"source_id":"orbi_post_512","source_type":"community","author":"orbi_user_y","problem_ids":["2026_csat_common_q18"],"title":"절댓값 케이스 분기","body":"2026 수능 18번처럼 절댓값이나 부호가 보이면 경우를 늦게 나누지 말고 기준을 먼저 적어라. 평가원 느낌을 봐라."}

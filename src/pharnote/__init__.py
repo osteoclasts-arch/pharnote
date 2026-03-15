@@ -1,0 +1,1 @@
+"""Doctrine compiler package."""

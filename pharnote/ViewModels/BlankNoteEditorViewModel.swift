@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import PencilKit
+import SwiftUI
 import UIKit
 
 @MainActor
@@ -10,6 +11,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
         case highlighter = "형광펜"
         case eraser = "지우개"
         case lasso = "라쏘"
+        case paint = "붓/채우기"
+        case tape = "테이프"
 
         var id: String { rawValue }
     }
@@ -30,18 +33,40 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     @Published var isToolPickerVisible: Bool = false
     @Published var selectedTool: AnnotationTool = .pen
+    @Published var isToolSelectionActive: Bool = false
+    @Published var selectedPenStyle: WritingPenStyle = .ballpoint
     @Published var selectedColorID: Int = 0
+    @Published var dynamicColor: UIColor? = nil
+    @Published var savedColorPresets: [UIColor] = []
     @Published var strokeWidth: Double = 5.0
+    @Published private(set) var strokePresetConfiguration: WritingStrokePresetConfiguration
     @Published var isPencilOnlyInputEnabled: Bool = false
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
+    @Published private(set) var canAnalyzeSelection: Bool = false
     @Published private(set) var pages: [BlankNotePage] = []
     @Published private(set) var currentPageID: UUID?
     @Published private(set) var thumbnails: [UUID: UIImage] = [:]
     @Published private(set) var bookmarkedPageIDs: Set<UUID>
     @Published var errorMessage: String?
+    
+    // Lecture Mode & Sync properties
+    @Published var isLectureModeEnabled: Bool = false
+    @Published var isShowingNudge: Bool = false
+    @Published var nudgeNodeId: String?
 
-    let document: PharDocument
+    
+    // Tool Cache to prevent infinite re-render loops in SwiftUI/PencilKit
+    private var cachedPKTool: PKTool?
+    private var lastToolKey: String = ""
+
+    
+    // Evidence Binding properties
+    @Published var isBindingEvidence: Bool = false
+    @Published var evidenceBindingStepId: String? = nil
+    var onEvidenceBound: ((String, Int) -> Void)? = nil
+
+    private(set) var document: PharDocument
     let annotationColors: [AnnotationColor] = [
         AnnotationColor(id: 0, uiColor: .black, label: "블랙"),
         AnnotationColor(id: 1, uiColor: .systemBlue, label: "블루"),
@@ -50,9 +75,24 @@ final class BlankNoteEditorViewModel: ObservableObject {
         AnnotationColor(id: 4, uiColor: .systemOrange, label: "오렌지")
     ]
 
+    func saveCurrentDynamicColor() {
+        guard let color = dynamicColor else { return }
+        if !savedColorPresets.contains(where: { $0 == color }) {
+            savedColorPresets.append(color)
+        }
+    }
+
+    func removeColorPreset(at index: Int) {
+        guard savedColorPresets.indices.contains(index) else { return }
+        savedColorPresets.remove(at: index)
+    }
+
     private let noteStore: BlankNoteStore
+    private let libraryStore: LibraryStore
     private let eventLogger: StudyEventLogger
     private let userDefaults: UserDefaults
+    private var strokePresetConfigurationsByTool: [AnnotationTool: WritingStrokePresetConfiguration]
+    private let requestedInitialPageID: UUID?
     private weak var canvasView: PKCanvasView?
     private var didRequestInitialLoad = false
     private var didLogDocumentOpen = false
@@ -77,15 +117,34 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     init(
         document: PharDocument,
+        initialPageKey: String? = nil,
         noteStore: BlankNoteStore = BlankNoteStore(),
+        libraryStore: LibraryStore? = nil,
         eventLogger: StudyEventLogger? = nil,
         userDefaults: UserDefaults = .standard
     ) {
+        let penPresetConfiguration = WritingStrokePresetStore.configuration(
+            toolKey: Self.strokePresetToolKey(for: .pen),
+            userDefaults: userDefaults
+        )
+        let highlighterPresetConfiguration = WritingStrokePresetStore.configuration(
+            toolKey: Self.strokePresetToolKey(for: .highlighter),
+            userDefaults: userDefaults
+        )
+
         self.document = document
         self.noteStore = noteStore
+        self.libraryStore = libraryStore ?? LibraryStore()
         self.eventLogger = eventLogger ?? StudyEventLogger.shared
         self.userDefaults = userDefaults
+        self.strokePresetConfigurationsByTool = [
+            .pen: penPresetConfiguration,
+            .highlighter: highlighterPresetConfiguration
+        ]
+        self._strokePresetConfiguration = Published(initialValue: penPresetConfiguration)
+        self.requestedInitialPageID = initialPageKey.flatMap { UUID(uuidString: $0) }
         self.bookmarkedPageIDs = Set((userDefaults.stringArray(forKey: "pharnote.bookmarks.\(document.id.uuidString)") ?? []).compactMap(UUID.init(uuidString:)))
+        self.strokeWidth = penPresetConfiguration.values[penPresetConfiguration.selectedIndex]
     }
 
     func attachCanvasView(_ canvasView: PKCanvasView) {
@@ -107,9 +166,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
             do {
                 let content = try await noteStore.loadOrCreateContent(documentURL: documentURL)
                 pages = content.pages
-                if currentPageID == nil {
-                    currentPageID = pages.first?.id
+                let initialPageID = requestedInitialPageID.flatMap { requestedID in
+                    pages.contains(where: { $0.id == requestedID }) ? requestedID : nil
                 }
+                currentPageID = initialPageID ?? currentPageID ?? pages.first?.id
                 logDocumentOpenedIfNeeded()
                 if let currentPageID {
                     recordPageVisit(currentPageID)
@@ -155,9 +215,42 @@ final class BlankNoteEditorViewModel: ObservableObject {
         recordPageVisit(newPage.id)
         drawingCache[newPage.id] = PKDrawing()
         applyDrawingToCanvas(PKDrawing())
-        saveContentSnapshot()
+        touchDocumentUpdatedAt()
         Task {
             await evictCacheExceptCurrentAndNeighbors()
+        }
+    }
+
+    func duplicatePage(_ pageID: UUID) {
+        guard let sourceIndex = pages.firstIndex(where: { $0.id == pageID }) else { return }
+        
+        commitCurrentCanvasToCache()
+        saveCurrentPageImmediately()
+
+        let now = Date()
+        let newPageID = UUID()
+        let newPage = BlankNotePage(id: newPageID, createdAt: now, updatedAt: now)
+        
+        pages.insert(newPage, at: sourceIndex + 1)
+        
+        Task {
+            // Copy physical data in Store
+            if let sourceData = await noteStore.loadDrawingData(documentURL: documentURL, pageID: pageID) {
+                try? await noteStore.saveDrawingData(sourceData, documentURL: documentURL, pageID: newPageID)
+                if let drawing = try? PKDrawing(data: sourceData) {
+                    drawingCache[newPageID] = drawing
+                }
+            }
+            
+            if let thumbData = await noteStore.loadThumbnailData(documentURL: documentURL, pageID: pageID) {
+                try? await noteStore.saveThumbnailData(thumbData, documentURL: documentURL, pageID: newPageID)
+                if let image = UIImage(data: thumbData) {
+                    thumbnails[newPageID] = image
+                }
+            }
+            
+            await saveContentSnapshot()
+            touchDocumentUpdatedAt()
         }
     }
 
@@ -200,7 +293,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
             }
         }
 
-        saveContentSnapshot()
+        touchDocumentUpdatedAt()
+        Task {
+            await saveContentSnapshot()
+        }
     }
 
     func pageNumber(for pageID: UUID) -> Int {
@@ -224,8 +320,25 @@ final class BlankNoteEditorViewModel: ObservableObject {
         pages.count > 1
     }
 
+    var activeTool: AnnotationTool? {
+        isToolSelectionActive ? selectedTool : nil
+    }
+
+    var isCanvasInputEnabled: Bool {
+        isToolSelectionActive
+    }
+
     var isEditingInkTool: Bool {
-        selectedTool == .pen || selectedTool == .highlighter
+        guard let activeTool else { return false }
+        return activeTool == .pen || activeTool == .highlighter || activeTool == .paint
+    }
+
+    var currentToolLabel: String {
+        activeTool?.rawValue ?? "스크롤"
+    }
+
+    func isToolSelected(_ tool: AnnotationTool) -> Bool {
+        activeTool == tool
     }
 
     var currentPageNumber: Int {
@@ -271,6 +384,14 @@ final class BlankNoteEditorViewModel: ObservableObject {
         currentPageID
     }
 
+    var canAnalyzeCurrentSelection: Bool {
+        analysisSource != nil && activeTool == .lasso && canAnalyzeSelection
+    }
+
+    var currentAnalysisScope: AnalysisScope {
+        canAnalyzeCurrentSelection ? .selection : .page
+    }
+
     var analysisSource: BlankNoteAnalysisSource? {
         guard let currentPageID,
               let currentIndex = pages.firstIndex(where: { $0.id == currentPageID }) else {
@@ -307,7 +428,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
             pasteActions: pasteActionCountByPageID[currentPageID, default: 0],
             undoCount: undoCountByPageID[currentPageID, default: 0],
             redoCount: redoCountByPageID[currentPageID, default: 0],
-            navigationPath: navigationPathLabels()
+            navigationPath: navigationPathLabels(),
+            postSolveReview: nil
         )
     }
 
@@ -320,10 +442,153 @@ final class BlankNoteEditorViewModel: ObservableObject {
         scheduleDebouncedPersist(for: currentPageID)
     }
 
+    func refreshCanvasInteractionState() {
+        refreshUndoRedoState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.refreshUndoRedoState()
+        }
+    }
+
+    func handleCanvasTap(at point: CGPoint) {
+        let drawing = drawingCache[currentPageID ?? UUID()] ?? canvasView?.drawing ?? PKDrawing()
+
+        if isBindingEvidence {
+            var closestStroke: PKStroke?
+            var minDistance: CGFloat = 50.0
+            
+            for stroke in drawing.strokes {
+                let bounds = stroke.renderBounds
+                let extendedBounds = bounds.insetBy(dx: -minDistance, dy: -minDistance)
+                if extendedBounds.contains(point) {
+                    for pathPoint in stroke.path {
+                        let dist = hypot(pathPoint.location.x - point.x, pathPoint.location.y - point.y)
+                        if dist < minDistance {
+                            minDistance = dist
+                            closestStroke = stroke
+                        }
+                    }
+                }
+            }
+            
+            if let targetStroke = closestStroke {
+                let strokeTime = targetStroke.path.creationDate
+                let delayMs = Int(strokeTime.timeIntervalSince(sessionStartedAt) * 1000)
+                let finalDelayMs = max(0, delayMs)
+                
+                // UUID for stroke reference
+                let strokeId = UUID().uuidString
+                onEvidenceBound?(strokeId, finalDelayMs)
+            }
+            return
+        }
+
+        guard selectedTool == .paint, self.currentPageID != nil else { return }
+        
+        // Setup fill stroke generator based on bounding box
+        let generateFillStroke: (CGRect, UIColor) -> PKStroke = { bounds, color in
+            // Generate a zig-zag fill stroke, or simply a massive dot covering the area
+            // Due to PKStroke limitations, creating a single dot stroke with massive width is the easiest way to fill an area.
+            // Using a square-like or round marker ink with a large size.
+            let size = max(bounds.width, bounds.height) * 1.5
+            let ink = PKInk(.pen, color: color)
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            let path = PKStrokePath(controlPoints: [
+                PKStrokePoint(location: center, timeOffset: 0.0, size: CGSize(width: size, height: size), opacity: 1.0, force: 1.0, azimuth: 0.0, altitude: .pi/2)
+            ], creationDate: Date())
+            let stroke = PKStroke(ink: ink, path: path)
+            return stroke
+        }
+        
+        let fillColor = uiColorForColorID(selectedColorID)
+        
+        // Find tapped closed shape
+        let hitStrokeIndex = drawing.strokes.lastIndex { stroke in
+            // Basic hit detection for closed shapes (assuming strokes have >= 4 points)
+            let points = stroke.path.map { $0.location }
+            guard points.count >= 4 else { return false }
+            guard let first = points.first, let last = points.last, first.distance(to: last) < 50 else { return false }
+            
+            // Check bounding box first
+            let minX = points.map { $0.x }.min() ?? 0
+            let maxX = points.map { $0.x }.max() ?? 0
+            let minY = points.map { $0.y }.min() ?? 0
+            let maxY = points.map { $0.y }.max() ?? 0
+            let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            
+            if !bounds.contains(point) { return false }
+            
+            // Ray-casting for polygon membership
+            var contains = false
+            var j = points.count - 1
+            for i in 0..<points.count {
+                if (points[i].y < point.y && points[j].y >= point.y) || (points[j].y < point.y && points[i].y >= point.y) {
+                    if points[i].x + (point.y - points[i].y) / (points[j].y - points[i].y) * (points[j].x - points[i].x) < point.x {
+                        contains.toggle()
+                    }
+                }
+                j = i
+            }
+            return contains
+        }
+        
+        var updatedStrokes = drawing.strokes
+        let isShapeFill = hitStrokeIndex != nil
+        
+        if let index = hitStrokeIndex {
+            let hitStroke = updatedStrokes[index]
+            let points = hitStroke.path.map(\.location)
+            let minX = points.map(\.x).min() ?? 0
+            let maxX = points.map(\.x).max() ?? 0
+            let minY = points.map(\.y).min() ?? 0
+            let maxY = points.map(\.y).max() ?? 0
+            let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            
+            // Insert fill stroke exactly BEFORE the shape stroke, so the shape outline is visible above it.
+            let fillStroke = generateFillStroke(bounds, fillColor)
+            updatedStrokes.insert(fillStroke, at: index)
+        } else {
+            // Background fill
+            let bounds = CGRect(x: -5000, y: -5000, width: 10000, height: 10000)
+            let fillStroke = generateFillStroke(bounds, fillColor)
+            updatedStrokes.insert(fillStroke, at: 0) // Background is always at the absolute bottom
+        }
+        
+        let newDrawing = PKDrawing(strokes: updatedStrokes)
+        
+        // Save history state
+        let originalDrawing = drawing
+        canvasView?.undoManager?.registerUndo(withTarget: self, handler: { target in
+            target.canvasView?.drawing = originalDrawing
+            target.canvasDidChange()
+        })
+        canvasView?.undoManager?.setActionName(isShapeFill ? "Shape Fill" : "Background Fill")
+        
+        canvasView?.drawing = newDrawing
+        canvasDidChange()
+    }
+
+    func insertCapturedImage(_ image: UIImage) {
+        // 이미지를 워크스페이스(첨부파일)로 삽입하거나 혹은 캔버스 배경으로 설정할 수 있습니다.
+        // 여기서는 워크스페이스 컨트롤러를 통해 이미지 첨부로 처리하도록 유도합니다.
+        // ( BlankNoteEditorView에서 workspaceController.importImageData 호출을 중계 )
+        NotificationCenter.default.post(
+            name: NSNotification.Name("BlankNoteInsertCapturedImage"),
+            object: image
+        )
+    }
+    
     func selectTool(_ tool: AnnotationTool) {
+        if selectedTool == tool && isToolSelectionActive {
+            isToolSelectionActive = false
+            applyCanvasConfiguration()
+            refreshUndoRedoState()
+            return
+        }
+
         selectedTool = tool
+        isToolSelectionActive = true
         toolUsageCounts[tool, default: 0] += 1
-        if tool == .lasso, let currentPageID {
+        if tool == .lasso || tool == .paint, let currentPageID {
             lassoActionCountByPageID[currentPageID, default: 0] += 1
         }
         eventLogger.log(
@@ -336,6 +601,17 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 "source": .string("toolbar")
             ]
         )
+        if let inkTool = activeInkTool(for: tool) {
+            applyStrokePresetConfiguration(for: inkTool)
+        } else {
+            applyCanvasConfiguration()
+        }
+        refreshUndoRedoState()
+    }
+
+    func deactivateToolSelection() {
+        guard isToolSelectionActive else { return }
+        isToolSelectionActive = false
         applyCanvasConfiguration()
         refreshUndoRedoState()
     }
@@ -345,9 +621,33 @@ final class BlankNoteEditorViewModel: ObservableObject {
         applyCanvasConfiguration()
     }
 
-    func selectStrokeWidth(_ width: Double) {
-        strokeWidth = width
+    func selectPenStyle(_ penStyle: WritingPenStyle) {
+        selectedPenStyle = penStyle
         applyCanvasConfiguration()
+    }
+
+    func selectStrokeWidth(_ width: Double) {
+        guard let inkTool = activeInkTool() else { return }
+        updateStrokePreset(width, at: strokePresetConfiguration.selectedIndex, for: inkTool)
+    }
+
+    func selectStrokePreset(at index: Int) {
+        guard let inkTool = activeInkTool() else { return }
+        guard let currentConfiguration = strokePresetConfigurationsByTool[inkTool] else { return }
+        guard index >= 0 && index < currentConfiguration.values.count else { return }
+
+        let updatedConfiguration = WritingStrokePresetConfiguration(
+            values: currentConfiguration.values,
+            selectedIndex: index
+        )
+        strokePresetConfigurationsByTool[inkTool] = updatedConfiguration
+        persistStrokePresetConfiguration(updatedConfiguration, for: inkTool)
+        applyStrokePresetConfiguration(for: inkTool)
+    }
+
+    func updateStrokePreset(_ width: Double, at index: Int) {
+        guard let inkTool = activeInkTool() else { return }
+        updateStrokePreset(width, at: index, for: inkTool)
     }
 
     func togglePencilOnlyInput() {
@@ -370,14 +670,16 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     func toggleCurrentPageBookmark() {
         guard let currentPageID else { return }
+        var updatedBookmarks = bookmarkedPageIDs
         let isBookmarked: Bool
-        if bookmarkedPageIDs.contains(currentPageID) {
-            bookmarkedPageIDs.remove(currentPageID)
+        if updatedBookmarks.contains(currentPageID) {
+            updatedBookmarks.remove(currentPageID)
             isBookmarked = false
         } else {
-            bookmarkedPageIDs.insert(currentPageID)
+            updatedBookmarks.insert(currentPageID)
             isBookmarked = true
         }
+        bookmarkedPageIDs = updatedBookmarks
         persistBookmarks()
         eventLogger.log(
             .pageBookmarkToggled,
@@ -428,17 +730,30 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func currentTool() -> PKTool {
+        let currentKey = "\(selectedTool.rawValue)-\(selectedColorID)-\(strokeWidth)-\(selectedPenStyle.rawValue)"
+        if let cached = cachedPKTool, currentKey == lastToolKey {
+            return cached
+        }
+        
+        let tool: PKTool
         switch selectedTool {
         case .pen:
-            return PKInkingTool(.pen, color: uiColorForColorID(selectedColorID), width: CGFloat(strokeWidth))
+            tool = makePenTool()
         case .highlighter:
             let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
-            return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 2))
+            tool = PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 12))
         case .eraser:
-            return PKEraserTool(.vector)
-        case .lasso:
-            return PKLassoTool()
+            tool = PKEraserTool(.vector)
+        case .tape:
+            let tapeColor = UIColor(PharTheme.ColorToken.accentButter).withAlphaComponent(0.92)
+            tool = PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
+        case .lasso, .paint:
+            tool = PKLassoTool()
         }
+        
+        cachedPKTool = tool
+        lastToolKey = currentKey
+        return tool
     }
 
     func currentDrawingPolicy() -> PKCanvasViewDrawingPolicy {
@@ -446,25 +761,32 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func uiColorForColorID(_ id: Int) -> UIColor {
-        annotationColors.first(where: { $0.id == id })?.uiColor ?? .black
+        if id == 999, let dynamic = dynamicColor {
+            return dynamic
+        }
+        return annotationColors.first(where: { $0.id == id })?.uiColor ?? .black
     }
 
     func saveImmediately() {
+        Task {
+            await saveImmediatelyAndWait()
+        }
+    }
+
+    func saveImmediatelyAndWait() async {
         commitCurrentCanvasToCache()
         recordPageExit()
         persistTasks.values.forEach { $0.cancel() }
         persistTasks.removeAll()
         let dirtyIDs = Array(dirtyPageIDs)
-        Task {
-            for pageID in dirtyIDs {
-                await persistPageIfNeeded(pageID, force: true)
-            }
-            saveContentSnapshot()
+        for pageID in dirtyIDs {
+            await persistPageIfNeeded(pageID, force: true)
         }
+        await saveContentSnapshot()
     }
 
-    func closeDocument() {
-        saveImmediately()
+    func closeDocument() async {
+        await saveImmediatelyAndWait()
         guard didLogDocumentOpen else { return }
         eventLogger.log(
             .documentClosed,
@@ -489,6 +811,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         persistTasks.removeValue(forKey: currentPageID)
         Task {
             await persistPageIfNeeded(currentPageID, force: true)
+            await saveContentSnapshot()
         }
     }
 
@@ -515,7 +838,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
             try await noteStore.saveDrawingData(drawingData, documentURL: documentURL, pageID: pageID)
             dirtyPageIDs.remove(pageID)
             updatePageTimestamp(pageID)
-            saveContentSnapshot()
+            touchDocumentUpdatedAt()
+            await saveContentSnapshot()
             let stats = drawingStats(for: drawing)
             let pageIndex = pages.firstIndex(where: { $0.id == pageID }) ?? max(currentPageNumber - 1, 0)
             eventLogger.log(
@@ -543,6 +867,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 ]
             )
             await refreshThumbnail(for: pageID, drawingData: drawingData)
+            SearchInfrastructure.shared.enqueueHandwritingIndexJob(
+                documentID: document.id,
+                pageKey: pageID.uuidString.lowercased()
+            )
         } catch {
             errorMessage = "필기 저장 실패: \(error.localizedDescription)"
         }
@@ -673,11 +1001,48 @@ final class BlankNoteEditorViewModel: ObservableObject {
         guard let canvasView else { return }
         canvasView.tool = currentTool()
         canvasView.drawingPolicy = currentDrawingPolicy()
+        canvasView.isUserInteractionEnabled = isCanvasInputEnabled
+        if #available(iOS 18.0, *) {
+            canvasView.isDrawingEnabled = isCanvasInputEnabled
+        }
     }
 
     private func refreshUndoRedoState() {
         canUndo = canvasView?.undoManager?.canUndo ?? false
         canRedo = canvasView?.undoManager?.canRedo ?? false
+        refreshSelectionAvailability()
+    }
+
+    private func refreshSelectionAvailability() {
+        guard activeTool == .lasso, let canvasView else {
+            canAnalyzeSelection = false
+            return
+        }
+
+        canvasView.becomeFirstResponder()
+        canAnalyzeSelection =
+            canvasView.canPerformAction(#selector(UIResponderStandardEditActions.copy(_:)), withSender: nil)
+            || canvasView.canPerformAction(#selector(UIResponderStandardEditActions.cut(_:)), withSender: nil)
+            || canvasView.canPerformAction(#selector(UIResponderStandardEditActions.delete(_:)), withSender: nil)
+    }
+
+    private func makePenTool() -> PKInkingTool {
+        let baseColor = uiColorForColorID(selectedColorID)
+
+        switch selectedPenStyle {
+        case .ballpoint:
+            return PKInkingTool(.pen, color: baseColor, width: CGFloat(strokeWidth))
+        case .fountain:
+            return PKInkingTool(.fountainPen, color: baseColor, width: CGFloat(strokeWidth))
+        case .brush:
+            return PKInkingTool(.marker, color: baseColor, width: CGFloat(strokeWidth * 1.5))
+        case .monoline:
+            return PKInkingTool(.monoline, color: baseColor, width: CGFloat(strokeWidth))
+        case .pencil:
+            let texturedColor = baseColor.withAlphaComponent(0.88)
+            let texturedWidth = CGFloat(max(strokeWidth * 1.15, 1.8))
+            return PKInkingTool(.pencil, color: texturedColor, width: texturedWidth)
+        }
     }
 
     private func updatePageTimestamp(_ pageID: UUID) {
@@ -685,14 +1050,82 @@ final class BlankNoteEditorViewModel: ObservableObject {
         pages[index].updatedAt = Date()
     }
 
-    private func saveContentSnapshot() {
+    private func saveContentSnapshot() async {
         let snapshot = BlankNoteContent(version: 2, pages: pages)
-        Task {
-            do {
-                try await noteStore.saveContent(snapshot, documentURL: documentURL)
-            } catch {
-                errorMessage = "노트 메타데이터 저장 실패: \(error.localizedDescription)"
-            }
+        do {
+            try await noteStore.saveContent(snapshot, documentURL: documentURL)
+        } catch {
+            errorMessage = "노트 메타데이터 저장 실패: \(error.localizedDescription)"
+        }
+    }
+
+    private func activeInkTool(for tool: AnnotationTool? = nil) -> AnnotationTool? {
+        switch tool ?? selectedTool {
+        case .pen:
+            return .pen
+        case .highlighter:
+            return .highlighter
+        case .tape:
+            return .tape
+        case .eraser, .lasso, .paint:
+            return nil
+        }
+    }
+
+    private func applyStrokePresetConfiguration(for tool: AnnotationTool) {
+        guard let configuration = strokePresetConfigurationsByTool[tool] else { return }
+        strokePresetConfiguration = configuration
+        strokeWidth = configuration.values[configuration.selectedIndex]
+        applyCanvasConfiguration()
+    }
+
+    private func updateStrokePreset(_ width: Double, at index: Int, for tool: AnnotationTool) {
+        guard var configuration = strokePresetConfigurationsByTool[tool] else { return }
+        guard index >= 0 && index < configuration.values.count else { return }
+
+        var updatedValues = configuration.values
+        updatedValues[index] = min(max(width, 1), 16)
+        configuration = WritingStrokePresetConfiguration(values: updatedValues, selectedIndex: index)
+
+        strokePresetConfigurationsByTool[tool] = configuration
+        persistStrokePresetConfiguration(configuration, for: tool)
+
+        if activeInkTool() == tool {
+            strokePresetConfiguration = configuration
+            strokeWidth = configuration.values[index]
+            applyCanvasConfiguration()
+        }
+    }
+
+    private func persistStrokePresetConfiguration(_ configuration: WritingStrokePresetConfiguration, for tool: AnnotationTool) {
+        WritingStrokePresetStore.save(
+            toolKey: Self.strokePresetToolKey(for: tool),
+            values: configuration.values,
+            selectedIndex: configuration.selectedIndex,
+            userDefaults: userDefaults
+        )
+    }
+
+    private func touchDocumentUpdatedAt() {
+        var updatedDocument = document
+        updatedDocument.updatedAt = pages.map(\.updatedAt).max() ?? Date()
+        if let savedDocument = try? libraryStore.updateDocument(updatedDocument) {
+            document = savedDocument
+        } else {
+            document = updatedDocument
+        }
+    }
+
+    private static func strokePresetToolKey(for tool: AnnotationTool) -> String {
+        switch tool {
+        case .pen:
+            return "pen"
+        case .highlighter:
+            return "highlighter"
+        case .tape:
+            return "tape"
+        case .eraser, .lasso, .paint:
+            return "pen"
         }
     }
 
@@ -709,7 +1142,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             let bounds = stroke.renderBounds
             return partialResult + Double(bounds.width + bounds.height)
         }
-        let highlightCoverage = selectedTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
+        let highlightCoverage = activeTool == .highlighter && strokeCount > 0 ? 0.25 : 0.0
         return AnalysisDrawingStats(
             strokeCount: strokeCount,
             inkLengthEstimate: inkLengthEstimate,

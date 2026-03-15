@@ -1,0 +1,2 @@
+{"source_id":"inst_note_014","source_type":"instructor","author":"instructor_a","problem_ids":["2024_06_mock_common_q15","2024_csat_common_q21"],"title":"그래프-조건 연결","body":"그래프나 표가 있으면 계산 전에 지배 관계를 먼저 언어화한다. 최솟값 문제에서는 목표량을 먼저 고정하고 경계 특수값으로 방향을 검산한다."}
+{"source_id":"inst_note_022","source_type":"instructor","author":"instructor_b","problem_ids":["2026_csat_common_q18"],"title":"정의역 관리","body":"정의역과 자연수 제한을 변형 줄마다 같이 끌고 가야 한다. 경우를 나눴으면 빠진 경우가 없는지 마지막에 다시 확인한다."}

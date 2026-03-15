@@ -1,0 +1,110 @@
+{
+  "scope": {
+    "years": [2024, 2025, 2026],
+    "exam_types": ["수능", "6월 모의평가", "9월 모의평가"],
+    "subject": "수학",
+    "common_only": true,
+    "points": [4]
+  },
+  "problem_db": {
+    "backend": "auto",
+    "table": "past_questions",
+    "fixture_path": "tests/fixtures/doctrine/past_questions_fixture.json"
+  },
+  "field_aliases": {
+    "record_id": {
+      "columns": ["id", "record_id", "problem_id"],
+      "metadata_keys": []
+    },
+    "year": {
+      "columns": ["year", "exam_year"],
+      "metadata_keys": ["year", "exam_year"]
+    },
+    "month": {
+      "columns": ["month", "exam_month"],
+      "metadata_keys": ["month", "exam_month"]
+    },
+    "exam_type": {
+      "columns": ["exam_type", "session", "test_type"],
+      "metadata_keys": ["exam_type", "session", "test_type"]
+    },
+    "subject": {
+      "columns": ["subject", "curriculum_subject"],
+      "metadata_keys": ["subject", "curriculum_subject", "track_subject"]
+    },
+    "question_number": {
+      "columns": ["question_number", "item_number", "number"],
+      "metadata_keys": ["question_number", "item_number", "number"]
+    },
+    "stem": {
+      "columns": ["content", "stem", "question_text"],
+      "metadata_keys": ["content_text", "stem", "question_text"]
+    },
+    "choices": {
+      "columns": ["choices", "options"],
+      "metadata_keys": ["choices", "options"]
+    },
+    "answer": {
+      "columns": ["answer", "correct_answer"],
+      "metadata_keys": ["answer", "correct_answer"]
+    },
+    "solution_outline": {
+      "columns": ["solution", "solution_outline", "explanation"],
+      "metadata_keys": ["solution", "solution_outline", "explanation"]
+    },
+    "concept_tags": {
+      "columns": ["concept_tags", "tags", "keywords"],
+      "metadata_keys": ["keywords", "tags", "concept_tags", "unit", "chapter"]
+    },
+    "points": {
+      "columns": ["points", "score", "point_value"],
+      "metadata_keys": ["points", "score", "point_value"]
+    },
+    "common_section": {
+      "columns": ["paper_section", "section", "section_type", "is_common"],
+      "metadata_keys": ["paper_section", "section", "section_type", "is_common", "common_section"]
+    },
+    "metadata": {
+      "columns": ["metadata"],
+      "metadata_keys": []
+    }
+  },
+  "paths": {
+    "raw_sources": "data/doctrine/raw_sources",
+    "candidates": "data/doctrine/candidates",
+    "normalized": "data/doctrine/normalized",
+    "approved": "data/doctrine/approved",
+    "outputs": "data/doctrine/outputs",
+    "logs": "data/doctrine/logs"
+  },
+  "heuristics": {
+    "clustering": {
+      "pairwise_merge_threshold": 0.78,
+      "exact_fingerprint_weight": 1.0,
+      "sequence_weight": 0.45,
+      "token_overlap_weight": 0.35,
+      "verb_overlap_weight": 0.2
+    },
+    "scoring": {
+      "overall_weights": {
+        "reusability_score": 0.24,
+        "specificity_score": 0.18,
+        "evidence_score": 0.22,
+        "source_diversity_score": 0.14,
+        "problem_alignment_score": 0.22
+      }
+    },
+    "approval": {
+      "auto_approved": {
+        "overall_score_min": 0.82,
+        "evidence_score_min": 0.7,
+        "reusability_score_min": 0.65,
+        "source_diversity_score_min": 0.5,
+        "supported_problem_count_min": 2
+      },
+      "review_needed": {
+        "overall_score_min": 0.55
+      }
+    }
+  }
+}

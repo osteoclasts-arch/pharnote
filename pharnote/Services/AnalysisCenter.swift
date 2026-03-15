@@ -14,6 +14,7 @@ final class AnalysisCenter: ObservableObject {
 
     private let queueStore: AnalysisQueueStore
     private let analysisEngine: AnalysisPipelineEngine
+    private let ocrService: DocumentOCRService
     private var resultsByPageKey: [String: AnalysisResult] = [:]
     private var resultsByBundleId: [UUID: AnalysisResult] = [:]
     private let jsonEncoder: JSONEncoder = {
@@ -25,10 +26,12 @@ final class AnalysisCenter: ObservableObject {
 
     init(
         queueStore: AnalysisQueueStore = AnalysisQueueStore(),
-        analysisEngine: AnalysisPipelineEngine = AnalysisPipelineEngine()
+        analysisEngine: AnalysisPipelineEngine = AnalysisPipelineEngine(),
+        ocrService: DocumentOCRService = DocumentOCRService()
     ) {
         self.queueStore = queueStore
         self.analysisEngine = analysisEngine
+        self.ocrService = ocrService
 
         Task {
             await refreshQueue()
@@ -89,6 +92,16 @@ final class AnalysisCenter: ObservableObject {
         resultsByBundleId[bundleId]
     }
 
+    func ocrPreview(for source: BlankNoteAnalysisSource) async -> OCRPreviewSummary {
+        let ocrBlocks = await ocrService.recognizeBlankNoteBlocks(source: source)
+        return makeOCRPreviewSummary(ocrBlocks: ocrBlocks, supportingBlocks: [])
+    }
+
+    func ocrPreview(for source: PDFPageAnalysisSource) async -> OCRPreviewSummary {
+        let ocrBlocks = await ocrService.recognizePDFBlocks(source: source)
+        return makeOCRPreviewSummary(ocrBlocks: ocrBlocks, supportingBlocks: source.pdfTextBlocks)
+    }
+
     func inspection(for bundleId: UUID) async -> AnalysisInspection? {
         let entry: AnalysisQueueEntry?
         if let cachedEntry = queueEntries.first(where: { $0.bundleId == bundleId }) {
@@ -121,6 +134,8 @@ final class AnalysisCenter: ObservableObject {
         scope: AnalysisScope,
         studyIntent: AnalysisStudyIntent
     ) async {
+        let ocrBlocks = await ocrService.recognizeBlankNoteBlocks(source: source)
+
         await enqueue(
             previewImageData: source.previewImageData,
             drawingData: source.drawingData
@@ -153,7 +168,7 @@ final class AnalysisCenter: ObservableObject {
                     drawingStats: source.drawingStats,
                     typedBlocks: [],
                     pdfTextBlocks: [],
-                    ocrTextBlocks: [],
+                    ocrTextBlocks: ocrBlocks,
                     manualTags: source.manualTags,
                     bookmarks: source.bookmarks
                 ),
@@ -170,7 +185,8 @@ final class AnalysisCenter: ObservableObject {
                     undoCount: source.undoCount,
                     redoCount: source.redoCount,
                     zoomEventCount: 0,
-                    navigationPath: source.navigationPath
+                    navigationPath: source.navigationPath,
+                    postSolveReview: source.postSolveReview
                 ),
                 context: AnalysisExecutionContext(
                     previousPageIds: source.previousPageIds,
@@ -194,6 +210,8 @@ final class AnalysisCenter: ObservableObject {
         scope: AnalysisScope,
         studyIntent: AnalysisStudyIntent
     ) async {
+        let ocrBlocks = await ocrService.recognizePDFBlocks(source: source)
+
         await enqueue(
             previewImageData: source.previewImageData,
             drawingData: source.drawingData
@@ -226,7 +244,7 @@ final class AnalysisCenter: ObservableObject {
                     drawingStats: source.drawingStats,
                     typedBlocks: [],
                     pdfTextBlocks: source.pdfTextBlocks,
-                    ocrTextBlocks: [],
+                    ocrTextBlocks: ocrBlocks,
                     manualTags: source.manualTags,
                     bookmarks: source.bookmarks
                 ),
@@ -243,7 +261,8 @@ final class AnalysisCenter: ObservableObject {
                     undoCount: source.undoCount,
                     redoCount: source.redoCount,
                     zoomEventCount: source.zoomEventCount,
-                    navigationPath: source.navigationPath
+                    navigationPath: source.navigationPath,
+                    postSolveReview: source.postSolveReview
                 ),
                 context: AnalysisExecutionContext(
                     previousPageIds: source.previousPageIds,
@@ -516,5 +535,65 @@ final class AnalysisCenter: ObservableObject {
             reviewTasks.append(updatedTask)
         }
         reviewTasks = deduplicatedReviewTasks(reviewTasks)
+    }
+
+    private func makeOCRPreviewSummary(
+        ocrBlocks: [AnalysisTextBlock],
+        supportingBlocks: [AnalysisTextBlock]
+    ) -> OCRPreviewSummary {
+        let recognizedCharacterCount = ocrBlocks.reduce(into: 0) { partial, block in
+            partial += block.text.count
+        }
+
+        let topLines = ocrBlocks
+            .map(\.text)
+            .flatMap { $0.components(separatedBy: .newlines) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted { $0.count > $1.count }
+
+        let combinedSource = (ocrBlocks + supportingBlocks).map(\.text).joined(separator: "\n")
+        return OCRPreviewSummary(
+            recognizedBlockCount: ocrBlocks.count,
+            scannedPageBlockCount: ocrBlocks.filter { $0.kind == "ocr-scanned-page" }.count,
+            handwritingBlockCount: ocrBlocks.filter { $0.kind == "ocr-handwriting" }.count,
+            recognizedCharacterCount: recognizedCharacterCount,
+            topLines: Array(topLines.prefix(4)),
+            problemCandidates: Array(extractedProblemCandidates(from: combinedSource).prefix(4)),
+            hasMathSignal: hasMathSignal(in: combinedSource)
+        )
+    }
+
+    private func extractedProblemCandidates(from text: String) -> [String] {
+        let lines = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        var candidates = lines.filter { line in
+            line.range(of: #"^(예제|문제|기출|실전)\s*\d+"#, options: .regularExpression) != nil ||
+            line.range(of: #"^\d+[\.\)]"#, options: .regularExpression) != nil ||
+            line.contains("①") || line.contains("②") || line.contains("③") || line.contains("④") || line.contains("⑤")
+        }
+
+        if candidates.isEmpty {
+            candidates = lines.filter { line in
+                hasMathSignal(in: line) && line.count >= 8
+            }
+        }
+
+        return candidates
+    }
+
+    private func hasMathSignal(in text: String) -> Bool {
+        let patterns = [
+            #"[0-9][\s]*[×x+\-=/][\s]*[0-9a-zA-Z]"#,
+            #"(?i)\b(lim|log|ln|sin|cos|tan|sec|csc|cot)\b"#,
+            #"[∫Σπ√]"#
+        ]
+
+        return patterns.contains { pattern in
+            text.range(of: pattern, options: .regularExpression) != nil
+        }
     }
 }
