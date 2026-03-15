@@ -50,6 +50,17 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published private(set) var bookmarkedPageIDs: Set<UUID>
     @Published var errorMessage: String?
     
+    // Lecture Mode & Sync properties
+    @Published var isLectureModeEnabled: Bool = false
+    @Published var isShowingNudge: Bool = false
+    @Published var nudgeNodeId: String?
+
+    
+    // Tool Cache to prevent infinite re-render loops in SwiftUI/PencilKit
+    private var cachedPKTool: PKTool?
+    private var lastToolKey: String = ""
+
+    
     // Evidence Binding properties
     @Published var isBindingEvidence: Bool = false
     @Published var evidenceBindingStepId: String? = nil
@@ -471,7 +482,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             return
         }
 
-        guard selectedTool == .paint, let currentPageID else { return }
+        guard selectedTool == .paint, self.currentPageID != nil else { return }
         
         // Setup fill stroke generator based on bounding box
         let generateFillStroke: (CGRect, UIColor) -> PKStroke = { bounds, color in
@@ -556,6 +567,16 @@ final class BlankNoteEditorViewModel: ObservableObject {
         canvasDidChange()
     }
 
+    func insertCapturedImage(_ image: UIImage) {
+        // 이미지를 워크스페이스(첨부파일)로 삽입하거나 혹은 캔버스 배경으로 설정할 수 있습니다.
+        // 여기서는 워크스페이스 컨트롤러를 통해 이미지 첨부로 처리하도록 유도합니다.
+        // ( BlankNoteEditorView에서 workspaceController.importImageData 호출을 중계 )
+        NotificationCenter.default.post(
+            name: NSNotification.Name("BlankNoteInsertCapturedImage"),
+            object: image
+        )
+    }
+    
     func selectTool(_ tool: AnnotationTool) {
         if selectedTool == tool && isToolSelectionActive {
             isToolSelectionActive = false
@@ -709,21 +730,30 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func currentTool() -> PKTool {
+        let currentKey = "\(selectedTool.rawValue)-\(selectedColorID)-\(strokeWidth)-\(selectedPenStyle.rawValue)"
+        if let cached = cachedPKTool, currentKey == lastToolKey {
+            return cached
+        }
+        
+        let tool: PKTool
         switch selectedTool {
         case .pen:
-            return makePenTool()
+            tool = makePenTool()
         case .highlighter:
             let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
-            return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 12))
+            tool = PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 12))
         case .eraser:
-            return PKEraserTool(.vector)
+            tool = PKEraserTool(.vector)
         case .tape:
-            // Tape tool uses a specific semi-opaque yellow by default, but width is adjustable
             let tapeColor = UIColor(PharTheme.ColorToken.accentButter).withAlphaComponent(0.92)
-            return PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
+            tool = PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
         case .lasso, .paint:
-            return PKLassoTool()
+            tool = PKLassoTool()
         }
+        
+        cachedPKTool = tool
+        lastToolKey = currentKey
+        return tool
     }
 
     func currentDrawingPolicy() -> PKCanvasViewDrawingPolicy {

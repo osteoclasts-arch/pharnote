@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import Combine
 
 struct LessonDocumentEditorView: View {
     let document: PharDocument
@@ -118,21 +119,23 @@ struct LessonDocumentEditorView: View {
     private func startSyncCheck() {
         // 제로 서치 넛지 감지 루프
         Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            // 현재 ViewModel의 드로잉 통계를 기반으로 정체 감지
-            // 실제 PencilCanvasView와 연동된 통계 데이터 필요
-            let mockStats = AnalysisDrawingStats(
-                strokeCount: 10,
-                inkLengthEstimate: 100,
-                eraseRatio: 0,
-                highlightCoverage: 0,
-                activeWritingTime: 5,
-                pauseTime: 20 // 15초 이상 정체 가정
-            )
-            
-            if let nodeId = lectureSync.detectStallAndNudge(stats: mockStats, isWriting: false) {
-                withAnimation {
-                    self.nudgeNodeId = nodeId
-                    self.isShowingNudge = true
+            Task { @MainActor in
+                // 현재 ViewModel의 드로잉 통계를 기반으로 정체 감지
+                // 실제 PencilCanvasView와 연동된 통계 데이터 필요
+                let mockStats = AnalysisDrawingStats(
+                    strokeCount: 10,
+                    inkLengthEstimate: 100,
+                    eraseRatio: 0,
+                    highlightCoverage: 0,
+                    activeWritingTime: 5,
+                    pauseTime: 20 // 15초 이상 정체 가정
+                )
+                
+                if let nodeId = lectureSync.detectStallAndNudge(stats: mockStats, isWriting: false) {
+                    withAnimation {
+                        self.nudgeNodeId = nodeId
+                        self.isShowingNudge = true
+                    }
                 }
             }
         }

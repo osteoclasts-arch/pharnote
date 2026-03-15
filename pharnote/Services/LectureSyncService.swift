@@ -20,7 +20,7 @@ final class LectureSyncService: ObservableObject {
     
     func startSession(sessionId: String, initialNodes: [LessonSyncNode]) {
         self.currentSessionId = sessionId
-        self.activeSyncNodes = initialNodes.sorted(by: { $0.timestampSeconds < rhs: { $0.timestampSeconds }($1) })
+        self.activeSyncNodes = initialNodes.sorted(by: { $0.timestampSeconds < $1.timestampSeconds })
     }
     
     /// 플레이어의 시각이 업데이트될 때 호출

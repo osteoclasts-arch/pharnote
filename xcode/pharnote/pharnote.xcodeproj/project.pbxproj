@@ -63,6 +63,10 @@
 		AA0000542F56000100AA0001 /* NodeAnalysisStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */; };
 		AA0000552F56000100AA0001 /* NodeAnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */; };
 		AA0000562F56000100AA0001 /* NodeAnalysisWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */; };
+		B4F000012F56000100B4F002 /* LessonSyncNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000012F56000100B4F001 /* LessonSyncNode.swift */; };
+		B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000022F56000100B4F001 /* LectureSyncService.swift */; };
+		B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */; };
+		B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -123,6 +127,10 @@
 		AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisStore.swift; sourceTree = "<group>"; };
 		AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisViewModel.swift; sourceTree = "<group>"; };
 		AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisWorkspaceView.swift; sourceTree = "<group>"; };
+		B4F000012F56000100B4F001 /* LessonSyncNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonSyncNode.swift; sourceTree = "<group>"; };
+		B4F000022F56000100B4F001 /* LectureSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureSyncService.swift; sourceTree = "<group>"; };
+		B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartLayerCaptureService.swift; sourceTree = "<group>"; };
+		B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonDocumentEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -180,6 +188,7 @@
 				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
 				AA0000572F56000100AA0001 /* NodeAnalysisModels.swift */,
 				AA0000462F56000100AA0001 /* PastQuestionModels.swift */,
+				B4F000012F56000100B4F001 /* LessonSyncNode.swift */,
 				93FC7F692F5474A1007D741C /* PharDocument.swift */,
 				AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */,
 			);
@@ -205,6 +214,8 @@
 				93FC7F6E2F5474A1007D741C /* LibraryStore.swift */,
 				93FC7F6F2F5474A1007D741C /* PDFOverlayStore.swift */,
 				93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */,
+				B4F000022F56000100B4F001 /* LectureSyncService.swift */,
+				B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */,
 				93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */,
 				AA0000112F56000100AA0001 /* PersistenceController.swift */,
 			);
@@ -242,6 +253,7 @@
 				93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
 				93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
 				93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
+				B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */,
 				93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
 				AA0000132F56000100AA0001 /* SettingsView.swift */,
 			);
@@ -411,6 +423,10 @@
 				93FC7F992F5474A1007D741C /* DocumentEditorView.swift in Sources */,
 				93FC7F9A2F5474A1007D741C /* PDFImportPicker.swift in Sources */,
 				93FC7F9B2F5474A1007D741C /* HandwritingIndexingPipeline.swift in Sources */,
+				B4F000012F56000100B4F002 /* LessonSyncNode.swift in Sources */,
+				B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */,
+				B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */,
+				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

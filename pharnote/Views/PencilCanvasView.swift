@@ -69,15 +69,36 @@ struct PencilCanvasView: UIViewRepresentable {
 
         func updateCanvasState() {
             guard let canvasView else { return }
-            canvasView.tool = viewModel.currentTool()
-            canvasView.drawingPolicy = viewModel.currentDrawingPolicy()
-            canvasView.isUserInteractionEnabled = viewModel.isCanvasInputEnabled
-            if #available(iOS 18.0, *) {
-                canvasView.isDrawingEnabled = viewModel.isCanvasInputEnabled
+            
+            // 1. Tool 설정 (불필요한 인스턴스 생성이 루프를 유발할 수 있으므로 가볍게 가드)
+            let newTool = viewModel.currentTool()
+            // PKTool은 직접 비교가 어려우므로 일단 설정하되, 다른 상태 변화와 겹치지 않게 주의
+            canvasView.tool = newTool
+            
+            // 2. Policy 및 interaction 제어 (상태가 다를 때만 설정)
+            let newPolicy = viewModel.currentDrawingPolicy()
+            if canvasView.drawingPolicy != newPolicy {
+                canvasView.drawingPolicy = newPolicy
             }
-            if #available(iOS 18.0, *) {
-                toolPicker.selectedToolItem = pickerItem(for: viewModel.currentTool())
+            
+            let interactionEnabled = viewModel.isCanvasInputEnabled
+            if canvasView.isUserInteractionEnabled != interactionEnabled {
+                canvasView.isUserInteractionEnabled = interactionEnabled
             }
+            
+            if #available(iOS 18.0, *) {
+                if canvasView.isDrawingEnabled != interactionEnabled {
+                    canvasView.isDrawingEnabled = interactionEnabled
+                }
+                
+                // PKToolPickerItem도 변경시에만 업데이트
+                let newItem = pickerItem(for: newTool)
+                if toolPicker.selectedToolItem != newItem {
+                    toolPicker.selectedToolItem = newItem
+                }
+            }
+            
+            // 3. Picker 가시성 업데이트
             updateToolPickerVisibility(isVisible: viewModel.isToolPickerVisible)
         }
 
@@ -104,6 +125,16 @@ struct PencilCanvasView: UIViewRepresentable {
 
         func updateToolPickerVisibility(isVisible: Bool) {
             guard let canvasView else { return }
+            
+            // 현재 상태와 동일하면 아무것도 하지 않음 (루프 방지의 핵심)
+            if isVisible == currentPickerVisibility && isVisible == toolPicker.isVisible {
+                // 이미 보이는데 FirstResponder가 아니라면 그때만 다시 설정
+                if isVisible && !canvasView.isFirstResponder {
+                    canvasView.becomeFirstResponder()
+                }
+                return
+            }
+            
             guard let window = canvasView.window else {
                 guard windowLookupRetryCount < 3 else { return }
                 windowLookupRetryCount += 1
@@ -114,20 +145,23 @@ struct PencilCanvasView: UIViewRepresentable {
             }
             windowLookupRetryCount = 0
 
-            _ = window
-            let picker = toolPicker
-
             if isVisible {
                 if !currentPickerVisibility {
-                    picker.addObserver(canvasView)
+                    toolPicker.addObserver(canvasView)
                 }
-                picker.setVisible(true, forFirstResponder: canvasView)
-                canvasView.becomeFirstResponder()
+                toolPicker.setVisible(true, forFirstResponder: canvasView)
+                if !canvasView.isFirstResponder {
+                    canvasView.becomeFirstResponder()
+                }
             } else {
                 if currentPickerVisibility {
-                    picker.removeObserver(canvasView)
+                    toolPicker.removeObserver(canvasView)
                 }
-                picker.setVisible(false, forFirstResponder: canvasView)
+                toolPicker.setVisible(false, forFirstResponder: canvasView)
+                // 포커스 해제는 신중하게 (루프 유발 가능성 낮음)
+                if canvasView.isFirstResponder {
+                    canvasView.resignFirstResponder()
+                }
             }
 
             currentPickerVisibility = isVisible

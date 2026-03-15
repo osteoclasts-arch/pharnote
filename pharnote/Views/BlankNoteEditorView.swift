@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 
 struct BlankNoteEditorView: View {
     @Environment(\.presentationMode) private var presentationMode
@@ -8,6 +9,8 @@ struct BlankNoteEditorView: View {
     @StateObject private var viewModel: BlankNoteEditorViewModel
     @StateObject private var audioController: DocumentAudioController
     @StateObject private var workspaceController: DocumentWorkspaceController
+    @StateObject private var lectureSync = LectureSyncService.shared
+    @State private var player = AVPlayer()
     @State private var isBottomPanelExpanded = false
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
@@ -66,6 +69,11 @@ struct BlankNoteEditorView: View {
         .animation(PharTheme.AnimationToken.toolbarVisibility, value: isBottomPanelExpanded)
         .animation(PharTheme.AnimationToken.pageTransition, value: viewModel.currentPageID)
         .toolbar(.hidden, for: .navigationBar)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BlankNoteInsertCapturedImage"))) { note in
+            if let image = note.object as? UIImage, let data = image.pngData() {
+                workspaceController.importImageData(data, suggestedFileName: "captured_board.png", preferredPlacement: nil)
+            }
+        }
         .task {
             viewModel.loadInitialContentIfNeeded()
             audioController.loadRecordingsIfNeeded()
@@ -190,17 +198,25 @@ struct BlankNoteEditorView: View {
                 WritingChromePalette.paper.ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: true) {
-                    VStack(spacing: 28) {
-                        editorPage(width: pageWidth, height: pageHeight)
+                    HStack(spacing: 24) {
+                        if viewModel.isLectureModeEnabled {
+                            lectureArea
+                                .frame(width: geometry.size.width * 0.42)
+                                .padding(.leading, 28)
+                        }
+                        
+                        VStack(spacing: 28) {
+                            editorPage(width: pageWidth, height: pageHeight)
 
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(Color.white.opacity(0.78))
-                            .frame(width: pageWidth, height: 170)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .stroke(Color.black.opacity(0.03), lineWidth: 1)
-                            )
-                            .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.78))
+                                .frame(width: pageWidth, height: 170)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(Color.black.opacity(0.03), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 166)
@@ -224,15 +240,36 @@ struct BlankNoteEditorView: View {
                 .padding(.top, 18)
                 .padding(.horizontal, 28)
 
-                VStack {
-                    Spacer()
-                    HStack {
+                if viewModel.isShowingNudge, let nodeId = viewModel.nudgeNodeId {
+                    VStack {
                         Spacer()
-                        WritingShareFAB {
-                            isShowingShareSheet = true
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("혹시 이 부분이 헷갈리시나요?")
+                                    .font(.subheadline)
+                                    .bold()
+                                    .foregroundStyle(WritingChromePalette.ink)
+                                Text("관련 개념 검색 없이 바로 보기: \(nodeId)")
+                                    .font(.caption)
+                                    .foregroundStyle(WritingChromePalette.ink.opacity(0.8))
+                            }
+                            Spacer()
+                            Button("보기") {
+                                withAnimation {
+                                    viewModel.isShowingNudge = false
+                                }
+                                // 노드 상세 보기 로집 연결
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .padding(.trailing, 28)
-                        .padding(.bottom, 24)
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(WritingChromePalette.hintFill)
+                        )
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 100)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
             }
@@ -363,6 +400,18 @@ struct BlankNoteEditorView: View {
                     ) {
                         withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
                             isBottomPanelExpanded.toggle()
+                        }
+                    }
+                    
+                    WritingToolbarDivider()
+                    
+                    WritingChromeIconButton(
+                        systemName: "video.fill",
+                        accentTint: true,
+                        isSelected: viewModel.isLectureModeEnabled
+                    ) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            viewModel.isLectureModeEnabled.toggle()
                         }
                     }
                 }
@@ -632,6 +681,90 @@ struct BlankNoteEditorView: View {
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
                 viewModel.updateSelectedColor(colorID)
+            }
+        }
+    }
+
+    private var lectureArea: some View {
+        VStack(spacing: 20) {
+            VideoPlayer(player: player)
+                .frame(height: 280)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
+                .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+                    lectureSync.updateTimestamp(player.currentTime().seconds)
+                }
+
+            HStack {
+                Button(action: captureSmartLayer) {
+                    Label("스마트 레이어 캡처", systemImage: "plus.viewfinder")
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(WritingChromePalette.accent)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                
+                Spacer()
+                
+                if let nodeId = lectureSync.activeNode?.conceptNodeId {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("현재 개념")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(WritingChromePalette.ink.opacity(0.6))
+                        Text(nodeId)
+                            .font(.system(size: 14, weight: .black, design: .rounded))
+                            .foregroundStyle(WritingChromePalette.ink)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .onAppear {
+            setupPlayer()
+            startSyncCheck()
+        }
+    }
+
+    private func setupPlayer() {
+        // 실제 운영 환경에서는 document와 연결된 영상 URL을 로드
+        lectureSync.startSession(sessionId: viewModel.document.title, initialNodes: [])
+    }
+
+    private func captureSmartLayer() {
+        Task {
+            do {
+                let cleanedImage = try await SmartLayerCaptureService.shared.captureAndCleanBoard(from: player)
+                viewModel.insertCapturedImage(cleanedImage)
+                print("[SmartLayer] Capture succeeded.")
+            } catch {
+                print("[SmartLayer] Capture failed: \(error)")
+                viewModel.errorMessage = "판서 추출에 실패했습니다."
+            }
+        }
+    }
+
+    private func startSyncCheck() {
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            Task { @MainActor in
+                let stats = AnalysisDrawingStats(
+                    strokeCount: viewModel.currentPageStrokeCount,
+                    inkLengthEstimate: 100,
+                    eraseRatio: 0,
+                    highlightCoverage: 0,
+                    activeWritingTime: 5,
+                    pauseTime: 20 
+                )
+                
+                if let nodeId = lectureSync.detectStallAndNudge(stats: stats, isWriting: false) {
+                    withAnimation(.spring()) {
+                        viewModel.nudgeNodeId = nodeId
+                        viewModel.isShowingNudge = true
+                    }
+                }
             }
         }
     }
