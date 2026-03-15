@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import Combine
 
 struct BlankNoteEditorView: View {
     @Environment(\.presentationMode) private var presentationMode
@@ -1404,7 +1405,7 @@ private struct BlankNoteAnalyzePreviewSheet: View {
         }
         .presentationDetents([.fraction(0.35), .medium, .large], selection: $sheetDetent)
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.35)))
-        .onChange(of: viewModel.isBindingEvidence) { isBinding in
+        .onChange(of: viewModel.isBindingEvidence) { _, isBinding in
             sheetDetent = isBinding ? .fraction(0.35) : .large
         }
     }

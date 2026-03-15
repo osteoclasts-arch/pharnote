@@ -135,7 +135,7 @@ struct PencilCanvasView: UIViewRepresentable {
                 return
             }
             
-            guard let window = canvasView.window else {
+            guard canvasView.window != nil else {
                 guard windowLookupRetryCount < 3 else { return }
                 windowLookupRetryCount += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
