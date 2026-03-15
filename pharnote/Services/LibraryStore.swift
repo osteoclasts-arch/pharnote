@@ -457,7 +457,7 @@ final class LibraryStore {
             version: 1,
             generatedAt: Date(),
             materials: documents
-                .filter { $0.type == .pdf || $0.studyMaterial != nil }
+                .filter { $0.type == .pdf || $0.type == .lesson || $0.studyMaterial != nil }
                 .sorted { $0.updatedAt > $1.updatedAt }
                 .map {
                     PharnodeDashboardMaterialProgress(

@@ -273,6 +273,39 @@ actor DocumentOCRService {
             )
             let blocks = await recognizePDFBlocks(source: source)
             return joinedText(from: blocks)
+        case .lesson:
+            // For now, treat lesson documents like blank notes for indexing purposes
+            guard let pageID = UUID(uuidString: pageKey) else { return nil }
+            let documentURL = URL(fileURLWithPath: document.path, isDirectory: true)
+            guard let drawingData = await blankNoteStore.loadDrawingData(documentURL: documentURL, pageID: pageID) else { return nil }
+            let source = BlankNoteAnalysisSource(
+                document: document,
+                pageId: pageID,
+                pageIndex: 0,
+                pageCount: 1,
+                previousPageIds: [],
+                nextPageIds: [],
+                pageState: [],
+                previewImageData: nil,
+                drawingData: drawingData,
+                drawingStats: AnalysisDrawingStats(strokeCount: 0, inkLengthEstimate: 0, eraseRatio: 0, highlightCoverage: 0),
+                manualTags: [],
+                bookmarks: [],
+                sessionId: UUID(),
+                dwellMs: 0,
+                foregroundEditsMs: 0,
+                revisitCount: 0,
+                toolUsage: [],
+                lassoActions: 0,
+                copyActions: 0,
+                pasteActions: 0,
+                undoCount: 0,
+                redoCount: 0,
+                navigationPath: [],
+                postSolveReview: nil
+            )
+            let blocks = await recognizeBlankNoteBlocks(source: source)
+            return joinedText(from: blocks)
         }
     }
 
