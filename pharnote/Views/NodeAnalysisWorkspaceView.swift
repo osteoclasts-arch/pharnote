@@ -707,9 +707,7 @@ struct NodeAnalysisWorkspaceView: View {
                     .font(PharTypography.body)
                     .foregroundStyle(PharTheme.ColorToken.inkSecondary)
 
-                if let diagnosis = record.reviewDiagnosis {
-                    diagnosisPanel(for: diagnosis)
-                }
+                diagnosisPanel(for: record.reviewDiagnosis)
             }
         }
     }

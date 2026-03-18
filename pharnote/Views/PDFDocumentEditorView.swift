@@ -53,6 +53,7 @@ struct PDFDocumentEditorView: View {
     @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
+    @State private var documentBeingRenamed: PharDocument?
     @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
@@ -132,6 +133,25 @@ struct PDFDocumentEditorView: View {
         }
         .sheet(isPresented: $isShowingShareSheet) {
             WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
+        .sheet(item: $documentBeingRenamed) { document in
+            DocumentRenameSheet(
+                title: document.title,
+                onCancel: {
+                    documentBeingRenamed = nil
+                },
+                onSave: { newTitle in
+                    do {
+                        let savedDocument = try libraryViewModel.renameDocument(document, to: newTitle)
+                        if savedDocument.id == viewModel.document.id {
+                            viewModel.updateDocument(savedDocument)
+                        }
+                    } catch {
+                        viewModel.errorMessage = error.localizedDescription
+                    }
+                    documentBeingRenamed = nil
+                }
+            )
         }
         .sheet(isPresented: $isShowingTextComposer) {
             WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
@@ -257,7 +277,11 @@ struct PDFDocumentEditorView: View {
                     WritingDocumentChipStrip(
                         chips: workspaceChips,
                         onSelect: handleWorkspaceChipSelection,
-                        onClose: handleWorkspaceChipClose
+                        onClose: handleWorkspaceChipClose,
+                        onRename: { documentID in
+                            guard documentID == viewModel.document.id else { return }
+                            documentBeingRenamed = viewModel.document
+                        }
                     )
                 }
                 chromeToolbar

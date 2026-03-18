@@ -339,7 +339,7 @@ nonisolated struct AnalysisPostSolveReviewPromptSet: Codable, Hashable, Sendable
     }
 
     static func promptSet(for question: PastQuestionRecord?) -> AnalysisPostSolveReviewPromptSet {
-        if let questionId = question?.id, let dynamic = dynamicRegistry[questionId] {
+        if let questionId = question?.id.uuidString, let dynamic = dynamicRegistry[questionId] {
             return dynamic
         }
 

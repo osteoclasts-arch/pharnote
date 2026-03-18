@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F90000102F56000100F90002 /* AppGuidePopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000102F56000100F90001 /* AppGuidePopupView.swift */; };
+		F90000202F56000100F90002 /* PharWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000202F56000100F90001 /* PharWebView.swift */; };
+		F90000302F56000100F90002 /* LectureFloatingBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */; };
 		93FC7F832F5474A1007D741C /* PharTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F642F5474A1007D741C /* PharTheme.swift */; };
 		93FC7F842F5474A1007D741C /* PDFThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */; };
 		93FC7F852F5474A1007D741C /* PDFKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7C2F5474A1007D741C /* PDFKitView.swift */; };
@@ -49,6 +52,9 @@
 		AA0000262F56000100AA0001 /* AnalysisHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */; };
 		AA0000282F56000100AA0001 /* StudyEventLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000292F56000100AA0001 /* StudyEventLogger.swift */; };
 		AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */; };
+		AA0000602F56000100AA0002 /* PlannerCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000632F56000100AA0001 /* PlannerCenter.swift */; };
+		AA0000612F56000100AA0002 /* PlannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000612F56000100AA0001 /* PlannerModels.swift */; };
+		AA0000622F56000100AA0002 /* PlannerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000622F56000100AA0001 /* PlannerStore.swift */; };
 		AA0000322F56000100AA0001 /* StudyMaterialCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */; };
 		AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */; };
 		AA0000372F56000100AA0001 /* CatalogImportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000382F56000100AA0001 /* CatalogImportPicker.swift */; };
@@ -67,9 +73,16 @@
 		B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000022F56000100B4F001 /* LectureSyncService.swift */; };
 		B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */; };
 		B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */; };
+		D10000102F60000100D10002 /* PharNodeAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000102F60000100D10001 /* PharNodeAIService.swift */; };
+		D10000202F60000100D10002 /* LiveTextEditingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000202F60000100D10001 /* LiveTextEditingLayer.swift */; };
+		D10000302F60000100D10002 /* FloatingTextToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000302F60000100D10001 /* FloatingTextToolbar.swift */; };
+		D10000402F60000100D10002 /* PharAppGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000402F60000100D10001 /* PharAppGuideView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F90000102F56000100F90001 /* AppGuidePopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGuidePopupView.swift; sourceTree = "<group>"; };
+		F90000202F56000100F90001 /* PharWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharWebView.swift; sourceTree = "<group>"; };
+		F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureFloatingBrowserView.swift; sourceTree = "<group>"; };
 		93FC7F1B2F5473E9007D741C /* pharnote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = pharnote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93FC7F632F5474A1007D741C /* PharControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharControls.swift; sourceTree = "<group>"; };
 		93FC7F642F5474A1007D741C /* PharTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharTheme.swift; sourceTree = "<group>"; };
@@ -127,10 +140,17 @@
 		AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisStore.swift; sourceTree = "<group>"; };
 		AA0000592F56000100AA0001 /* NodeAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisViewModel.swift; sourceTree = "<group>"; };
 		AA0000602F56000100AA0001 /* NodeAnalysisWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeAnalysisWorkspaceView.swift; sourceTree = "<group>"; };
+		AA0000612F56000100AA0001 /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerModels.swift; sourceTree = "<group>"; };
+		AA0000622F56000100AA0001 /* PlannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerStore.swift; sourceTree = "<group>"; };
+		AA0000632F56000100AA0001 /* PlannerCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCenter.swift; sourceTree = "<group>"; };
 		B4F000012F56000100B4F001 /* LessonSyncNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonSyncNode.swift; sourceTree = "<group>"; };
 		B4F000022F56000100B4F001 /* LectureSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureSyncService.swift; sourceTree = "<group>"; };
 		B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartLayerCaptureService.swift; sourceTree = "<group>"; };
 		B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonDocumentEditorView.swift; sourceTree = "<group>"; };
+		D10000102F60000100D10001 /* PharNodeAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharNodeAIService.swift; sourceTree = "<group>"; };
+		D10000202F60000100D10001 /* LiveTextEditingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/LiveTextEditingLayer.swift; sourceTree = "<group>"; };
+		D10000302F60000100D10001 /* FloatingTextToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/FloatingTextToolbar.swift; sourceTree = "<group>"; };
+		D10000402F60000100D10001 /* PharAppGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/PharAppGuideView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -190,6 +210,7 @@
 				AA0000462F56000100AA0001 /* PastQuestionModels.swift */,
 				B4F000012F56000100B4F001 /* LessonSyncNode.swift */,
 				93FC7F692F5474A1007D741C /* PharDocument.swift */,
+				AA0000612F56000100AA0001 /* PlannerModels.swift */,
 				AA0000312F56000100AA0001 /* StudyMaterialSupport.swift */,
 			);
 			path = Models;
@@ -208,6 +229,8 @@
 				AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */,
 				AA0000482F56000100AA0001 /* PastQuestionsService.swift */,
 				AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */,
+				AA0000632F56000100AA0001 /* PlannerCenter.swift */,
+				AA0000622F56000100AA0001 /* PlannerStore.swift */,
 				93FC7F6B2F5474A1007D741C /* BlankNoteStore.swift */,
 				93FC7F6C2F5474A1007D741C /* HandwritingIndexingPipeline.swift */,
 				93FC7F6D2F5474A1007D741C /* HandwritingSearchStore.swift */,
@@ -216,6 +239,7 @@
 				93FC7F702F5474A1007D741C /* PDFThumbnailGenerator.swift */,
 				B4F000022F56000100B4F001 /* LectureSyncService.swift */,
 				B4F000032F56000100B4F001 /* SmartLayerCaptureService.swift */,
+				D10000102F60000100D10001 /* PharNodeAIService.swift */,
 				93FC7F712F5474A1007D741C /* SearchInfrastructure.swift */,
 				AA0000112F56000100AA0001 /* PersistenceController.swift */,
 			);
@@ -237,6 +261,9 @@
 		93FC7F7F2F5474A1007D741C /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				F90000102F56000100F90001 /* AppGuidePopupView.swift */,
+				F90000202F56000100F90001 /* PharWebView.swift */,
+				F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */,
 				AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */,
 				AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */,
 				AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
@@ -253,6 +280,9 @@
 				93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
 				93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
 				93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
+				D10000402F60000100D10001 /* PharAppGuideView.swift */,
+				D10000302F60000100D10001 /* FloatingTextToolbar.swift */,
+				D10000202F60000100D10001 /* LiveTextEditingLayer.swift */,
 				B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */,
 				93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
 				AA0000132F56000100AA0001 /* SettingsView.swift */,
@@ -288,6 +318,7 @@
 		AA0000342F56000100AA0001 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+
 				AA0000332F56000100AA0001 /* StudyMaterialCatalog.json */,
 			);
 			path = Resources;
@@ -369,6 +400,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F90000102F56000100F90002 /* AppGuidePopupView.swift in Sources */,
+				F90000202F56000100F90002 /* PharWebView.swift in Sources */,
+				F90000302F56000100F90002 /* LectureFloatingBrowserView.swift in Sources */,
+
 				AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
 				AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,
 				AA0000022F56000100AA0001 /* ContentView.swift in Sources */,
@@ -386,6 +421,9 @@
 				AA0000542F56000100AA0001 /* NodeAnalysisStore.swift in Sources */,
 				AA0000472F56000100AA0001 /* PastQuestionsService.swift in Sources */,
 				AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */,
+				AA0000612F56000100AA0002 /* PlannerModels.swift in Sources */,
+				AA0000622F56000100AA0002 /* PlannerStore.swift in Sources */,
+				AA0000602F56000100AA0002 /* PlannerCenter.swift in Sources */,
 				AA0000302F56000100AA0001 /* StudyMaterialSupport.swift in Sources */,
 				AA0000032F56000100AA0001 /* SettingsView.swift in Sources */,
 				AA0000072F56000100AA0001 /* AnalysisModels.swift in Sources */,
@@ -426,6 +464,10 @@
 				B4F000012F56000100B4F002 /* LessonSyncNode.swift in Sources */,
 				B4F000022F56000100B4F002 /* LectureSyncService.swift in Sources */,
 				B4F000032F56000100B4F002 /* SmartLayerCaptureService.swift in Sources */,
+				D10000102F60000100D10002 /* PharNodeAIService.swift in Sources */,
+				D10000202F60000100D10002 /* LiveTextEditingLayer.swift in Sources */,
+				D10000302F60000100D10002 /* FloatingTextToolbar.swift in Sources */,
+				D10000402F60000100D10002 /* PharAppGuideView.swift in Sources */,
 				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

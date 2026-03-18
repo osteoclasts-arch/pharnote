@@ -9,7 +9,8 @@ struct BlankNoteEditorView: View {
     @EnvironmentObject private var libraryViewModel: LibraryViewModel
     @StateObject private var viewModel: BlankNoteEditorViewModel
     @StateObject private var audioController: DocumentAudioController
-    @StateObject private var workspaceController: DocumentWorkspaceController
+    @StateObject private var workspaceController:
+    DocumentWorkspaceController
     @StateObject private var lectureSync = LectureSyncService.shared
     @State private var player = AVPlayer()
     @State private var isBottomPanelExpanded = false
@@ -19,6 +20,7 @@ struct BlankNoteEditorView: View {
     @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
+    @State private var documentBeingRenamed: PharDocument?
     @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
@@ -108,6 +110,25 @@ struct BlankNoteEditorView: View {
         }
         .sheet(isPresented: $isShowingShareSheet) {
             WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: viewModel.document))
+        }
+        .sheet(item: $documentBeingRenamed) { document in
+            DocumentRenameSheet(
+                title: document.title,
+                onCancel: {
+                    documentBeingRenamed = nil
+                },
+                onSave: { newTitle in
+                    do {
+                        let savedDocument = try libraryViewModel.renameDocument(document, to: newTitle)
+                        if savedDocument.id == viewModel.document.id {
+                            viewModel.updateDocument(savedDocument)
+                        }
+                    } catch {
+                        viewModel.errorMessage = error.localizedDescription
+                    }
+                    documentBeingRenamed = nil
+                }
+            )
         }
         .fullScreenCover(isPresented: $isShowingPageGrid) {
             BlankNotePageGridView(viewModel: viewModel)
@@ -200,11 +221,7 @@ struct BlankNoteEditorView: View {
 
                 ScrollView(.vertical, showsIndicators: true) {
                     HStack(spacing: 24) {
-                        if viewModel.isLectureModeEnabled {
-                            lectureArea
-                                .frame(width: geometry.size.width * 0.42)
-                                .padding(.leading, 28)
-                        }
+                        // 기존 고정 인강 영역 제거
                         
                         VStack(spacing: 28) {
                             editorPage(width: pageWidth, height: pageHeight)
@@ -230,7 +247,11 @@ struct BlankNoteEditorView: View {
                         WritingDocumentChipStrip(
                             chips: workspaceChips,
                             onSelect: handleWorkspaceChipSelection,
-                            onClose: handleWorkspaceChipClose
+                            onClose: handleWorkspaceChipClose,
+                            onRename: { documentID in
+                                guard documentID == viewModel.document.id else { return }
+                                documentBeingRenamed = viewModel.document
+                            }
                         )
                     }
                     chromeToolbar
@@ -273,6 +294,12 @@ struct BlankNoteEditorView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                
+                // Floating Lecture Browser overlay
+                if viewModel.isLectureModeEnabled {
+                    LectureFloatingBrowserView(viewModel: viewModel)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
         }
     }
@@ -300,6 +327,10 @@ struct BlankNoteEditorView: View {
             PencilCanvasView(viewModel: viewModel)
                 .background(Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+            
+            LiveTextEditingLayer(viewModel: viewModel)
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .allowsHitTesting(viewModel.selectedTool == .text || viewModel.activeTextElementID != nil)
 
             if viewModel.isBindingEvidence {
                 VStack {
@@ -320,6 +351,13 @@ struct BlankNoteEditorView: View {
                 .allowsHitTesting(false)
         }
         .frame(width: width, height: height)
+        .onTapGesture { point in
+            if viewModel.selectedTool == .text {
+                viewModel.addTextElement(at: point)
+            } else {
+                viewModel.activeTextElementID = nil
+            }
+        }
     }
 
     private var chromeToolbar: some View {
@@ -341,10 +379,8 @@ struct BlankNoteEditorView: View {
                     toolChromeButton(.paint, icon: "paintbrush")
                     toolChromeButton(.eraser, icon: "eraser")
                     toolChromeButton(.lasso, icon: "lasso")
+                    toolChromeButton(.text, icon: "textformat")
                     toolChromeButton(.tape, icon: "tape")
-                    WritingChromeIconButton(systemName: "textformat", accentTint: true) {
-                        isShowingTextComposer = true
-                    }
                     WritingChromeIconButton(
                         systemName: audioController.isRecording ? "stop.circle.fill" : "mic.fill",
                         accentTint: true,

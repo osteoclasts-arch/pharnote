@@ -8,6 +8,7 @@ struct PharnoteApp: App {
     @StateObject private var searchInfrastructure: SearchInfrastructure
     @StateObject private var authManager: PharnodeSupabaseAuthManager
     @StateObject private var cloudSyncManager: PharnodeCloudSyncManager
+    @StateObject private var plannerCenter: PlannerCenter
     @StateObject private var eventSyncEngine: StudyEventSyncEngine
     @StateObject private var ontologyService: OntologyService
 
@@ -17,12 +18,14 @@ struct PharnoteApp: App {
         let searchInfrastructure = SearchInfrastructure.shared
         let authManager = PharnodeSupabaseAuthManager()
         let cloudSyncManager = PharnodeCloudSyncManager(analysisCenter: analysisCenter, authManager: authManager)
+        let plannerCenter = PlannerCenter()
         
         _analysisCenter = StateObject(wrappedValue: analysisCenter)
         _eventLogger = StateObject(wrappedValue: eventLogger)
         _searchInfrastructure = StateObject(wrappedValue: searchInfrastructure)
         _authManager = StateObject(wrappedValue: authManager)
         _cloudSyncManager = StateObject(wrappedValue: cloudSyncManager)
+        _plannerCenter = StateObject(wrappedValue: plannerCenter)
         _eventSyncEngine = StateObject(wrappedValue: StudyEventSyncEngine(authManager: authManager, syncManager: cloudSyncManager))
         _ontologyService = StateObject(wrappedValue: OntologyService(authManager: authManager, syncManager: cloudSyncManager))
     }
@@ -35,6 +38,7 @@ struct PharnoteApp: App {
                 .environmentObject(searchInfrastructure)
                 .environmentObject(authManager)
                 .environmentObject(cloudSyncManager)
+                .environmentObject(plannerCenter)
                 .environmentObject(ontologyService)
                 .dynamicTypeSize(.medium ... .accessibility3)
                 .background(PharTheme.ColorToken.appBackground)

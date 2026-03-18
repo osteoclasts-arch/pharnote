@@ -79,6 +79,7 @@ struct WritingDocumentChipStrip: View {
     let chips: [WritingWorkspaceDocumentChip]
     var onSelect: (UUID) -> Void = { _ in }
     var onClose: (UUID) -> Void = { _ in }
+    var onRename: (UUID) -> Void = { _ in }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -92,6 +93,9 @@ struct WritingDocumentChipStrip: View {
                                 .font(.system(size: 18, weight: .black, design: .rounded))
                                 .foregroundStyle(chip.isCurrent ? Color.white : WritingChromePalette.ink.opacity(0.62))
                                 .lineLimit(1)
+                                .onTapGesture(count: 2) {
+                                    onRename(chip.id)
+                                }
                         }
                         .buttonStyle(.plain)
 
@@ -442,6 +446,8 @@ struct DocumentAudioRecording: Codable, Hashable, Identifiable {
     var duration: TimeInterval
     var pageKey: String?
     var pageLabel: String?
+    var transcription: String?
+    var summary: String?
 
     var displayTitle: String {
         if let pageLabel, !pageLabel.isEmpty {
@@ -508,6 +514,14 @@ final class DocumentAudioStore {
         try saveRecordings(updated, documentURL: documentURL)
     }
 
+    func updateRecording(_ recording: DocumentAudioRecording, documentURL: URL) throws {
+        var recordings = try loadRecordings(documentURL: documentURL)
+        if let index = recordings.firstIndex(where: { $0.id == recording.id }) {
+            recordings[index] = recording
+            try saveRecordings(recordings, documentURL: documentURL)
+        }
+    }
+
     func deleteRecordingFile(named fileName: String, documentURL: URL) {
         let fileURL = audioDirectoryURL(for: documentURL).appendingPathComponent(fileName, isDirectory: false)
         guard fileManager.fileExists(atPath: fileURL.path) else { return }
@@ -524,7 +538,7 @@ final class DocumentAudioStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(
-            RecordingIndex(version: 1, recordings: recordings.sorted { $0.createdAt > $1.createdAt })
+            RecordingIndex(version: 2, recordings: recordings.sorted { $0.createdAt > $1.createdAt })
         )
         try data.write(to: metadataFileURL(for: documentURL), options: .atomic)
     }
@@ -567,6 +581,8 @@ final class DocumentAudioController: NSObject, ObservableObject {
     @Published private(set) var activeRecordingDuration: TimeInterval = 0
     @Published private(set) var playingRecordingID: UUID?
     @Published private(set) var permissionState: PermissionState = .unknown
+    @Published private(set) var isProcessingAI: Bool = false
+    @Published private(set) var processingRecordingID: UUID?
     @Published var errorMessage: String?
 
     private let store: DocumentAudioStore
@@ -625,6 +641,7 @@ final class DocumentAudioController: NSObject, ObservableObject {
     }
 
     func deleteRecording(_ recording: DocumentAudioRecording) {
+        if isProcessingAI { return }
         if playingRecordingID == recording.id {
             stopPlayback()
         }
@@ -635,6 +652,44 @@ final class DocumentAudioController: NSObject, ObservableObject {
             touchDocumentUpdatedAt()
         } catch {
             errorMessage = "오디오를 삭제하지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    func processAIService(for recording: DocumentAudioRecording) async {
+        guard !isProcessingAI else { return }
+        
+        isProcessingAI = true
+        processingRecordingID = recording.id
+        errorMessage = nil
+        
+        defer { 
+            isProcessingAI = false 
+            processingRecordingID = nil
+        }
+        
+        do {
+            let recordingURL = store.recordingFileURL(for: recording, documentURL: documentURL)
+            
+            // 1. Transcription (Whisper)
+            let transcription = try await PharNodeAIService.shared.transcribe(audioURL: recordingURL)
+            
+            // 2. Summarization (GPT-4o)
+            let summary = try await PharNodeAIService.shared.summarize(text: transcription)
+            
+            // 3. Update Model
+            var updatedRecording = recording
+            updatedRecording.transcription = transcription
+            updatedRecording.summary = summary
+            
+            try store.updateRecording(updatedRecording, documentURL: documentURL)
+            
+            await MainActor.run {
+                if let index = recordings.firstIndex(where: { $0.id == recording.id }) {
+                    recordings[index] = updatedRecording
+                }
+            }
+        } catch {
+            errorMessage = "AI 처리에 실패했습니다: \(error.localizedDescription)"
         }
     }
 
@@ -969,7 +1024,7 @@ struct DocumentAudioPanelView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: PharTheme.Spacing.small) {
                         ForEach(controller.recordings) { recording in
-                            audioCard(for: recording)
+                            AudioCardView(recording: recording, controller: controller)
                         }
                     }
                     .padding(.vertical, PharTheme.Spacing.xxxSmall)
@@ -977,8 +1032,14 @@ struct DocumentAudioPanelView: View {
             }
         }
     }
+}
 
-    private func audioCard(for recording: DocumentAudioRecording) -> some View {
+struct AudioCardView: View {
+    let recording: DocumentAudioRecording
+    @ObservedObject var controller: DocumentAudioController
+    @State private var showAIDetail = false
+    
+    var body: some View {
         PharSurfaceCard(fill: PharTheme.ColorToken.surfaceSecondary.opacity(0.92)) {
             VStack(alignment: .leading, spacing: PharTheme.Spacing.xSmall) {
                 HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
@@ -995,6 +1056,20 @@ struct DocumentAudioPanelView: View {
                     }
 
                     Spacer(minLength: 0)
+                    
+                    if controller.processingRecordingID == recording.id {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else if recording.summary != nil {
+                        Button {
+                            showAIDetail = true
+                        } label: {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                    }
 
                     Button {
                         controller.deleteRecording(recording)
@@ -1023,18 +1098,99 @@ struct DocumentAudioPanelView: View {
                     }
                 }
 
-                Button {
-                    controller.togglePlayback(for: recording)
-                } label: {
-                    Label(
-                        controller.playingRecordingID == recording.id ? "재생 중지" : "재생",
-                        systemImage: controller.playingRecordingID == recording.id ? "stop.fill" : "play.fill"
-                    )
+                HStack(spacing: PharTheme.Spacing.xSmall) {
+                    Button {
+                        controller.togglePlayback(for: recording)
+                    } label: {
+                        Label(
+                            controller.playingRecordingID == recording.id ? "중지" : "재생",
+                            systemImage: controller.playingRecordingID == recording.id ? "stop.fill" : "play.fill"
+                        )
+                    }
+                    .modifier(ActivePlaybackButtonStyle(isActive: controller.playingRecordingID == recording.id))
+                    
+                    if recording.summary == nil && controller.processingRecordingID == nil {
+                        Button {
+                            Task {
+                                await controller.processAIService(for: recording)
+                            }
+                        } label: {
+                            Label("AI 요약", systemImage: "sparkles")
+                        }
+                        .buttonStyle(PharSoftButtonStyle())
+                    } else if recording.summary != nil {
+                        Button {
+                            showAIDetail = true
+                        } label: {
+                            Label("요약 보기", systemImage: "doc.text.magnifyingglass")
+                        }
+                        .buttonStyle(PharSoftButtonStyle())
+                    }
                 }
-                .modifier(ActivePlaybackButtonStyle(isActive: controller.playingRecordingID == recording.id))
             }
-            .frame(width: 244, alignment: .leading)
+            .frame(width: 260, alignment: .leading)
+            .sheet(isPresented: $showAIDetail) {
+                AudioAIDetailSheet(recording: recording)
+            }
         }
+    }
+}
+
+struct AudioAIDetailSheet: View {
+    let recording: DocumentAudioRecording
+    @State private var showFullTranscript = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
+                    Picker("모드", selection: $showFullTranscript) {
+                        Text("요약본").tag(false)
+                        Text("전문 기록").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, PharTheme.Spacing.small)
+
+                    if showFullTranscript {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                            Text("전문 기록")
+                                .font(PharTypography.bodyStrong)
+                            
+                            Text(recording.transcription ?? "기록된 내용이 없습니다.")
+                                .font(PharTypography.body)
+                                .lineSpacing(6)
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                            Text("AI 요약 요약")
+                                .font(PharTypography.bodyStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                            
+                            Text(recording.summary ?? "요약된 내용이 없습니다.")
+                                .font(PharTypography.body)
+                                .lineSpacing(6)
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium)
+                                        .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.5))
+                                )
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .padding(PharTheme.Spacing.medium)
+            }
+            .navigationTitle(recording.displayTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("완료") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -1070,6 +1226,61 @@ enum WritingDocumentShareSource {
             }
         }
         return [packageURL]
+    }
+}
+
+struct DocumentRenameSheet: View {
+    let title: String
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+
+    @State private var draftTitle: String
+    @FocusState private var isTitleFocused: Bool
+
+    init(title: String, onCancel: @escaping () -> Void, onSave: @escaping (String) -> Void) {
+        self.title = title
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _draftTitle = State(initialValue: title)
+    }
+
+    private var trimmedTitle: String {
+        draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        !trimmedTitle.isEmpty && trimmedTitle != title
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("새 이름") {
+                    TextField("문서 이름", text: $draftTitle)
+                        .textInputAutocapitalization(.never)
+                        .focused($isTitleFocused)
+                }
+            }
+            .navigationTitle("이름 바꾸기")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        onCancel()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(trimmedTitle)
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .onAppear {
+            isTitleFocused = true
+        }
     }
 }
 

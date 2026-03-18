@@ -82,6 +82,9 @@ private struct PharnoteNotesHomeView: View {
     @State private var isShowingPastQuestionsDebug = false
     @State private var isShowingSettings = false
     @State private var isShowingSidebar = false
+    @State private var isShowingGuide = false
+    @State private var documentBeingRenamed: PharDocument?
+    @State private var documentBeingShared: PharDocument?
     @State private var sidebarSearchQuery = ""
     @State private var expandedSidebarSections: Set<HomeSidebarSectionID> = [.korean]
 
@@ -179,6 +182,12 @@ private struct PharnoteNotesHomeView: View {
                     )
                     .transition(.move(edge: .leading).combined(with: .opacity))
                 }
+                
+                if isShowingGuide {
+                    AppGuidePopupView(isPresented: $isShowingGuide)
+                        .transition(.opacity)
+                        .zIndex(100)
+                }
             }
         }
         .environmentObject(viewModel)
@@ -205,6 +214,28 @@ private struct PharnoteNotesHomeView: View {
         }
         .sheet(isPresented: $isShowingPastQuestionsDebug) {
             PastQuestionsDebugView()
+        }
+        .sheet(item: $documentBeingRenamed) { document in
+            DocumentRenameSheet(
+                title: document.title,
+                onCancel: {
+                    documentBeingRenamed = nil
+                },
+                onSave: { newTitle in
+                    do {
+                        let savedDocument = try viewModel.renameDocument(document, to: newTitle)
+                        if documentBeingShared?.id == document.id {
+                            documentBeingShared = savedDocument
+                        }
+                        documentBeingRenamed = nil
+                    } catch {
+                        viewModel.errorMessage = error.localizedDescription
+                    }
+                }
+            )
+        }
+        .sheet(item: $documentBeingShared) { document in
+            WritingDocumentShareSheet(items: WritingDocumentShareSource.activityItems(for: document))
         }
         .sheet(item: $viewModel.pendingPDFImportSelection) { pending in
             HomeStudyMaterialImportSheet(
@@ -252,6 +283,15 @@ private struct PharnoteNotesHomeView: View {
                         isShowingPDFImportPicker = true
                     }
                 )
+                
+                HomeQuickActionCard(
+                    title: "사용 가이드",
+                    systemName: "lightbulb.fill",
+                    cardWidth: 218,
+                    action: {
+                        withAnimation { isShowingGuide = true }
+                    }
+                )
             }
 
             VStack(alignment: .leading, spacing: 18) {
@@ -268,6 +308,14 @@ private struct PharnoteNotesHomeView: View {
                     systemName: "square.and.arrow.down",
                     action: {
                         isShowingPDFImportPicker = true
+                    }
+                )
+                
+                HomeQuickActionCard(
+                    title: "사용 가이드",
+                    systemName: "lightbulb.fill",
+                    action: {
+                        withAnimation { isShowingGuide = true }
                     }
                 )
             }
@@ -318,12 +366,18 @@ private struct PharnoteNotesHomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 22) {
                         ForEach(continueDocuments) { document in
-                            Button {
-                                viewModel.openDocument(document)
-                            } label: {
-                                HomeContinueDocumentCard(document: document)
-                            }
-                            .buttonStyle(.plain)
+                            HomeContinueDocumentCard(
+                                document: document,
+                                onOpen: {
+                                    viewModel.openDocument(document)
+                                },
+                                onRename: {
+                                    documentBeingRenamed = document
+                                },
+                                onShare: {
+                                    documentBeingShared = document
+                                }
+                            )
                         }
                     }
                     .padding(.vertical, 2)
@@ -351,64 +405,631 @@ private struct PharnoteAnalysisHomeView: View {
 }
 
 private struct PharnotePlannerHomeView: View {
-    @EnvironmentObject private var analysisCenter: AnalysisCenter
-
-    private var pendingTasks: [AnalysisReviewTask] {
-        analysisCenter.reviewTasks.filter { $0.status == .pending }
-    }
-
-    private var completedTasks: [AnalysisReviewTask] {
-        analysisCenter.reviewTasks.filter { $0.status == .completed }
-    }
+    @EnvironmentObject private var plannerCenter: PlannerCenter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var isShowingPlannerOptions = false
+    @State private var isShowingTaskEditor = false
+    @State private var shouldOpenTaskEditorAfterOptionsDismiss = false
+    @State private var taskDraft = PlannerTaskDraft()
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 30) {
-                HomeBrandBar()
-
-                HomeScreenTitle(
-                    title: "플래너",
-                    systemName: "calendar",
-                    subtitle: "복습 큐를 기준으로 다음 행동을 정리합니다."
-                )
-
-                HomeMetricRow(
-                    metrics: [
-                        HomeMetric(title: "오늘 급함", value: "\(analysisCenter.dueSoonReviewTaskCount)", tint: HomePalette.orangeTint),
-                        HomeMetric(title: "대기", value: "\(analysisCenter.pendingReviewTaskCount)", tint: HomePalette.blueTint),
-                        HomeMetric(title: "완료", value: "\(completedTasks.count)", tint: HomePalette.greenTint)
-                    ]
-                )
-
-                if pendingTasks.isEmpty {
-                    HomeSurfaceCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("지금 처리할 복습 작업이 없습니다")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
-                                .foregroundStyle(HomePalette.textPrimary)
-                            Text("분석 결과에서 추천 작업이 생기면 이곳에 자동으로 쌓입니다.")
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
-                                .foregroundStyle(HomePalette.textSecondary)
+            VStack(alignment: .leading, spacing: 0) {
+                HomeBrandBar(
+                    trailing: {
+                        Button {
+                            isShowingPlannerOptions = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 25, weight: .semibold))
+                                .foregroundStyle(HomePalette.accent)
+                                .frame(width: 40, height: 40)
                         }
+                        .buttonStyle(.plain)
                     }
-                } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(Array(pendingTasks.prefix(8))) { task in
-                            HomeReviewTaskCard(task: task)
-                        }
+                )
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .lastTextBaseline, spacing: 8) {
+                        Text(plannerCenter.monthLabel)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(HomePalette.textPrimary)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(HomePalette.textPrimary)
+                            .offset(y: 1)
                     }
                 }
+                .padding(.top, 34)
+
+                HomePlannerDateStrip(
+                    dates: plannerCenter.dayStripDates,
+                    selectedDate: plannerCenter.selectedDate,
+                    onSelectDate: { plannerCenter.selectDate($0) }
+                )
+                .padding(.top, 24)
+
+                HomePlannerDaySnapshotCard()
+                    .padding(.top, 30)
+
+                HomePlannerProgressCard(
+                    progressFraction: plannerCenter.progressFraction,
+                    caption: "오늘 할 일",
+                    completionText: "\(Int((plannerCenter.progressFraction * 100).rounded()))%",
+                    summaryText: "완료했습니다."
+                ) {
+                    Button {
+                        taskDraft = PlannerTaskDraft(dueDate: plannerCenter.selectedDate)
+                        isShowingTaskEditor = true
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("수정")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(HomePalette.textSecondary)
+                        .padding(.horizontal, 16)
+                        .frame(height: 36)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(HomePalette.border, lineWidth: 1.5)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 24)
+
+                if plannerCenter.selectedDateHasTasks {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(plannerCenter.groupedSelectedTasks) { section in
+                            HomePlannerSubjectSection(section: section)
+                        }
+                    }
+                    .padding(.top, 22)
+                } else {
+                    HomePlannerEmptyStateCard {
+                        taskDraft = PlannerTaskDraft(dueDate: plannerCenter.selectedDate)
+                        isShowingTaskEditor = true
+                    }
+                    .padding(.top, 22)
+                }
             }
-            .frame(maxWidth: 980, alignment: .leading)
-            .padding(.horizontal, 28)
+            .frame(maxWidth: 1040, alignment: .leading)
+            .padding(.horizontal, horizontalSizeClass == .regular ? 58 : 24)
             .padding(.top, 22)
-            .padding(.bottom, 36)
+            .padding(.bottom, 40)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(HomePalette.background.ignoresSafeArea())
         .task {
-            await analysisCenter.refreshQueue()
+            await plannerCenter.refresh()
         }
+        .sheet(isPresented: $isShowingPlannerOptions) {
+            HomePlannerOptionsSheet(
+                addTaskAction: {
+                    shouldOpenTaskEditorAfterOptionsDismiss = true
+                },
+                resetAction: {
+                    plannerCenter.resetToSeed()
+                }
+            )
+        }
+        .onChange(of: isShowingPlannerOptions) { _, isPresented in
+            guard !isPresented, shouldOpenTaskEditorAfterOptionsDismiss else { return }
+            shouldOpenTaskEditorAfterOptionsDismiss = false
+            taskDraft = PlannerTaskDraft(dueDate: plannerCenter.selectedDate)
+            isShowingTaskEditor = true
+        }
+        .sheet(isPresented: $isShowingTaskEditor) {
+            HomePlannerTaskEditorSheet(
+                draft: $taskDraft,
+                onSave: { draft in
+                    plannerCenter.addTask(from: draft)
+                }
+            )
+        }
+    }
+}
+
+private struct HomePlannerDateStrip: View {
+    let dates: [Date]
+    let selectedDate: Date
+    let onSelectDate: (Date) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                Button {
+                    onSelectDate(Date())
+                } label: {
+                    Text("Today")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(selectedDate.isToday ? Color.white : HomePalette.textPrimary)
+                        .padding(.horizontal, 22)
+                        .frame(height: 38)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(selectedDate.isToday ? HomePalette.accent : Color.clear)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(HomePalette.tabBorder, lineWidth: 1.6)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                ForEach(dates, id: \.self) { date in
+                    Button {
+                        onSelectDate(date)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(HomeFormatters.dayNumber.string(from: date))
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                            Text(HomeFormatters.weekdayShort.string(from: date).uppercased())
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(selectedDate.isSameDay(as: date) ? Color.white : HomePalette.textPrimary)
+                        .padding(.horizontal, 20)
+                        .frame(height: 38)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(selectedDate.isSameDay(as: date) ? HomePalette.textPrimary : Color.clear)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(HomePalette.tabBorder, lineWidth: 1.6)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+private struct HomePlannerDaySnapshotCard: View {
+    @EnvironmentObject private var plannerCenter: PlannerCenter
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(plannerCenter.weekdayLabel)
+                    .font(.system(size: 24, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+
+                Text(plannerCenter.dayNumberLabel)
+                    .font(.system(size: 68, weight: .black, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: 114, alignment: .leading)
+            .padding(.top, 18)
+
+            VStack(alignment: .leading, spacing: 10) {
+                if let first = plannerCenter.dDayItems.first {
+                    HomePlannerDDayCard(item: first, emphasis: true)
+                }
+
+                if plannerCenter.dDayItems.count > 1 {
+                    ForEach(plannerCenter.dDayItems.dropFirst().prefix(2)) { item in
+                        HomePlannerDDayCard(item: item, emphasis: false)
+                    }
+                }
+            }
+            .frame(width: 230, alignment: .leading)
+            .padding(.top, 14)
+
+            Rectangle()
+                .fill(HomePalette.border.opacity(0.72))
+                .frame(width: 1, height: 180)
+                .padding(.top, 18)
+
+            VStack(alignment: .leading, spacing: 16) {
+                if plannerCenter.selectedDateAgendaItems.isEmpty {
+                    Text("오늘 일정이 없습니다")
+                        .font(.system(size: 19, weight: .medium, design: .rounded))
+                        .foregroundStyle(HomePalette.textSecondary)
+                } else {
+                    ForEach(plannerCenter.selectedDateAgendaItems.prefix(4)) { task in
+                        HomePlannerAgendaRow(task: task)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 24)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
+    }
+}
+
+private struct HomePlannerDDayCard: View {
+    let item: PlannerDDayItem
+    let emphasis: Bool
+
+    private var tint: Color {
+        Color(homeHex: item.accentHex)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(item.displayLabel)
+                .font(.system(size: emphasis ? 28 : 20, weight: .black, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+
+            Text(item.title)
+                .font(.system(size: emphasis ? 19 : 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+                .lineLimit(1)
+
+            if emphasis {
+                Text("☺")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, emphasis ? 18 : 14)
+        .padding(.vertical, emphasis ? 14 : 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: emphasis ? 96 : 48)
+        .background(
+            RoundedRectangle(cornerRadius: emphasis ? 14 : 12, style: .continuous)
+                .fill(tint.opacity(emphasis ? 0.95 : 0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: emphasis ? 14 : 12, style: .continuous)
+                .stroke(HomePalette.textPrimary.opacity(0.72), lineWidth: emphasis ? 1.7 : 1.2)
+        )
+    }
+}
+
+private struct HomePlannerAgendaRow: View {
+    let task: PlannerTask
+
+    private var timeText: String? {
+        guard let scheduledAt = task.scheduledAt else { return nil }
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: scheduledAt)
+        let minute = calendar.component(.minute, from: scheduledAt)
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        if minute == 0 {
+            return "\(displayHour)시"
+        }
+        return "\(displayHour)시 \(String(format: "%02d", minute))분"
+    }
+
+    private var displayTitle: String {
+        let note = task.note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (note?.isEmpty == false ? note : nil) ?? task.title
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if let timeText {
+                Text(timeText)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+                    .frame(width: 70, alignment: .leading)
+            }
+
+            Text(displayTitle)
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+private struct HomePlannerEmptyStateCard: View {
+    var action: (() -> Void)?
+
+    init(action: (() -> Void)? = nil) {
+        self.action = action
+    }
+
+    var body: some View {
+        HomeSurfaceCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("지금 처리할 복습 작업이 없습니다")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+
+                Text("분석 결과에서 추천 작업이 생기면 이곳에 자동으로 쌓입니다.")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+                    .lineSpacing(2)
+
+                if let action {
+                    Button("할 일 추가") {
+                        action()
+                    }
+                    .buttonStyle(HomeFilledButtonStyle())
+                    .padding(.top, 4)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct HomePlannerProgressCard<Trailing: View>: View {
+    let progressFraction: Double
+    let caption: String
+    let completionText: String
+    let summaryText: String
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(caption)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+
+                Text(completionText)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+
+                Text(summaryText)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+
+                Spacer(minLength: 0)
+
+                trailing
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(HomePalette.tabBorder, lineWidth: 1)
+                        )
+
+                    Rectangle()
+                        .fill(HomePalette.accent.opacity(0.72))
+                        .frame(width: max(0, proxy.size.width * progressFraction))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            }
+            .frame(height: 15)
+        }
+    }
+}
+
+private struct HomePlannerSubjectSection: View {
+    let section: PlannerSubjectGroup
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 18) {
+            Text(section.subject.title)
+                .font(.system(size: 23, weight: .black, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+                .frame(width: 68, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(section.tasks) { task in
+                    HomePlannerTaskCard(task: task)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct HomePlannerTaskCard: View {
+    @EnvironmentObject private var plannerCenter: PlannerCenter
+
+    let task: PlannerTask
+
+    private var titleTint: Color {
+        switch task.priority {
+        case .high:
+            return HomePalette.orangeTint
+        case .normal:
+            return HomePalette.yellowTint
+        case .low:
+            return HomePalette.greenTint
+        }
+    }
+
+    private var scheduleText: String? {
+        guard let scheduledAt = task.scheduledAt else { return nil }
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: scheduledAt)
+        let minute = calendar.component(.minute, from: scheduledAt)
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        if minute == 0 {
+            return "\(displayHour)시"
+        }
+        return "\(displayHour)시 \(String(format: "%02d", minute))분"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            if let scheduleText {
+                Text(scheduleText)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
+                    .frame(width: 58, alignment: .leading)
+            }
+
+            Text(task.title)
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+                .lineLimit(1)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+                .background {
+                    if task.isCompleted {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(titleTint.opacity(0.72))
+                    }
+                }
+
+            Spacer(minLength: 0)
+
+            Text(task.isCompleted ? "✓" : "□")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+        }
+        .padding(.vertical, 1)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            plannerCenter.toggleTask(task)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                plannerCenter.deleteTask(task)
+            } label: {
+                Label("삭제", systemImage: "trash")
+            }
+        }
+    }
+}
+
+private struct HomePlannerOptionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let addTaskAction: () -> Void
+    let resetAction: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSurfaceCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("플래너 옵션")
+                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .foregroundStyle(HomePalette.textPrimary)
+
+                            Text("할 일 추가와 샘플 데이터 재설정을 할 수 있습니다.")
+                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                                .foregroundStyle(HomePalette.textSecondary)
+                        }
+                    }
+
+                    HomeSurfaceCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Button("할 일 추가") {
+                                addTaskAction()
+                                dismiss()
+                            }
+                            .buttonStyle(HomeFilledButtonStyle())
+
+                            Button("샘플 데이터로 재설정") {
+                                resetAction()
+                                dismiss()
+                            }
+                            .buttonStyle(HomeOutlineButtonStyle())
+
+                            Button("닫기") {
+                                dismiss()
+                            }
+                            .buttonStyle(HomeOutlineButtonStyle())
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(HomePalette.background.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private struct HomePlannerTaskEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var draft: PlannerTaskDraft
+    let onSave: (PlannerTaskDraft) -> Void
+
+    @State private var usesScheduledTime: Bool = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("할 일") {
+                    TextField("제목", text: $draft.title)
+
+                    Picker("과목", selection: $draft.subject) {
+                        ForEach(StudySubject.allCases) { subject in
+                            Text(subject.title).tag(subject)
+                        }
+                    }
+
+                    DatePicker("날짜", selection: $draft.dueDate, displayedComponents: .date)
+
+                    Toggle("시간 지정", isOn: $usesScheduledTime)
+
+                    if usesScheduledTime {
+                        DatePicker("시간", selection: Binding(
+                            get: {
+                                draft.scheduledAt ?? draft.dueDate
+                            },
+                            set: { newValue in
+                                draft.scheduledAt = newValue
+                            }
+                        ), displayedComponents: [.date, .hourAndMinute])
+                    }
+                }
+
+                Section("우선순위") {
+                    Picker("우선순위", selection: $draft.priority) {
+                        ForEach(PlannerTaskPriority.allCases, id: \.self) { priority in
+                            Text(priority.title).tag(priority)
+                        }
+                    }
+                }
+
+                Section("메모") {
+                    TextField("메모", text: $draft.note, axis: .vertical)
+                        .lineLimit(3, reservesSpace: true)
+                }
+            }
+            .navigationTitle("할 일 추가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(draft)
+                        dismiss()
+                    }
+                    .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                usesScheduledTime = draft.scheduledAt != nil
+            }
+            .onChange(of: usesScheduledTime) { _, newValue in
+                if !newValue {
+                    draft.scheduledAt = nil
+                } else if draft.scheduledAt == nil {
+                    draft.scheduledAt = draft.dueDate
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -808,6 +1429,9 @@ private struct HomeEmptyContinueCard: View {
 
 private struct HomeContinueDocumentCard: View {
     let document: PharDocument
+    let onOpen: () -> Void
+    let onRename: () -> Void
+    let onShare: () -> Void
 
     private var labelText: String {
         if let subject = document.studyMaterial?.subject, subject != .unspecified {
@@ -837,6 +1461,9 @@ private struct HomeContinueDocumentCard: View {
                         .foregroundStyle(HomePalette.textPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
+                        .onTapGesture(count: 2) {
+                            onRename()
+                        }
 
                     Text(updatedText)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -845,13 +1472,27 @@ private struct HomeContinueDocumentCard: View {
 
                 Spacer(minLength: 0)
 
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(HomePalette.accent)
-                    .padding(.top, 2)
+                Menu {
+                    Button("이름 바꾸기") {
+                        onRename()
+                    }
+
+                    Button("공유") {
+                        onShare()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(HomePalette.accent)
+                        .padding(.top, 2)
+                }
             }
         }
         .frame(width: 168, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onTapGesture {
+            onOpen()
+        }
     }
 }
 
@@ -1009,6 +1650,63 @@ private struct HomeMetricCard: View {
     }
 }
 
+private struct HomePlannerStat: Identifiable {
+    let id = UUID()
+    let title: String
+    let value: String
+    let tint: Color
+}
+
+private struct HomePlannerStatRow: View {
+    let metrics: [HomePlannerStat]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                ForEach(metrics) { metric in
+                    HomePlannerStatCard(metric: metric)
+                }
+            }
+
+            VStack(spacing: 12) {
+                ForEach(metrics) { metric in
+                    HomePlannerStatCard(metric: metric)
+                }
+            }
+        }
+    }
+}
+
+private struct HomePlannerStatCard: View {
+    let metric: HomePlannerStat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(metric.title)
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(HomePalette.textSecondary.opacity(0.95))
+
+            Text(metric.value)
+                .font(.system(size: 32, weight: .black, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
+        .frame(minHeight: 116)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(metric.tint)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(HomePalette.border.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.025), radius: 10, x: 0, y: 5)
+    }
+}
+
 private struct HomeAnalysisEntryCard: View {
     let entry: AnalysisQueueEntry
     let result: AnalysisResult?
@@ -1061,68 +1759,6 @@ private struct HomeAnalysisEntryCard: View {
                 Text(HomeFormatters.documentDate.string(from: entry.createdAt))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(HomePalette.textSecondary.opacity(0.82))
-            }
-        }
-    }
-}
-
-private struct HomeReviewTaskCard: View {
-    @EnvironmentObject private var analysisCenter: AnalysisCenter
-
-    let task: AnalysisReviewTask
-
-    private var dueText: String {
-        let prefix = task.isDueSoon ? "곧 마감" : "예정"
-        return "\(prefix) · \(HomeFormatters.documentDate.string(from: task.dueAt))"
-    }
-
-    var body: some View {
-        HomeSurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(task.title)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundStyle(HomePalette.textPrimary)
-                            .lineLimit(2)
-
-                        Text("\(task.documentTitle) · \(task.pageLabel)")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(HomePalette.textSecondary)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    HomeCategoryChip(
-                        title: task.kind.title,
-                        tint: task.isDueSoon ? HomePalette.orangeTint : HomePalette.blueTint
-                    )
-                }
-
-                Text(task.detail)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundStyle(HomePalette.textSecondary)
-                    .lineLimit(3)
-
-                Text(dueText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(HomePalette.textSecondary.opacity(0.82))
-
-                HStack(spacing: 12) {
-                    Button("완료") {
-                        Task {
-                            await analysisCenter.markReviewTaskCompleted(task)
-                        }
-                    }
-                    .buttonStyle(HomeFilledButtonStyle())
-
-                    Button("제외") {
-                        Task {
-                            await analysisCenter.dismissReviewTask(task)
-                        }
-                    }
-                    .buttonStyle(HomeOutlineButtonStyle())
-                }
             }
         }
     }
@@ -1515,6 +2151,27 @@ private enum HomeFormatters {
         formatter.dateFormat = "yyyy. MM. dd. HH:mm"
         return formatter
     }()
+
+    static let dayNumber: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "d"
+        return formatter
+    }()
+
+    static let weekdayShort: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+
+    static let time: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "H시"
+        return formatter
+    }()
 }
 
 private extension Color {
@@ -1526,11 +2183,23 @@ private extension Color {
     }
 }
 
+private extension Date {
+    var isToday: Bool {
+        Calendar.current.isDateInToday(self)
+    }
+
+    func isSameDay(as other: Date) -> Bool {
+        Calendar.current.isDate(self, inSameDayAs: other)
+    }
+}
+
 #Preview {
     let analysisCenter = AnalysisCenter()
     let authManager = PharnodeSupabaseAuthManager()
+    let plannerCenter = PlannerCenter()
     ContentView()
         .environmentObject(analysisCenter)
         .environmentObject(authManager)
         .environmentObject(PharnodeCloudSyncManager(analysisCenter: analysisCenter, authManager: authManager))
+        .environmentObject(plannerCenter)
 }

@@ -96,7 +96,7 @@ final class PDFEditorViewModel: ObservableObject {
     @Published var isReadOnlyMode: Bool = false
     @Published var errorMessage: String?
 
-    let document: PharDocument
+    @Published private(set) var document: PharDocument
     let annotationColors: [AnnotationColor] = [
         AnnotationColor(id: 0, uiColor: .black),
         AnnotationColor(id: 1, uiColor: .systemBlue),
@@ -284,6 +284,10 @@ final class PDFEditorViewModel: ObservableObject {
             ]
         )
         didLogDocumentOpen = false
+    }
+
+    func updateDocument(_ document: PharDocument) {
+        self.document = document
     }
 
     private func persistStudyProgress() {

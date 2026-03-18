@@ -12,6 +12,7 @@ struct LibraryView: View {
     @State private var isShowingStudyMaterialAdmin = false
     @State private var isShowingReviewQueue = false
     @State private var isShowingCloudSync = false
+    @State private var isShowingAppGuide = false
 
     private let gridColumns = [
         GridItem(.adaptive(minimum: 250), spacing: PharTheme.Spacing.medium, alignment: .top)
@@ -161,6 +162,11 @@ struct LibraryView: View {
                     viewModel.dismissImportedPDFSelection(openDocument: true)
                 }
             )
+        }
+        .sheet(isPresented: $isShowingAppGuide) {
+            PharAppGuideView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .onAppear {
             viewModel.loadDocuments()
@@ -371,6 +377,27 @@ struct LibraryView: View {
                             CompactDocumentRow(document: document)
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+                
+                CollectionCard(
+                    title: "앱 사용 가이드",
+                    subtitle: "Pharnote의 핵심 기능을 1분 만에 마스터하세요",
+                    count: 0,
+                    accent: PharTheme.ColorToken.accentBlue
+                ) {
+                    VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                        Text("기록부터 AI 요약, 사고 분석까지 Pharnote가 제공하는 모든 기능을 단계별로 안내해 드립니다.")
+                            .font(PharTypography.caption)
+                            .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                            .padding(.bottom, 4)
+                        
+                        Button {
+                            isShowingAppGuide = true
+                        } label: {
+                            Label("가이드 시작하기", systemImage: "book.pages")
+                        }
+                        .buttonStyle(PharPrimaryButtonStyle())
                     }
                 }
             }

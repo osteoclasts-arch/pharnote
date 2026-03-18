@@ -12,6 +12,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         case eraser = "지우개"
         case lasso = "라쏘"
         case paint = "붓/채우기"
+        case text = "텍스트"
         case tape = "테이프"
 
         var id: String { rawValue }
@@ -44,7 +45,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
     @Published private(set) var canAnalyzeSelection: Bool = false
-    @Published private(set) var pages: [BlankNotePage] = []
+    @Published var pages: [BlankNotePage] = []
+    @Published var activeTextElementID: UUID?
     @Published private(set) var currentPageID: UUID?
     @Published private(set) var thumbnails: [UUID: UIImage] = [:]
     @Published private(set) var bookmarkedPageIDs: Set<UUID>
@@ -54,6 +56,11 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published var isLectureModeEnabled: Bool = false
     @Published var isShowingNudge: Bool = false
     @Published var nudgeNodeId: String?
+    
+    // Floating Browser Properties
+    @Published var lectureWindowPosition: CGPoint = CGPoint(x: 100, y: 100)
+    @Published var isLectureWindowPinned: Bool = false
+    @Published var lectureWebURL: String = "https://www.google.com" // 기본값
 
     
     // Tool Cache to prevent infinite re-render loops in SwiftUI/PencilKit
@@ -66,7 +73,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published var evidenceBindingStepId: String? = nil
     var onEvidenceBound: ((String, Int) -> Void)? = nil
 
-    private(set) var document: PharDocument
+    @Published private(set) var document: PharDocument
     let annotationColors: [AnnotationColor] = [
         AnnotationColor(id: 0, uiColor: .black, label: "블랙"),
         AnnotationColor(id: 1, uiColor: .systemBlue, label: "블루"),
@@ -325,7 +332,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     var isCanvasInputEnabled: Bool {
-        isToolSelectionActive
+        isToolSelectionActive && selectedTool != .text
     }
 
     var isEditingInkTool: Bool {
@@ -577,6 +584,51 @@ final class BlankNoteEditorViewModel: ObservableObject {
         )
     }
     
+    // MARK: - Text Elements
+    
+    func addTextElement(at point: CGPoint) {
+        guard let currentPageID = currentPageID else { return }
+        
+        let newElement = PharTextElement(
+            id: UUID(),
+            text: "",
+            x: Double(point.x),
+            y: Double(point.y),
+            fontSize: 20,
+            fontWeight: "regular",
+            isItalic: false,
+            alignment: "left",
+            colorHex: "#000000"
+        )
+        
+        if let index = pages.firstIndex(where: { $0.id == currentPageID }) {
+            pages[index].textElements.append(newElement)
+            activeTextElementID = newElement.id
+            canvasDidChange()
+        }
+    }
+    
+    func updateTextElement(_ element: PharTextElement) {
+        guard let currentPageID = currentPageID else { return }
+        if let pageIndex = pages.firstIndex(where: { $0.id == currentPageID }) {
+            if let elementIndex = pages[pageIndex].textElements.firstIndex(where: { $0.id == element.id }) {
+                pages[pageIndex].textElements[elementIndex] = element
+                canvasDidChange()
+            }
+        }
+    }
+    
+    func deleteTextElement(id: UUID) {
+        guard let currentPageID = currentPageID else { return }
+        if let pageIndex = pages.firstIndex(where: { $0.id == currentPageID }) {
+            pages[pageIndex].textElements.removeAll { $0.id == id }
+            if activeTextElementID == id {
+                activeTextElementID = nil
+            }
+            canvasDidChange()
+        }
+    }
+    
     func selectTool(_ tool: AnnotationTool) {
         if selectedTool == tool && isToolSelectionActive {
             isToolSelectionActive = false
@@ -747,7 +799,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         case .tape:
             let tapeColor = UIColor(PharTheme.ColorToken.accentButter).withAlphaComponent(0.92)
             tool = PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
-        case .lasso, .paint:
+        case .lasso, .paint, .text:
             tool = PKLassoTool()
         }
         
@@ -798,6 +850,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
             ]
         )
         didLogDocumentOpen = false
+    }
+
+    func updateDocument(_ document: PharDocument) {
+        self.document = document
     }
 
     private func saveCurrentPageDebounced() {
@@ -1067,7 +1123,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             return .highlighter
         case .tape:
             return .tape
-        case .eraser, .lasso, .paint:
+        case .eraser, .lasso, .paint, .text:
             return nil
         }
     }
@@ -1124,7 +1180,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             return "highlighter"
         case .tape:
             return "tape"
-        case .eraser, .lasso, .paint:
+        case .eraser, .lasso, .paint, .text:
             return "pen"
         }
     }

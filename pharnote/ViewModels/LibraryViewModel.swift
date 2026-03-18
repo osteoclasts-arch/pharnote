@@ -359,6 +359,10 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
+    func document(withID id: UUID) -> PharDocument? {
+        documents.first(where: { $0.id == id })
+    }
+
     func refreshOCRSearchResults() {
         searchTask?.cancel()
 
@@ -403,6 +407,21 @@ final class LibraryViewModel: ObservableObject {
         activeDocumentTabID = document.id
         setNavigationTarget(target)
         persistWorkspaceState()
+    }
+
+    @discardableResult
+    func renameDocument(_ document: PharDocument, to newTitle: String) throws -> PharDocument {
+        let trimmedTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return document }
+
+        var updatedDocument = document
+        updatedDocument.title = trimmedTitle
+        updatedDocument.updatedAt = Date()
+
+        let savedDocument = try store.updateDocument(updatedDocument)
+        replaceDocument(savedDocument)
+        refreshDashboardSnapshot()
+        return savedDocument
     }
 
     func activateDocumentTab(_ documentID: UUID) {
