@@ -378,8 +378,11 @@ private struct PharnotePlannerHomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isShowingPlannerOptions = false
     @State private var isShowingTaskEditor = false
+    @State private var isShowingDDayManager = false
+    @State private var isShowingDDayEditor = false
     @State private var shouldOpenTaskEditorAfterOptionsDismiss = false
     @State private var taskDraft = PlannerTaskDraft()
+    @State private var dDayDraft = PlannerDDayDraft()
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -399,15 +402,35 @@ private struct PharnotePlannerHomeView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    HStack(alignment: .center, spacing: 12) {
                         Text(plannerCenter.monthLabel)
                             .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundStyle(HomePalette.textPrimary)
 
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundStyle(HomePalette.textPrimary)
-                            .offset(y: 1)
+                        Spacer(minLength: 0)
+
+                        Button {
+                            plannerCenter.selectDate(Date())
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("오늘로")
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(selectedDateButtonTextColor(selectedDate: plannerCenter.selectedDate))
+                            .padding(.horizontal, 14)
+                            .frame(height: 34)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedDateButtonBackgroundColor(selectedDate: plannerCenter.selectedDate))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(HomePalette.tabBorder, lineWidth: 1.4)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.top, 34)
@@ -419,7 +442,11 @@ private struct PharnotePlannerHomeView: View {
                 )
                 .padding(.top, 24)
 
-                HomePlannerDaySnapshotCard()
+                HomePlannerDaySnapshotCard(
+                    editDDayAction: {
+                        isShowingDDayManager = true
+                    }
+                )
                     .padding(.top, 30)
 
                 HomePlannerProgressCard(
@@ -499,7 +526,45 @@ private struct PharnotePlannerHomeView: View {
                 }
             )
         }
+        .sheet(isPresented: $isShowingDDayManager) {
+            HomePlannerDDayManagerSheet(
+                items: plannerCenter.dDayItems,
+                onEdit: { item in
+                    isShowingDDayManager = false
+                    dDayDraft = PlannerDDayDraft(item: item)
+                    Task { @MainActor in
+                        isShowingDDayEditor = true
+                    }
+                },
+                onDelete: { item in
+                    plannerCenter.deleteDDayItem(item)
+                },
+                onAdd: {
+                    isShowingDDayManager = false
+                    dDayDraft = PlannerDDayDraft()
+                    Task { @MainActor in
+                        isShowingDDayEditor = true
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $isShowingDDayEditor) {
+            HomePlannerDDayEditorSheet(
+                draft: $dDayDraft,
+                onSave: { draft in
+                    plannerCenter.saveDDayItem(from: draft)
+                }
+            )
+        }
     }
+}
+
+private func selectedDateButtonTextColor(selectedDate: Date) -> Color {
+    selectedDate.isToday ? Color.white : HomePalette.textPrimary
+}
+
+private func selectedDateButtonBackgroundColor(selectedDate: Date) -> Color {
+    selectedDate.isToday ? HomePalette.accent : Color.clear
 }
 
 private struct HomePlannerDateStrip: View {
@@ -508,60 +573,70 @@ private struct HomePlannerDateStrip: View {
     let onSelectDate: (Date) -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                Button {
-                    onSelectDate(Date())
-                } label: {
-                    Text("Today")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .foregroundStyle(selectedDate.isToday ? Color.white : HomePalette.textPrimary)
-                        .padding(.horizontal, 22)
-                        .frame(height: 38)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(selectedDate.isToday ? HomePalette.accent : Color.clear)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(HomePalette.tabBorder, lineWidth: 1.6)
-                        )
-                }
-                .buttonStyle(.plain)
-
-                ForEach(dates, id: \.self) { date in
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
                     Button {
-                        onSelectDate(date)
+                        onSelectDate(Date())
                     } label: {
-                        HStack(spacing: 8) {
-                            Text(HomeFormatters.dayNumber.string(from: date))
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-
-                            Text(HomeFormatters.weekdayShort.string(from: date).uppercased())
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                        }
-                        .foregroundStyle(selectedDate.isSameDay(as: date) ? Color.white : HomePalette.textPrimary)
-                        .padding(.horizontal, 20)
-                        .frame(height: 38)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(selectedDate.isSameDay(as: date) ? HomePalette.textPrimary : Color.clear)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(HomePalette.tabBorder, lineWidth: 1.6)
-                        )
+                        Text("Today")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(selectedDate.isToday ? Color.white : HomePalette.textPrimary)
+                            .padding(.horizontal, 22)
+                            .frame(height: 38)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedDate.isToday ? HomePalette.accent : Color.clear)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(HomePalette.tabBorder, lineWidth: 1.6)
+                            )
                     }
                     .buttonStyle(.plain)
+
+                    ForEach(dates, id: \.self) { date in
+                        Button {
+                            onSelectDate(date)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(HomeFormatters.dayNumber.string(from: date))
+                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                                Text(HomeFormatters.weekdayShort.string(from: date).uppercased())
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(selectedDate.isSameDay(as: date) ? Color.white : HomePalette.textPrimary)
+                            .padding(.horizontal, 20)
+                            .frame(height: 38)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedDate.isSameDay(as: date) ? HomePalette.textPrimary : Color.clear)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(HomePalette.tabBorder, lineWidth: 1.6)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .id(date)
+                    }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
+            .onAppear {
+                proxy.scrollTo(selectedDate, anchor: .center)
+            }
+            .onChange(of: selectedDate) { _, newValue in
+                proxy.scrollTo(newValue, anchor: .center)
+            }
         }
     }
 }
 
 private struct HomePlannerDaySnapshotCard: View {
     @EnvironmentObject private var plannerCenter: PlannerCenter
+    let editDDayAction: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 20) {
@@ -579,12 +654,37 @@ private struct HomePlannerDaySnapshotCard: View {
             .frame(width: 114, alignment: .leading)
             .padding(.top, 18)
 
-            VStack(alignment: .leading, spacing: 9) {
-                ForEach(Array(plannerCenter.dDayItems.prefix(3)).enumerated(), id: \.element.id) { index, item in
-                    HomePlannerDDayCard(item: item, rank: index)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Spacer(minLength: 0)
+
+                    Button(action: editDDayAction) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(HomePalette.iconMuted)
+                            .frame(width: 46, height: 46)
+                            .background(
+                                Circle()
+                                    .fill(Color.clear)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(HomePalette.border.opacity(0.9), lineWidth: 4)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(alignment: .leading, spacing: 9) {
+                        ForEach(Array(plannerCenter.dDayItems.enumerated()), id: \.element.id) { index, item in
+                            HomePlannerDDayCard(item: item, rank: index)
+                        }
+                    }
+                    .padding(.trailing, 10)
                 }
             }
-            .frame(width: 230, alignment: .leading)
+            .frame(width: 245, height: 202, alignment: .topLeading)
             .padding(.top, 14)
 
             Rectangle()
@@ -638,8 +738,9 @@ private struct HomePlannerDDayCard: View {
     private var opacityValue: CGFloat {
         switch rank {
         case 0: return 1.0
-        case 1: return 0.78
-        default: return 0.62
+        case 1: return 0.82
+        case 2: return 0.68
+        default: return 0.56
         }
     }
 
@@ -654,8 +755,9 @@ private struct HomePlannerDDayCard: View {
     private var blurValue: CGFloat {
         switch rank {
         case 0: return 0
-        case 1: return 0.45
-        default: return 0.9
+        case 1: return 0.3
+        case 2: return 0.75
+        default: return 1.0
         }
     }
 
@@ -695,6 +797,144 @@ private struct HomePlannerDDayCard: View {
         .blur(radius: blurValue)
         .offset(y: CGFloat(rank) * 2)
     }
+}
+
+private struct HomePlannerDDayManagerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let items: [PlannerDDayItem]
+    let onEdit: (PlannerDDayItem) -> Void
+    let onDelete: (PlannerDDayItem) -> Void
+    let onAdd: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HomeSurfaceCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("디데이 관리")
+                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .foregroundStyle(HomePalette.textPrimary)
+
+                            Text("디데이 제목, 날짜, 메모를 수정할 수 있습니다.")
+                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                                .foregroundStyle(HomePalette.textSecondary)
+                        }
+                    }
+
+                    HomeSurfaceCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Button("디데이 추가") {
+                                onAdd()
+                            }
+                            .buttonStyle(HomeFilledButtonStyle())
+
+                            ForEach(items) { item in
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(item.displayLabel)
+                                            .font(.system(size: 18, weight: .black, design: .rounded))
+                                            .foregroundStyle(HomePalette.textPrimary)
+
+                                        Text(item.title)
+                                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(HomePalette.textPrimary)
+                                            .lineLimit(1)
+
+                                        Text(item.targetDate, formatter: HomeFormatters.documentDate)
+                                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                                            .foregroundStyle(HomePalette.textSecondary)
+                                    }
+
+                                    Spacer(minLength: 0)
+
+                                    HStack(spacing: 8) {
+                                        Button("수정") {
+                                            onEdit(item)
+                                        }
+                                        .buttonStyle(HomeOutlineButtonStyle())
+
+                                        Button("삭제", role: .destructive) {
+                                            onDelete(item)
+                                        }
+                                        .buttonStyle(HomeOutlineButtonStyle())
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(HomePalette.background.ignoresSafeArea())
+            .navigationTitle("디데이")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private struct HomePlannerDDayEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var draft: PlannerDDayDraft
+    let onSave: (PlannerDDayDraft) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("디데이") {
+                    TextField("제목", text: $draft.title)
+                    DatePicker("날짜", selection: $draft.targetDate, displayedComponents: .date)
+                    TextField("메모", text: $draft.note, axis: .vertical)
+                        .lineLimit(3, reservesSpace: true)
+                }
+
+                Section("색상") {
+                    Picker("배경", selection: $draft.accentHex) {
+                        ForEach(Self.colorOptions, id: \.hex) { option in
+                            Text(option.title).tag(option.hex)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(draft.id == nil ? "디데이 추가" : "디데이 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(draft)
+                        dismiss()
+                    }
+                    .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private static let colorOptions: [(title: String, hex: UInt)] = [
+        ("연노랑", 0xFFF7B8),
+        ("연베이지", 0xF8F3DD),
+        ("연주황", 0xF5E3B0),
+        ("연민트", 0xDCEAB5),
+        ("연파랑", 0xDDE7F6)
+    ]
 }
 
 private struct HomePlannerAgendaRow: View {
@@ -865,38 +1105,40 @@ private struct HomePlannerTaskCard: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            if let scheduleText {
-                Text(scheduleText)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(HomePalette.textSecondary)
-                    .frame(width: 58, alignment: .leading)
-            }
-
-            Text(task.title)
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundStyle(HomePalette.textPrimary)
-                .lineLimit(1)
-                .padding(.horizontal, 2)
-                .padding(.vertical, 1)
-                .background {
-                    if task.isCompleted {
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(titleTint.opacity(0.72))
-                    }
+        Button {
+            plannerCenter.toggleTask(task)
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                if let scheduleText {
+                    Text(scheduleText)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(HomePalette.textSecondary)
+                        .frame(width: 58, alignment: .leading)
                 }
 
-            Spacer(minLength: 0)
+                Text(task.title)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 1)
+                    .background {
+                        if task.isCompleted {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(titleTint.opacity(0.72))
+                        }
+                    }
 
-            Text(task.isCompleted ? "✓" : "□")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(HomePalette.textPrimary)
+                Spacer(minLength: 0)
+
+                Text(task.isCompleted ? "✓" : "□")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+            }
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 1)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            plannerCenter.toggleTask(task)
-        }
+        .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 plannerCenter.deleteTask(task)

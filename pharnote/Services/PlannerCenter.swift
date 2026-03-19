@@ -111,8 +111,9 @@ final class PlannerCenter: ObservableObject {
 
     var dayStripDates: [Date] {
         let calendar = Calendar.current
-        return (0..<5).compactMap { offset in
-            calendar.date(byAdding: .day, value: offset, to: selectedDate)
+        let anchor = calendar.startOfDay(for: selectedDate)
+        return (-365...365).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: anchor)
         }
     }
 
@@ -160,6 +161,31 @@ final class PlannerCenter: ObservableObject {
 
     func deleteTask(_ task: PlannerTask) {
         state.tasks.removeAll { $0.id == task.id }
+        persistState()
+    }
+
+    func saveDDayItem(from draft: PlannerDDayDraft) {
+        let cleanedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTitle.isEmpty else { return }
+
+        let item = PlannerDDayItem(
+            id: draft.id ?? UUID(),
+            title: cleanedTitle,
+            targetDate: Calendar.current.startOfDay(for: draft.targetDate),
+            note: draft.note.trimmedNilIfEmpty,
+            accentHex: draft.accentHex
+        )
+
+        if let index = state.dDayItems.firstIndex(where: { $0.id == item.id }) {
+            state.dDayItems[index] = item
+        } else {
+            state.dDayItems.append(item)
+        }
+        persistState()
+    }
+
+    func deleteDDayItem(_ item: PlannerDDayItem) {
+        state.dDayItems.removeAll { $0.id == item.id }
         persistState()
     }
 

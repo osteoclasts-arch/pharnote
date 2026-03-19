@@ -87,6 +87,38 @@ nonisolated struct PlannerDDayItem: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+nonisolated struct PlannerDDayDraft: Hashable, Sendable {
+    var id: UUID?
+    var title: String
+    var targetDate: Date
+    var note: String
+    var accentHex: UInt
+
+    init(
+        id: UUID? = nil,
+        title: String = "",
+        targetDate: Date = Date(),
+        note: String = "",
+        accentHex: UInt = 0xFFF7B8
+    ) {
+        self.id = id
+        self.title = title
+        self.targetDate = targetDate
+        self.note = note
+        self.accentHex = accentHex
+    }
+
+    init(item: PlannerDDayItem) {
+        self.init(
+            id: item.id,
+            title: item.title,
+            targetDate: item.targetDate,
+            note: item.note ?? "",
+            accentHex: item.accentHex
+        )
+    }
+}
+
 nonisolated struct PlannerState: Codable, Hashable, Sendable {
     var selectedDate: Date
     var tasks: [PlannerTask]
