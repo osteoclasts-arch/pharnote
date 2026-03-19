@@ -41,7 +41,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published var savedColorPresets: [UIColor] = []
     @Published var strokeWidth: Double = 5.0
     @Published private(set) var strokePresetConfiguration: WritingStrokePresetConfiguration
-    @Published var isPencilOnlyInputEnabled: Bool = false
+    @Published var isPencilOnlyInputEnabled: Bool
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
     @Published private(set) var canAnalyzeSelection: Bool = false
@@ -170,6 +170,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         self.requestedInitialPageID = initialPageKey.flatMap { UUID(uuidString: $0) }
         self.bookmarkedPageIDs = Set((userDefaults.stringArray(forKey: "pharnote.bookmarks.\(document.id.uuidString)") ?? []).compactMap(UUID.init(uuidString:)))
         self.strokeWidth = penPresetConfiguration.values[penPresetConfiguration.selectedIndex]
+        self.isPencilOnlyInputEnabled = UIPencilInteraction.prefersPencilOnlyDrawing
         self.loadHighlightPalettePresets()
     }
 
@@ -258,6 +259,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func addPage() {
+        addPage(atEnd: false)
+    }
+
+    func addPage(atEnd: Bool) {
         commitCurrentCanvasToCache()
         saveCurrentPageImmediately()
         recordPageExit()
@@ -271,7 +276,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
             backgroundStyle: currentPageBackgroundStyle
         )
 
-        if let currentPageID, let currentIndex = pages.firstIndex(where: { $0.id == currentPageID }) {
+        if atEnd {
+            pages.append(newPage)
+        } else if let currentPageID, let currentIndex = pages.firstIndex(where: { $0.id == currentPageID }) {
             pages.insert(newPage, at: currentIndex + 1)
         } else {
             pages.append(newPage)
@@ -421,6 +428,16 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     var isCanvasInputEnabled: Bool {
         isToolSelectionActive && selectedTool != .text
+    }
+
+    var allowsFingerDrawing: Bool {
+        guard isCanvasInputEnabled else { return false }
+        switch currentDrawingPolicy() {
+        case .pencilOnly:
+            return false
+        default:
+            return true
+        }
     }
 
     var isEditingInkTool: Bool {
@@ -910,7 +927,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             pageID: currentPageID,
             sessionID: sessionID,
             payload: [
-                "allows_finger_drawing": .bool(!isPencilOnlyInputEnabled)
+                "allows_finger_drawing": .bool(allowsFingerDrawing)
             ]
         )
     }
@@ -1018,7 +1035,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func currentDrawingPolicy() -> PKCanvasViewDrawingPolicy {
-        isPencilOnlyInputEnabled ? .pencilOnly : .anyInput
+        (isPencilOnlyInputEnabled || UIPencilInteraction.prefersPencilOnlyDrawing) ? .pencilOnly : .anyInput
     }
 
     func uiColorForColorID(_ id: Int) -> UIColor {
@@ -1269,6 +1286,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
         canvasView.tool = currentTool()
         canvasView.drawingPolicy = currentDrawingPolicy()
         canvasView.isUserInteractionEnabled = isCanvasInputEnabled
+        if let passthroughCanvas = canvasView as? PencilPassthroughCanvasView {
+            passthroughCanvas.allowsFingerTouchInput = allowsFingerDrawing
+            passthroughCanvas.isScrollEnabled = false
+        }
         if #available(iOS 18.0, *) {
             canvasView.isDrawingEnabled = isCanvasInputEnabled
         }

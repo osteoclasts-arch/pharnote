@@ -82,13 +82,44 @@ private struct PharnoteNotesHomeView: View {
     @State private var isShowingSettings = false
     @State private var isShowingSidebar = false
     @State private var isShowingGuide = false
+    @State private var selectedFolder: HomeSidebarSectionID = .all
     @State private var documentBeingRenamed: PharDocument?
     @State private var documentBeingShared: PharDocument?
     @State private var sidebarSearchQuery = ""
     @State private var expandedSidebarSections: Set<HomeSidebarSectionID> = [.korean]
 
     private var continueDocuments: [PharDocument] {
-        Array(viewModel.filteredDocuments.prefix(8))
+        Array(documents(for: selectedFolder).prefix(8))
+    }
+
+    private var folderTitle: String {
+        selectedFolder.title
+    }
+
+    private var folderSubtitle: String? {
+        selectedFolder.subtitle
+    }
+
+    private var folderSections: [HomeSidebarSectionID] {
+        HomeSidebarSectionID.allCases
+    }
+
+    private func documents(for folder: HomeSidebarSectionID) -> [PharDocument] {
+        let sortedDocuments = viewModel.documents.sorted { lhs, rhs in
+            if lhs.updatedAt == rhs.updatedAt {
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+
+        switch folder {
+        case .all:
+            return sortedDocuments
+        case .unspecified:
+            return sortedDocuments.filter { ($0.studyMaterial?.subject ?? .unspecified) == .unspecified }
+        default:
+            return sortedDocuments.filter { $0.studyMaterial?.subject == folder.subject }
+        }
     }
 
     var body: some View {
@@ -120,6 +151,8 @@ private struct PharnoteNotesHomeView: View {
                             systemName: "house",
                             subtitle: nil
                         )
+
+                        folderShelf
 
                         quickActionSection
 
@@ -313,13 +346,19 @@ private struct PharnoteNotesHomeView: View {
     private var continueSection: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 8) {
-                Text("이어쓰기")
+                Text(folderTitle == "홈" ? "이어쓰기" : folderTitle)
                     .font(.system(size: 32, weight: .black, design: .rounded))
                     .foregroundStyle(HomePalette.textPrimary)
 
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(HomePalette.textPrimary)
+            }
+
+            if let folderSubtitle {
+                Text(folderSubtitle)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(HomePalette.textSecondary)
             }
 
             if continueDocuments.isEmpty {
@@ -351,6 +390,40 @@ private struct PharnoteNotesHomeView: View {
                     }
                     .padding(.vertical, 2)
                 }
+            }
+        }
+    }
+
+    private var folderShelf: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(HomePalette.textPrimary)
+
+                Text("폴더")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(HomePalette.textPrimary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(folderSections, id: \.self) { folder in
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                selectedFolder = folder
+                            }
+                        } label: {
+                            HomeFolderCard(
+                                folder: folder,
+                                count: documents(for: folder).count,
+                                isSelected: selectedFolder == folder
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
             }
         }
     }
@@ -1372,6 +1445,63 @@ private enum HomeSidebarSectionID: String, Hashable, CaseIterable {
             return .unspecified
         }
     }
+
+    var subtitle: String {
+        switch self {
+        case .all:
+            return "오늘 이어서 공부할 자료"
+        case .korean:
+            return "국어 노트와 자료"
+        case .math:
+            return "수학 노트와 자료"
+        case .english:
+            return "영어 노트와 자료"
+        case .earthScience:
+            return "지구과학 노트와 자료"
+        case .biology:
+            return "생명과학 노트와 자료"
+        case .unspecified:
+            return "분류되지 않은 자료"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all:
+            return "folder.fill"
+        case .korean:
+            return "book.closed.fill"
+        case .math:
+            return "function"
+        case .english:
+            return "text.book.closed.fill"
+        case .earthScience:
+            return "globe.americas.fill"
+        case .biology:
+            return "leaf.fill"
+        case .unspecified:
+            return "tray.full.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .all:
+            return HomePalette.accent.opacity(0.18)
+        case .korean:
+            return Color(red: 0.95, green: 0.88, blue: 0.88)
+        case .math:
+            return Color(red: 0.87, green: 0.92, blue: 0.98)
+        case .english:
+            return Color(red: 0.91, green: 0.90, blue: 0.98)
+        case .earthScience:
+            return Color(red: 0.86, green: 0.94, blue: 0.94)
+        case .biology:
+            return Color(red: 0.89, green: 0.95, blue: 0.87)
+        case .unspecified:
+            return Color(red: 0.93, green: 0.93, blue: 0.93)
+        }
+    }
 }
 
 private struct HomeSidebarSectionData: Identifiable {
@@ -1642,6 +1772,59 @@ private struct HomeQuickActionCard: View {
             )
         }
         .buttonStyle(HomeScaleButtonStyle())
+    }
+}
+
+private struct HomeFolderCard: View {
+    let folder: HomeSidebarSectionID
+    let count: Int
+    let isSelected: Bool
+
+    private var cardTint: Color {
+        folder.tint
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(cardTint)
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: folder.systemImage)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(HomePalette.textPrimary)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("\(count)")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(isSelected ? HomePalette.accent : HomePalette.textPrimary)
+            }
+
+            Text(folder.title)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundStyle(HomePalette.textPrimary)
+
+            Text(folder.subtitle)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(HomePalette.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(width: 180, height: 136, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(isSelected ? HomePalette.surface : HomePalette.surface.opacity(0.9))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isSelected ? HomePalette.accent : HomePalette.border, lineWidth: isSelected ? 2.2 : 1.4)
+        )
+        .shadow(color: Color.black.opacity(isSelected ? 0.08 : 0.04), radius: isSelected ? 12 : 8, x: 0, y: 4)
     }
 }
 

@@ -15,7 +15,7 @@ class SmartShapeCanvasView: PKCanvasView {
 
     private let movementStartThreshold: CGFloat = 18
     private let stillnessTolerance: CGFloat = 3
-    private let holdDelay: TimeInterval = 0.32
+    private let holdDelay: TimeInterval = 0.18
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
@@ -54,7 +54,7 @@ class SmartShapeCanvasView: PKCanvasView {
         resetTouchTracking()
 
         guard shouldApplySmartShape else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             self?.applySmartShapeIfNeeded()
         }
     }
@@ -141,6 +141,8 @@ final class PencilPassthroughCanvasView: SmartShapeCanvasView {
         }
     }
 
+    private var lastDrawingInputEnabled: Bool?
+
     override var isUserInteractionEnabled: Bool {
         didSet {
             updateAllowedTouchTypes()
@@ -158,9 +160,15 @@ final class PencilPassthroughCanvasView: SmartShapeCanvasView {
     }
 
     func refreshDrawingInputState(isEnabled: Bool) {
+        if lastDrawingInputEnabled == isEnabled {
+            return
+        }
+        lastDrawingInputEnabled = isEnabled
+
         updateAllowedTouchTypes()
-        drawingGestureRecognizer.isEnabled = false
-        drawingGestureRecognizer.isEnabled = isEnabled
+        if drawingGestureRecognizer.isEnabled != isEnabled {
+            drawingGestureRecognizer.isEnabled = isEnabled
+        }
         if isEnabled {
             becomeFirstResponder()
         }
@@ -200,6 +208,10 @@ private enum WritingSmartShapeRecognizer {
 
         if let rectangleStroke = rectangleStrokeIfNeeded(from: stroke, sampledPoints: sampledPoints) {
             return rectangleStroke
+        }
+
+        if let polygonStroke = polygonStrokeIfNeeded(from: stroke, sampledPoints: sampledPoints) {
+            return polygonStroke
         }
 
         if let ellipseStroke = ellipseStrokeIfNeeded(from: stroke, sampledPoints: sampledPoints) {
@@ -299,6 +311,18 @@ private enum WritingSmartShapeRecognizer {
         return makeStroke(from: stroke, shapePoints: ellipsePoints)
     }
 
+    private static func polygonStrokeIfNeeded(from stroke: PKStroke, sampledPoints: [PKStrokePoint]) -> PKStroke? {
+        let locations = sampledPoints.map(\.location)
+        let bounds = boundingRect(for: locations)
+        guard bounds.width > 18, bounds.height > 18 else { return nil }
+
+        let simplified = simplifiedClosedPolygon(locations, epsilon: max(bounds.maxDimension * 0.04, 6))
+        guard (3...8).contains(simplified.count) else { return nil }
+        guard isPolygonal(points: simplified, bounds: bounds) else { return nil }
+
+        return makeStroke(from: stroke, shapePoints: simplified + [simplified.first!])
+    }
+
     private static func makeStroke(from stroke: PKStroke, shapePoints: [CGPoint]) -> PKStroke? {
         let originalPoints = Array(stroke.path)
         guard !originalPoints.isEmpty, shapePoints.count >= 2 else { return nil }
@@ -369,6 +393,45 @@ private enum WritingSmartShapeRecognizer {
             deduped.removeLast()
         }
         return deduped
+    }
+
+    private static func isPolygonal(points: [CGPoint], bounds: CGRect) -> Bool {
+        guard points.count >= 3 else { return false }
+
+        let localTolerance = max(bounds.maxDimension * 0.12, 12)
+        var sharpCornerCount = 0
+
+        for index in points.indices {
+            let previous = points[(index - 1 + points.count) % points.count]
+            let current = points[index]
+            let next = points[(index + 1) % points.count]
+
+            let angle = turnAngle(previous: previous, current: current, next: next)
+            if angle < 155 {
+                sharpCornerCount += 1
+            }
+        }
+
+        if sharpCornerCount >= max(2, points.count - 1) {
+            return true
+        }
+
+        let center = CGPoint(
+            x: points.map(\.x).reduce(0, +) / CGFloat(points.count),
+            y: points.map(\.y).reduce(0, +) / CGFloat(points.count)
+        )
+        let radialVariance = points.map { $0.distance(to: center) }
+        let spread = (radialVariance.max() ?? 0) - (radialVariance.min() ?? 0)
+        return spread > localTolerance
+    }
+
+    private static func turnAngle(previous: CGPoint, current: CGPoint, next: CGPoint) -> CGFloat {
+        let v1 = CGPoint(x: previous.x - current.x, y: previous.y - current.y)
+        let v2 = CGPoint(x: next.x - current.x, y: next.y - current.y)
+        let dot = (v1.x * v2.x) + (v1.y * v2.y)
+        let magnitude = max(sqrt((v1.x * v1.x) + (v1.y * v1.y)) * sqrt((v2.x * v2.x) + (v2.y * v2.y)), .leastNonzeroMagnitude)
+        let cosValue = min(max(dot / magnitude, -1), 1)
+        return acos(cosValue) * 180 / .pi
     }
 
     private static func douglasPeucker(_ points: [CGPoint], epsilon: CGFloat) -> [CGPoint] {

@@ -9,17 +9,21 @@ struct PencilCanvasView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PKCanvasView {
-        let canvasView = SmartShapeCanvasView()
+        let canvasView = PencilPassthroughCanvasView()
         canvasView.delegate = context.coordinator
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
+        canvasView.isScrollEnabled = false
         canvasView.alwaysBounceVertical = false
         canvasView.alwaysBounceHorizontal = false
         canvasView.contentInset = .zero
-        canvasView.minimumZoomScale = 0.5
-        canvasView.maximumZoomScale = 4.0
+        canvasView.minimumZoomScale = 1.0
+        canvasView.maximumZoomScale = 1.0
         canvasView.zoomScale = 1.0
-        canvasView.bouncesZoom = true
+        canvasView.bouncesZoom = false
+        canvasView.pinchGestureRecognizer?.isEnabled = false
+        canvasView.allowsFingerTouchInput = viewModel.allowsFingerDrawing
+        canvasView.refreshDrawingInputState(isEnabled: viewModel.isCanvasInputEnabled)
         canvasView.onSmartShapeApplied = { [weak viewModel] _ in
             viewModel?.canvasDidChange()
         }
@@ -82,7 +86,10 @@ struct PencilCanvasView: UIViewRepresentable {
             }
             
             let interactionEnabled = viewModel.isCanvasInputEnabled
-            if canvasView.isUserInteractionEnabled != interactionEnabled {
+            if let passthroughCanvas = canvasView as? PencilPassthroughCanvasView {
+                passthroughCanvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing
+                passthroughCanvas.refreshDrawingInputState(isEnabled: interactionEnabled)
+            } else if canvasView.isUserInteractionEnabled != interactionEnabled {
                 canvasView.isUserInteractionEnabled = interactionEnabled
             }
             

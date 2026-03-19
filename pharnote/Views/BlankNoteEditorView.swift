@@ -26,7 +26,12 @@ struct BlankNoteEditorView: View {
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
     @State private var activePaletteTool: BlankNoteEditorViewModel.AnnotationTool? = nil
-    @State private var isShowingPageGrid = false
+    @State private var isShowingPageRail = false
+    @State private var pageZoomScale: CGFloat = 1.0
+    @GestureState private var pageMagnificationDelta: CGFloat = 1.0
+
+    private let minPageZoomScale: CGFloat = 0.75
+    private let maxPageZoomScale: CGFloat = 2.5
 
     init(document: PharDocument, initialPageKey: String? = nil) {
         let editorViewModel = BlankNoteEditorViewModel(
@@ -131,9 +136,6 @@ struct BlankNoteEditorView: View {
                 }
             )
         }
-        .fullScreenCover(isPresented: $isShowingPageGrid) {
-            BlankNotePageGridView(viewModel: viewModel)
-        }
         .sheet(isPresented: $isShowingTextComposer) {
             WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
                 workspaceController.addTextEntry(text)
@@ -220,30 +222,41 @@ struct BlankNoteEditorView: View {
             let pageWidth = min(772, max(640, geometry.size.width - 110))
             let paperSize = viewModel.currentPagePaperSize
             let pageHeight = pageWidth * paperSize.aspectRatio
+            let railWidth = min(360, max(312, geometry.size.width * 0.32))
 
             ZStack(alignment: .top) {
                 WritingChromePalette.paper.ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: true) {
-                    HStack(spacing: 24) {
-                        // 기존 고정 인강 영역 제거
-                        
-                        VStack(spacing: 28) {
-                            editorPage(width: pageWidth, height: pageHeight)
+                HStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        HStack(spacing: 24) {
+                            // 기존 고정 인강 영역 제거
+                            
+                            VStack(spacing: 28) {
+                                zoomableEditorPage(width: pageWidth, height: pageHeight)
 
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.white.opacity(0.78))
-                                .frame(width: pageWidth, height: 170)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .stroke(Color.black.opacity(0.03), lineWidth: 1)
-                                )
-                                .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.white.opacity(0.78))
+                                    .frame(width: pageWidth, height: 170)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .stroke(Color.black.opacity(0.03), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
+                            }
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 166)
+                        .padding(.bottom, 120)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 166)
-                    .padding(.bottom, 120)
+                    .scaleEffect(isShowingPageRail ? 0.988 : 1.0, anchor: .center)
+                    .animation(.easeInOut(duration: 0.18), value: isShowingPageRail)
+
+                    if isShowingPageRail {
+                        pageRailPanel(width: railWidth)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
 
                 VStack(spacing: 10) {
@@ -318,6 +331,171 @@ struct BlankNoteEditorView: View {
                 }
             }
         }
+    }
+
+    private func pageRailPanel(width: CGFloat) -> some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 14),
+            GridItem(.flexible(), spacing: 14)
+        ]
+
+        return VStack(spacing: 12) {
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    pageRailTabChip(
+                        title: viewModel.document.title,
+                        subtitle: "\(viewModel.pages.count) pages",
+                        isSelected: true
+                    )
+
+                    pageRailTabChip(
+                        title: "페이지",
+                        subtitle: "미리보기",
+                        isSelected: false
+                    )
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+
+                HStack(spacing: 10) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isShowingPageRail = false
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(WritingChromePalette.accent)
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+
+                    railToolbarButton(systemName: "plus.square") {
+                        viewModel.addPage()
+                    }
+
+                    railToolbarButton(systemName: "trash") {
+                        viewModel.deleteCurrentPage()
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text("현재 \(viewModel.currentPageNumber)/\(max(viewModel.pages.count, 1))")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.52))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.black.opacity(0.05))
+                        )
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+            }
+            .padding(.top, 12)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(columns: columns, spacing: 18) {
+                    ForEach(viewModel.pages) { page in
+                        Button {
+                            viewModel.selectPage(page.id)
+                        } label: {
+                            PageRailCell(
+                                pageNumber: viewModel.pageNumber(for: page.id),
+                                thumbnail: viewModel.thumbnail(for: page.id),
+                                isSelected: viewModel.currentPageID == page.id,
+                                isBookmarked: viewModel.isPageBookmarked(page.id)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+        }
+        .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.black.opacity(0.18), lineWidth: 1.1)
+        )
+        .shadow(color: Color.black.opacity(0.16), radius: 18, x: -2, y: 8)
+        .padding(.trailing, 8)
+        .padding(.top, 74)
+        .padding(.bottom, 16)
+    }
+
+    private func pageRailTabChip(title: String, subtitle: String, isSelected: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(isSelected ? .white : WritingChromePalette.ink.opacity(0.72))
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? .white.opacity(0.82) : Color.black.opacity(0.32))
+                    .lineLimit(1)
+            }
+
+            Image(systemName: "xmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(isSelected ? .white : Color.black.opacity(0.3))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule(style: .continuous)
+                .fill(isSelected ? WritingChromePalette.accent : Color.black.opacity(0.05))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(isSelected ? WritingChromePalette.accent : Color.black.opacity(0.14), lineWidth: 1)
+        )
+    }
+
+    private func railToolbarButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(WritingChromePalette.accent)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(WritingChromePalette.accent.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var pageMagnificationGesture: some Gesture {
+        MagnificationGesture()
+            .updating($pageMagnificationDelta) { value, state, _ in
+                state = value
+            }
+            .onEnded { value in
+                let nextScale = pageZoomScale * value
+                pageZoomScale = min(max(nextScale, minPageZoomScale), maxPageZoomScale)
+            }
+    }
+
+    private func zoomableEditorPage(width: CGFloat, height: CGFloat) -> some View {
+        let effectiveScale = min(max(pageZoomScale * pageMagnificationDelta, minPageZoomScale), maxPageZoomScale)
+        let scaledWidth = width * effectiveScale
+        let scaledHeight = height * effectiveScale
+
+        return editorPage(width: width, height: height)
+            .scaleEffect(effectiveScale, anchor: .topLeading)
+            .frame(width: scaledWidth, height: scaledHeight, alignment: .topLeading)
+            .simultaneousGesture(pageMagnificationGesture)
     }
 
     private func editorPage(width: CGFloat, height: CGFloat) -> some View {
@@ -403,6 +581,58 @@ struct BlankNoteEditorView: View {
         }
     }
 
+    private struct PageRailCell: View {
+        let pageNumber: Int
+        let thumbnail: UIImage?
+        let isSelected: Bool
+        let isBookmarked: Bool
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("\(pageNumber)")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(WritingChromePalette.ink)
+
+                    Spacer(minLength: 0)
+
+                    if isBookmarked {
+                        Image(systemName: "bookmark.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(WritingChromePalette.accent)
+                    }
+                }
+
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color.white)
+                        .frame(height: 162)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .stroke(isSelected ? WritingChromePalette.accent : Color.black.opacity(0.26), lineWidth: isSelected ? 2 : 1)
+                        )
+                        .shadow(color: Color.black.opacity(isSelected ? 0.12 : 0.05), radius: isSelected ? 10 : 5, x: 0, y: 3)
+
+                    if let thumbnail {
+                        Image(uiImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                            .padding(4)
+                    }
+
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.18))
+                        .padding(8)
+                        .opacity(0.85)
+                }
+            }
+            .padding(.bottom, 2)
+        }
+    }
+
     private var chromeToolbar: some View {
         WritingChromeCapsule {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -444,10 +674,12 @@ struct BlankNoteEditorView: View {
                         systemName: "square.grid.2x2",
                         accentTint: true
                     ) {
-                        isShowingPageGrid = true
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isShowingPageRail.toggle()
+                        }
                     }
                     WritingChromeIconButton(
-                        systemName: "sidebar.right",
+                        systemName: "square.stack.3d.up.fill",
                         accentTint: true,
                         isSelected: viewModel.isHighlightStructurePanelVisible
                     ) {
