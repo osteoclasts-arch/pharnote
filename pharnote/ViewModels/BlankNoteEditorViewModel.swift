@@ -50,6 +50,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published private(set) var currentPageID: UUID?
     @Published private(set) var thumbnails: [UUID: UIImage] = [:]
     @Published private(set) var bookmarkedPageIDs: Set<UUID>
+    @Published var highlightMode: HighlightStructureMode = .basic
+    @Published var selectedHighlightRole: HighlightStructureRole = .core
+    @Published private(set) var currentHighlightSnapshot: HighlightStructureSnapshot?
+    @Published var isHighlightStructurePanelVisible: Bool = false
     @Published var errorMessage: String?
     
     // Lecture Mode & Sync properties
@@ -98,6 +102,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
     private let libraryStore: LibraryStore
     private let eventLogger: StudyEventLogger
     private let userDefaults: UserDefaults
+    private let highlightStore: HighlightStructureStore
+    private let highlightEngine: HighlightStructureEngine
+    private let documentOCRService: DocumentOCRService
     private var strokePresetConfigurationsByTool: [AnnotationTool: WritingStrokePresetConfiguration]
     private let requestedInitialPageID: UUID?
     private weak var canvasView: PKCanvasView?
@@ -121,6 +128,11 @@ final class BlankNoteEditorViewModel: ObservableObject {
     private var copyActionCountByPageID: [UUID: Int] = [:]
     private var pasteActionCountByPageID: [UUID: Int] = [:]
     private var pageNavigationHistory: [UUID] = []
+    private var highlightSnapshotTask: Task<Void, Never>?
+    private var highlightSyncTask: Task<Void, Never>?
+    private var lastHighlightStrokeCountByPageID: [UUID: Int] = [:]
+    private var highlightRoleHexByRole: [HighlightStructureRole: String] = [:]
+    private static let lecturePopupAllowanceKeyPrefix = "lectureBrowser.popups.allowed."
 
     init(
         document: PharDocument,
@@ -130,6 +142,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
         eventLogger: StudyEventLogger? = nil,
         userDefaults: UserDefaults = .standard
     ) {
+        let highlightStore = HighlightStructureStore()
+        let highlightEngine = HighlightStructureEngine()
+        let documentOCRService = DocumentOCRService()
         let penPresetConfiguration = WritingStrokePresetStore.configuration(
             toolKey: Self.strokePresetToolKey(for: .pen),
             userDefaults: userDefaults
@@ -144,6 +159,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
         self.libraryStore = libraryStore ?? LibraryStore()
         self.eventLogger = eventLogger ?? StudyEventLogger.shared
         self.userDefaults = userDefaults
+        self.highlightStore = highlightStore
+        self.highlightEngine = highlightEngine
+        self.documentOCRService = documentOCRService
         self.strokePresetConfigurationsByTool = [
             .pen: penPresetConfiguration,
             .highlighter: highlighterPresetConfiguration
@@ -152,6 +170,39 @@ final class BlankNoteEditorViewModel: ObservableObject {
         self.requestedInitialPageID = initialPageKey.flatMap { UUID(uuidString: $0) }
         self.bookmarkedPageIDs = Set((userDefaults.stringArray(forKey: "pharnote.bookmarks.\(document.id.uuidString)") ?? []).compactMap(UUID.init(uuidString:)))
         self.strokeWidth = penPresetConfiguration.values[penPresetConfiguration.selectedIndex]
+        self.loadHighlightPalettePresets()
+    }
+
+    func lecturePopupAllowed(for urlString: String) -> Bool {
+        guard let key = lecturePopupAllowanceKey(for: urlString) else { return false }
+        return userDefaults.bool(forKey: key)
+    }
+
+    func setLecturePopupAllowed(_ allowed: Bool, for urlString: String) {
+        guard let key = lecturePopupAllowanceKey(for: urlString) else { return }
+        userDefaults.set(allowed, forKey: key)
+    }
+
+    func lecturePopupAllowedStorageKey(for urlString: String) -> String? {
+        lecturePopupAllowanceKey(for: urlString)
+    }
+
+    private func lecturePopupAllowanceKey(for urlString: String) -> String? {
+        guard let url = normalizedLectureURL(from: urlString),
+              let host = url.host?.lowercased(),
+              !host.isEmpty else {
+            return nil
+        }
+        return Self.lecturePopupAllowanceKeyPrefix + host
+    }
+
+    private func normalizedLectureURL(from urlString: String) -> URL? {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+        return URL(string: "https://\(trimmed)")
     }
 
     func attachCanvasView(_ canvasView: PKCanvasView) {
@@ -184,6 +235,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 await loadThumbnailCacheForAllPages()
                 if let currentPageID {
                     await loadAndApplyPage(pageID: currentPageID)
+                    await refreshHighlightSnapshot(for: currentPageID)
                 }
             } catch {
                 errorMessage = "노트 로드 실패: \(error.localizedDescription)"
@@ -201,6 +253,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
         Task {
             await loadAndApplyPage(pageID: pageID)
+            await refreshHighlightSnapshot(for: pageID)
         }
     }
 
@@ -210,7 +263,13 @@ final class BlankNoteEditorViewModel: ObservableObject {
         recordPageExit()
 
         let now = Date()
-        let newPage = BlankNotePage(id: UUID(), createdAt: now, updatedAt: now)
+        let newPage = BlankNotePage(
+            id: UUID(),
+            createdAt: now,
+            updatedAt: now,
+            paperSize: currentPagePaperSize,
+            backgroundStyle: currentPageBackgroundStyle
+        )
 
         if let currentPageID, let currentIndex = pages.firstIndex(where: { $0.id == currentPageID }) {
             pages.insert(newPage, at: currentIndex + 1)
@@ -221,10 +280,12 @@ final class BlankNoteEditorViewModel: ObservableObject {
         currentPageID = newPage.id
         recordPageVisit(newPage.id)
         drawingCache[newPage.id] = PKDrawing()
+        lastHighlightStrokeCountByPageID[newPage.id] = 0
         applyDrawingToCanvas(PKDrawing())
         touchDocumentUpdatedAt()
         Task {
             await evictCacheExceptCurrentAndNeighbors()
+            await refreshHighlightSnapshot(for: newPage.id)
         }
     }
 
@@ -236,7 +297,14 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
         let now = Date()
         let newPageID = UUID()
-        let newPage = BlankNotePage(id: newPageID, createdAt: now, updatedAt: now)
+        let sourcePage = pages[sourceIndex]
+        let newPage = BlankNotePage(
+            id: newPageID,
+            createdAt: now,
+            updatedAt: now,
+            paperSize: sourcePage.paperSize,
+            backgroundStyle: sourcePage.backgroundStyle
+        )
         
         pages.insert(newPage, at: sourceIndex + 1)
         
@@ -246,7 +314,24 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 try? await noteStore.saveDrawingData(sourceData, documentURL: documentURL, pageID: newPageID)
                 if let drawing = try? PKDrawing(data: sourceData) {
                     drawingCache[newPageID] = drawing
+                    lastHighlightStrokeCountByPageID[newPageID] = drawing.strokes.count
                 }
+            }
+
+            let sourcePageKey = pageID.uuidString.lowercased()
+            let destinationPageKey = newPageID.uuidString.lowercased()
+            let sourceItems = await highlightStore.loadItems(documentURL: documentURL, pageKey: sourcePageKey)
+            if !sourceItems.isEmpty {
+                let copiedItems = sourceItems.map { item in
+                    var copied = item
+                    copied.id = UUID()
+                    copied.pageKey = destinationPageKey
+                    copied.pageLabel = "페이지 \(pageNumber(for: newPageID))"
+                    copied.createdAt = Date()
+                    copied.updatedAt = Date()
+                    return copied
+                }
+                try? await highlightStore.saveItems(copiedItems, documentURL: documentURL, pageKey: destinationPageKey)
             }
             
             if let thumbData = await noteStore.loadThumbnailData(documentURL: documentURL, pageID: pageID) {
@@ -258,6 +343,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             
             await saveContentSnapshot()
             touchDocumentUpdatedAt()
+            await refreshHighlightSnapshot(for: newPageID)
         }
     }
 
@@ -277,6 +363,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         thumbnails.removeValue(forKey: pageID)
         bookmarkedPageIDs.remove(pageID)
         persistBookmarks()
+        lastHighlightStrokeCountByPageID.removeValue(forKey: pageID)
 
         let nextSelectedPageID: UUID?
         if removeIndex < pages.count - 1 {
@@ -290,6 +377,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
         Task {
             await noteStore.deleteDrawingData(documentURL: documentURL, pageID: pageID)
             await noteStore.deleteThumbnailData(documentURL: documentURL, pageID: pageID)
+            await highlightStore.deleteItems(documentURL: documentURL, pageKey: pageID.uuidString.lowercased())
         }
 
         if currentPageID == pageID, let nextSelectedPageID {
@@ -341,7 +429,10 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     var currentToolLabel: String {
-        activeTool?.rawValue ?? "스크롤"
+        if activeTool == .highlighter && highlightMode == .structured {
+            return "구조화 · \(selectedHighlightRole.title)"
+        }
+        return activeTool?.rawValue ?? "스크롤"
     }
 
     func isToolSelected(_ tool: AnnotationTool) -> Bool {
@@ -374,6 +465,22 @@ final class BlankNoteEditorViewModel: ObservableObject {
             return document.updatedAt
         }
         return page.updatedAt
+    }
+
+    var currentPagePaperSize: BlankNotePaperSize {
+        guard let currentPageID,
+              let page = pages.first(where: { $0.id == currentPageID }) else {
+            return .a4
+        }
+        return page.paperSize
+    }
+
+    var currentPageBackgroundStyle: BlankNoteBackgroundStyle {
+        guard let currentPageID,
+              let page = pages.first(where: { $0.id == currentPageID }) else {
+            return .plain
+        }
+        return page.backgroundStyle
     }
 
     var analysisPreview: AnalysisPreview? {
@@ -446,6 +553,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
         drawingCache[currentPageID] = canvasView.drawing
         dirtyPageIDs.insert(currentPageID)
         refreshUndoRedoState()
+        syncStructuredHighlightsIfNeeded(pageID: currentPageID, drawing: canvasView.drawing)
+        scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         scheduleDebouncedPersist(for: currentPageID)
     }
 
@@ -605,6 +714,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             pages[index].textElements.append(newElement)
             activeTextElementID = newElement.id
             canvasDidChange()
+            scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         }
     }
     
@@ -614,8 +724,17 @@ final class BlankNoteEditorViewModel: ObservableObject {
             if let elementIndex = pages[pageIndex].textElements.firstIndex(where: { $0.id == element.id }) {
                 pages[pageIndex].textElements[elementIndex] = element
                 canvasDidChange()
+                scheduleHighlightSnapshotRefresh(pageID: currentPageID)
             }
         }
+    }
+
+    func updateCurrentPagePaperSize(_ paperSize: BlankNotePaperSize) {
+        updateCurrentPageLayout(paperSize: paperSize, backgroundStyle: nil)
+    }
+
+    func updateCurrentPageBackgroundStyle(_ backgroundStyle: BlankNoteBackgroundStyle) {
+        updateCurrentPageLayout(paperSize: nil, backgroundStyle: backgroundStyle)
     }
     
     func deleteTextElement(id: UUID) {
@@ -626,6 +745,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
                 activeTextElementID = nil
             }
             canvasDidChange()
+            scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         }
     }
     
@@ -657,6 +777,13 @@ final class BlankNoteEditorViewModel: ObservableObject {
             applyStrokePresetConfiguration(for: inkTool)
         } else {
             applyCanvasConfiguration()
+        }
+        if tool == .highlighter && highlightMode == .structured {
+            isHighlightStructurePanelVisible = true
+            if let currentPageID {
+                lastHighlightStrokeCountByPageID[currentPageID] = currentDrawing(for: currentPageID).strokes.count
+            }
+            scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         }
         refreshUndoRedoState()
     }
@@ -700,6 +827,78 @@ final class BlankNoteEditorViewModel: ObservableObject {
     func updateStrokePreset(_ width: Double, at index: Int) {
         guard let inkTool = activeInkTool() else { return }
         updateStrokePreset(width, at: index, for: inkTool)
+    }
+
+    func selectHighlightMode(_ mode: HighlightStructureMode) {
+        guard highlightMode != mode else { return }
+        highlightMode = mode
+        eventLogger.log(
+            .highlightModeSelected,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "mode": .string(mode.rawValue)
+            ]
+        )
+
+        if mode == .structured {
+            isHighlightStructurePanelVisible = true
+            if let currentPageID {
+                lastHighlightStrokeCountByPageID[currentPageID] = currentDrawing(for: currentPageID).strokes.count
+            }
+        }
+
+        applyCanvasConfiguration()
+        scheduleHighlightSnapshotRefresh(pageID: currentPageID)
+    }
+
+    func selectHighlightRole(_ role: HighlightStructureRole) {
+        guard selectedHighlightRole != role else { return }
+        selectedHighlightRole = role
+        eventLogger.log(
+            .highlightRoleSelected,
+            document: document,
+            pageID: currentPageID,
+            sessionID: sessionID,
+            payload: [
+                "role": .string(role.rawValue)
+            ]
+        )
+        if highlightMode == .structured {
+            isHighlightStructurePanelVisible = true
+            applyCanvasConfiguration()
+            scheduleHighlightSnapshotRefresh(pageID: currentPageID)
+        }
+    }
+
+    func toggleHighlightStructurePanel() {
+        isHighlightStructurePanelVisible.toggle()
+    }
+
+    func highlightColor(for role: HighlightStructureRole) -> UIColor {
+        HighlightColorCodec.uiColor(
+            from: highlightColorHex(for: role),
+            fallback: HighlightColorCodec.uiColor(from: role.defaultColorHex)
+        )
+    }
+
+    func highlightColorBinding(for role: HighlightStructureRole) -> Binding<Color> {
+        Binding(
+            get: { Color(uiColor: self.highlightColor(for: role)) },
+            set: { newColor in
+                self.updateHighlightRoleColor(UIColor(newColor), for: role)
+            }
+        )
+    }
+
+    func updateHighlightRoleColor(_ color: UIColor, for role: HighlightStructureRole) {
+        let hex = HighlightColorCodec.hexString(from: color)
+        highlightRoleHexByRole[role] = hex
+        userDefaults.set(hex, forKey: highlightRolePaletteKey(for: role))
+        if selectedHighlightRole == role {
+            applyCanvasConfiguration()
+        }
     }
 
     func togglePencilOnlyInput() {
@@ -782,7 +981,15 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     func currentTool() -> PKTool {
-        let currentKey = "\(selectedTool.rawValue)-\(selectedColorID)-\(strokeWidth)-\(selectedPenStyle.rawValue)"
+        let currentKey = [
+            selectedTool.rawValue,
+            highlightMode.rawValue,
+            selectedHighlightRole.rawValue,
+            highlightColorHex(for: selectedHighlightRole),
+            "\(selectedColorID)",
+            "\(strokeWidth)",
+            selectedPenStyle.rawValue
+        ].joined(separator: "-")
         if let cached = cachedPKTool, currentKey == lastToolKey {
             return cached
         }
@@ -792,7 +999,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
         case .pen:
             tool = makePenTool()
         case .highlighter:
-            let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
+            let color = highlightMode == .structured
+                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(0.34)
+                : uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
             tool = PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 12))
         case .eraser:
             tool = PKEraserTool(.vector)
@@ -943,6 +1152,8 @@ final class BlankNoteEditorViewModel: ObservableObject {
             guard currentPageID == pageID else { return }
 
             applyDrawingToCanvas(drawing)
+            lastHighlightStrokeCountByPageID[pageID] = drawing.strokes.count
+            scheduleHighlightSnapshotRefresh(pageID: pageID)
             await preloadNeighborPages(around: pageID)
             await evictCacheExceptCurrentAndNeighbors()
         } catch {
@@ -1063,6 +1274,138 @@ final class BlankNoteEditorViewModel: ObservableObject {
         }
     }
 
+    private func scheduleHighlightSnapshotRefresh(pageID: UUID?) {
+        highlightSnapshotTask?.cancel()
+        guard let pageID else {
+            currentHighlightSnapshot = nil
+            return
+        }
+
+        highlightSnapshotTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            await self?.refreshHighlightSnapshot(for: pageID)
+        }
+    }
+
+    private func refreshHighlightSnapshot(for pageID: UUID) async {
+        guard currentPageID == pageID else { return }
+        let pageKey = pageID.uuidString.lowercased()
+        let pageLabel = "페이지 \(pageNumber(for: pageID))"
+        let referenceText = await highlightReferenceText(for: pageID)
+        let items = await highlightStore.loadItems(documentURL: documentURL, pageKey: pageKey)
+        let snapshot = highlightEngine.buildSnapshot(
+            pageKey: pageKey,
+            pageLabel: pageLabel,
+            items: items,
+            referenceText: referenceText,
+            generatedAt: Date()
+        )
+        currentHighlightSnapshot = snapshot
+        eventLogger.log(
+            .highlightStructureRefreshed,
+            document: document,
+            pageID: pageID,
+            sessionID: sessionID,
+            payload: [
+                "page_key": .string(pageKey),
+                "item_count": .integer(snapshot.totalCount)
+            ]
+        )
+    }
+
+    private func highlightReferenceText(for pageID: UUID) async -> String? {
+        guard let page = pages.first(where: { $0.id == pageID }) else { return nil }
+        let textElementsText = page.textElements
+            .map(\.text)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        if !textElementsText.isEmpty {
+            return textElementsText
+        }
+
+        guard highlightMode == .structured else { return nil }
+        guard let blankSource = analysisSource else { return nil }
+
+        let blocks = await documentOCRService.recognizeBlankNoteBlocks(source: blankSource)
+        let joined = blocks.map(\.text).joined(separator: "\n")
+        return joined.isEmpty ? nil : joined
+    }
+
+    private func syncStructuredHighlightsIfNeeded(pageID: UUID, drawing: PKDrawing) {
+        guard highlightMode == .structured else {
+            return
+        }
+
+        let currentCount = drawing.strokes.count
+        let lastCount = lastHighlightStrokeCountByPageID[pageID] ?? currentCount
+        if currentCount == lastCount {
+            return
+        }
+
+        if currentCount > lastCount, selectedTool != .highlighter {
+            lastHighlightStrokeCountByPageID[pageID] = currentCount
+            return
+        }
+
+        highlightSyncTask?.cancel()
+        highlightSyncTask = Task { [weak self] in
+            await self?.syncStructuredHighlights(pageID: pageID, drawing: drawing, previousCount: lastCount)
+        }
+    }
+
+    private func syncStructuredHighlights(pageID: UUID, drawing: PKDrawing, previousCount: Int) async {
+        let pageKey = pageID.uuidString.lowercased()
+        let pageLabel = "페이지 \(pageNumber(for: pageID))"
+        var items = await highlightStore.loadItems(documentURL: documentURL, pageKey: pageKey)
+        let currentCount = drawing.strokes.count
+
+        if currentCount < previousCount {
+            items = highlightEngine.syncItems(currentItems: items, drawing: drawing)
+        } else if currentCount > previousCount {
+            let appendedStrokes = drawing.strokes.dropFirst(previousCount)
+            let referenceText = await highlightReferenceText(for: pageID)
+            let newItems = appendedStrokes.map { stroke in
+                highlightEngine.captureItem(
+                    documentID: document.id,
+                    pageKey: pageKey,
+                    pageLabel: pageLabel,
+                    mode: .structured,
+                    role: selectedHighlightRole,
+                    colorHex: highlightColorHex(for: selectedHighlightRole),
+                    stroke: stroke,
+                    referenceText: referenceText
+                )
+            }
+            items.append(contentsOf: newItems)
+        }
+
+        lastHighlightStrokeCountByPageID[pageID] = currentCount
+        if items.isEmpty {
+            await highlightStore.deleteItems(documentURL: documentURL, pageKey: pageKey)
+        } else {
+            try? await highlightStore.saveItems(items, documentURL: documentURL, pageKey: pageKey)
+        }
+        touchDocumentUpdatedAt()
+        await refreshHighlightSnapshot(for: pageID)
+    }
+
+    private func highlightColorHex(for role: HighlightStructureRole) -> String {
+        highlightRoleHexByRole[role] ?? role.defaultColorHex
+    }
+
+    private func loadHighlightPalettePresets() {
+        var presets: [HighlightStructureRole: String] = [:]
+        for role in HighlightStructureRole.allCases {
+            presets[role] = userDefaults.string(forKey: highlightRolePaletteKey(for: role)) ?? role.defaultColorHex
+        }
+        highlightRoleHexByRole = presets
+    }
+
+    private func highlightRolePaletteKey(for role: HighlightStructureRole) -> String {
+        "pharnote.highlight.role.\(role.rawValue)"
+    }
+
     private func refreshUndoRedoState() {
         canUndo = canvasView?.undoManager?.canUndo ?? false
         canRedo = canvasView?.undoManager?.canRedo ?? false
@@ -1106,8 +1449,26 @@ final class BlankNoteEditorViewModel: ObservableObject {
         pages[index].updatedAt = Date()
     }
 
+    private func updateCurrentPageLayout(
+        paperSize: BlankNotePaperSize?,
+        backgroundStyle: BlankNoteBackgroundStyle?
+    ) {
+        guard let currentPageID,
+              let index = pages.firstIndex(where: { $0.id == currentPageID }) else { return }
+        if let paperSize {
+            pages[index].paperSize = paperSize
+        }
+        if let backgroundStyle {
+            pages[index].backgroundStyle = backgroundStyle
+        }
+        touchDocumentUpdatedAt()
+        Task {
+            await saveContentSnapshot()
+        }
+    }
+
     private func saveContentSnapshot() async {
-        let snapshot = BlankNoteContent(version: 2, pages: pages)
+        let snapshot = BlankNoteContent(version: 4, pages: pages)
         do {
             try await noteStore.saveContent(snapshot, documentURL: documentURL)
         } catch {

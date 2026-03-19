@@ -4,6 +4,7 @@ struct LectureFloatingBrowserView: View {
     @ObservedObject var viewModel: BlankNoteEditorViewModel
     @State private var isLoading = false
     @State private var urlInput: String = ""
+    @State private var allowsPopups = false
     
     // 드래그를 위한 임시 오프셋
     @State private var dragOffset: CGSize = .zero
@@ -21,6 +22,31 @@ struct LectureFloatingBrowserView: View {
                     .foregroundColor(PharTheme.ColorToken.inkPrimary)
                 
                 Spacer()
+
+                Button {
+                    setPopupAllowance(!allowsPopups)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: allowsPopups ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle")
+                        Text("팝업 허용")
+                        Text("차단 시 켜기")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(PharTheme.ColorToken.inkSecondary)
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(allowsPopups ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(allowsPopups ? PharTheme.ColorToken.accentBlue.opacity(0.12) : Color.clear)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(allowsPopups ? PharTheme.ColorToken.accentBlue.opacity(0.28) : PharTheme.ColorToken.borderSoft, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
                 
                 Button {
                     viewModel.isLectureWindowPinned.toggle()
@@ -97,6 +123,9 @@ struct LectureFloatingBrowserView: View {
                     ShortcutButton(title: "EBSi", url: "https://m.ebsi.co.kr", icon: "book.fill", color: .green) {
                         navigateTo(url: $0)
                     }
+                    ShortcutButton(title: "유튜브", url: "https://m.youtube.com", icon: "play.rectangle.fill", color: .red) {
+                        navigateTo(url: $0)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
@@ -105,7 +134,11 @@ struct LectureFloatingBrowserView: View {
             
             // WebView
             ZStack {
-                PharWebView(urlString: $viewModel.lectureWebURL, isLoading: $isLoading)
+                PharWebView(
+                    urlString: $viewModel.lectureWebURL,
+                    isLoading: $isLoading,
+                    allowsPopups: $allowsPopups
+                )
                 
                 if isLoading {
                     ProgressView()
@@ -126,6 +159,13 @@ struct LectureFloatingBrowserView: View {
         .offset(x: viewModel.lectureWindowPosition.x + dragOffset.width, y: viewModel.lectureWindowPosition.y + dragOffset.height)
         .onAppear {
             urlInput = viewModel.lectureWebURL
+            syncPopupAllowance()
+        }
+        .onChange(of: viewModel.lectureWebURL) { _, newURL in
+            if urlInput != newURL {
+                urlInput = newURL
+            }
+            syncPopupAllowance()
         }
     }
     
@@ -140,6 +180,15 @@ struct LectureFloatingBrowserView: View {
         }
         viewModel.lectureWebURL = finalURL
         urlInput = finalURL
+    }
+
+    private func syncPopupAllowance() {
+        allowsPopups = viewModel.lecturePopupAllowed(for: viewModel.lectureWebURL)
+    }
+
+    private func setPopupAllowance(_ allowed: Bool) {
+        allowsPopups = allowed
+        viewModel.setLecturePopupAllowed(allowed, for: viewModel.lectureWebURL)
     }
 }
 

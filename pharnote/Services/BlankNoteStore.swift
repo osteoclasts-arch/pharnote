@@ -55,6 +55,10 @@ actor BlankNoteStore {
                 content = BlankNoteContent.initial()
                 try saveContent(content, documentURL: documentURL)
             }
+            if content.version < 4 {
+                content.version = 4
+                try saveContent(content, documentURL: documentURL)
+            }
             if let firstPageID = content.pages.first?.id {
                 try migrateLegacySinglePageDrawingIfNeeded(documentURL: documentURL, firstPageID: firstPageID)
             }
@@ -67,7 +71,7 @@ actor BlankNoteStore {
             let pages = (0..<pageCount).map { _ in
                 BlankNotePage(id: UUID(), createdAt: now, updatedAt: now)
             }
-            let migrated = BlankNoteContent(version: 2, pages: pages)
+            let migrated = BlankNoteContent(version: 4, pages: pages)
             try saveContent(migrated, documentURL: documentURL)
             if let firstPageID = migrated.pages.first?.id {
                 try migrateLegacySinglePageDrawingIfNeeded(documentURL: documentURL, firstPageID: firstPageID)

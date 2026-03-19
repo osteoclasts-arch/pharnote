@@ -452,7 +452,76 @@ struct PDFDocumentEditorView: View {
     private var chromeInkPalette: some View {
         WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
             VStack(alignment: .leading, spacing: 10) {
-                if viewModel.isToolSelected(.pen) {
+                if viewModel.isToolSelected(.highlighter) {
+                    HighlightStructurePaletteView(
+                        mode: Binding(
+                            get: { viewModel.highlightMode },
+                            set: { viewModel.selectHighlightMode($0) }
+                        ),
+                        selectedRole: Binding(
+                            get: { viewModel.selectedHighlightRole },
+                            set: { viewModel.selectHighlightRole($0) }
+                        ),
+                        colorBinding: { role in
+                            viewModel.highlightColorBinding(for: role)
+                        }
+                    )
+
+                    if viewModel.highlightMode == .structured {
+                        HStack(spacing: 10) {
+                            ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                                WritingStrokePresetButton(
+                                    slotIndex: index,
+                                    width: CGFloat(width),
+                                    isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                                ) {
+                                    viewModel.selectStrokePreset(at: index)
+                                } onLongPress: {
+                                    editingStrokePresetIndex = index
+                                }
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                                WritingStrokePresetButton(
+                                    slotIndex: index,
+                                    width: CGFloat(width),
+                                    isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                                ) {
+                                    viewModel.selectStrokePreset(at: index)
+                                } onLongPress: {
+                                    editingStrokePresetIndex = index
+                                }
+                            }
+
+                            WritingToolbarDivider()
+
+                            colorSwatchButton(3)
+                            colorSwatchButton(2)
+                            colorSwatchButton(0)
+                            colorSwatchButton(4)
+
+                            Button {
+                                viewModel.updateSelectedColor(1)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .foregroundStyle(WritingChromePalette.chromeBorder)
+                                    .frame(width: 32, height: 32)
+                                    .background(
+                                        Circle()
+                                            .fill(Color.white.opacity(0.72))
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } else if viewModel.isToolSelected(.pen) {
                     HStack(spacing: 8) {
                         ForEach(WritingPenStyle.allCases) { penStyle in
                             WritingPenStyleButton(
@@ -1273,6 +1342,19 @@ struct PDFDocumentEditorView: View {
                             )
                         }
                     }
+                }
+
+                workspacePanelSection {
+                    HighlightStructureSidebarView(snapshot: viewModel.currentHighlightSnapshot) { role in
+                        if viewModel.highlightMode != .structured {
+                            viewModel.selectHighlightMode(.structured)
+                        }
+                        viewModel.selectHighlightRole(role)
+                        if !viewModel.isToolSelected(.highlighter) {
+                            viewModel.selectTool(.highlighter)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 workspacePanelSection {

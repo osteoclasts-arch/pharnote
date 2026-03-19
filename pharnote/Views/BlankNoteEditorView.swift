@@ -20,6 +20,7 @@ struct BlankNoteEditorView: View {
     @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
+    @State private var isShowingPageStyleSheet = false
     @State private var documentBeingRenamed: PharDocument?
     @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
@@ -189,6 +190,9 @@ struct BlankNoteEditorView: View {
                 isShowingFilePicker = false
             }
         }
+        .sheet(isPresented: $isShowingPageStyleSheet) {
+            BlankNotePageStyleSheet(viewModel: viewModel)
+        }
         .alert("오류", isPresented: isErrorPresented) {
             Button("확인", role: .cancel) {}
         } message: {
@@ -214,7 +218,8 @@ struct BlankNoteEditorView: View {
     private var editorCanvas: some View {
         GeometryReader { geometry in
             let pageWidth = min(772, max(640, geometry.size.width - 110))
-            let pageHeight = pageWidth * 1.34
+            let paperSize = viewModel.currentPagePaperSize
+            let pageHeight = pageWidth * paperSize.aspectRatio
 
             ZStack(alignment: .top) {
                 WritingChromePalette.paper.ignoresSafeArea()
@@ -300,14 +305,32 @@ struct BlankNoteEditorView: View {
                     LectureFloatingBrowserView(viewModel: viewModel)
                         .transition(.scale.combined(with: .opacity))
                 }
+
+                if viewModel.isHighlightStructurePanelVisible {
+                    HStack {
+                        Spacer(minLength: 0)
+                        highlightStructureSidebar
+                    }
+                    .padding(.top, 132)
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
         }
     }
 
     private func editorPage(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
+        let paperSize = viewModel.currentPagePaperSize
+        let backgroundStyle = viewModel.currentPageBackgroundStyle
+
+        return ZStack {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(WritingChromePalette.canvas)
+                .fill(backgroundStyle.surfaceColor)
+                .overlay {
+                    BlankNotePaperPatternView(style: backgroundStyle)
+                        .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                }
                 .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
 
             DocumentWorkspaceAttachmentCanvasLayer(
@@ -351,6 +374,26 @@ struct BlankNoteEditorView: View {
                 .allowsHitTesting(false)
         }
         .frame(width: width, height: height)
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 8) {
+                Text(paperSize.title)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.56))
+
+                Text(backgroundStyle.title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.38))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.62))
+            )
+            .padding(.leading, 14)
+            .padding(.top, 14)
+            .allowsHitTesting(false)
+        }
         .onTapGesture { point in
             if viewModel.selectedTool == .text {
                 viewModel.addTextElement(at: point)
@@ -402,6 +445,21 @@ struct BlankNoteEditorView: View {
                         accentTint: true
                     ) {
                         isShowingPageGrid = true
+                    }
+                    WritingChromeIconButton(
+                        systemName: "sidebar.right",
+                        accentTint: true,
+                        isSelected: viewModel.isHighlightStructurePanelVisible
+                    ) {
+                        withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                            viewModel.toggleHighlightStructurePanel()
+                        }
+                    }
+                    WritingChromeIconButton(
+                        systemName: "doc.text",
+                        accentTint: true
+                    ) {
+                        isShowingPageStyleSheet = true
                     }
 
                     if viewModel.isToolSelected(.lasso) {
@@ -500,7 +558,99 @@ struct BlankNoteEditorView: View {
     private var chromeInkPalette: some View {
         WritingChromeCapsule(fill: WritingChromePalette.paletteFill) {
             VStack(alignment: .leading, spacing: 10) {
-                if viewModel.isToolSelected(.pen) {
+                if viewModel.isToolSelected(.highlighter) {
+                    HighlightStructurePaletteView(
+                        mode: Binding(
+                            get: { viewModel.highlightMode },
+                            set: { viewModel.selectHighlightMode($0) }
+                        ),
+                        selectedRole: Binding(
+                            get: { viewModel.selectedHighlightRole },
+                            set: { viewModel.selectHighlightRole($0) }
+                        ),
+                        colorBinding: { role in
+                            viewModel.highlightColorBinding(for: role)
+                        }
+                    )
+
+                    if viewModel.highlightMode == .structured {
+                        HStack(spacing: 10) {
+                            ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                                WritingStrokePresetButton(
+                                    slotIndex: index,
+                                    width: CGFloat(width),
+                                    isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                                ) {
+                                    viewModel.selectStrokePreset(at: index)
+                                } onLongPress: {
+                                    editingStrokePresetIndex = index
+                                }
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                                WritingStrokePresetButton(
+                                    slotIndex: index,
+                                    width: CGFloat(width),
+                                    isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                                ) {
+                                    viewModel.selectStrokePreset(at: index)
+                                } onLongPress: {
+                                    editingStrokePresetIndex = index
+                                }
+                            }
+
+                            WritingToolbarDivider()
+
+                            colorSwatchButton(3)
+                            colorSwatchButton(2)
+                            colorSwatchButton(0)
+                            colorSwatchButton(4)
+
+                            ForEach(Array(viewModel.savedColorPresets.enumerated()), id: \.offset) { index, uiColor in
+                                WritingColorSwatchButton(
+                                    color: Color(uiColor: uiColor),
+                                    isSelected: viewModel.dynamicColor == uiColor && viewModel.selectedColorID == 999
+                                ) {
+                                    viewModel.dynamicColor = uiColor
+                                    viewModel.updateSelectedColor(999)
+                                }
+                                .onLongPressGesture {
+                                    viewModel.removeColorPreset(at: index)
+                                }
+                            }
+
+                            HStack(spacing: 0) {
+                                ColorPicker("", selection: Binding(
+                                    get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                                    set: { newColor in
+                                        viewModel.dynamicColor = UIColor(newColor)
+                                        viewModel.updateSelectedColor(999)
+                                    }
+                                ))
+                                .labelsHidden()
+                                .frame(width: 32, height: 32)
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                                )
+
+                                if viewModel.selectedColorID == 999 && viewModel.dynamicColor != nil {
+                                    Button {
+                                        viewModel.saveCurrentDynamicColor()
+                                    } label: {
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundStyle(WritingChromePalette.accent)
+                                            .font(.system(size: 14))
+                                            .offset(x: -8, y: -8)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } else if viewModel.isToolSelected(.pen) {
                     HStack(spacing: 8) {
                         ForEach(WritingPenStyle.allCases) { penStyle in
                             WritingPenStyleButton(
@@ -514,68 +664,68 @@ struct BlankNoteEditorView: View {
                             }
                         }
                     }
-                }
 
-                HStack(spacing: 10) {
-                    ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
-                        WritingStrokePresetButton(
-                            slotIndex: index,
-                            width: CGFloat(width),
-                            isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
-                        ) {
-                            viewModel.selectStrokePreset(at: index)
-                        } onLongPress: {
-                            editingStrokePresetIndex = index
+                    HStack(spacing: 10) {
+                        ForEach(Array(viewModel.strokePresetConfiguration.values.enumerated()), id: \.offset) { index, width in
+                            WritingStrokePresetButton(
+                                slotIndex: index,
+                                width: CGFloat(width),
+                                isSelected: viewModel.strokePresetConfiguration.selectedIndex == index
+                            ) {
+                                viewModel.selectStrokePreset(at: index)
+                            } onLongPress: {
+                                editingStrokePresetIndex = index
+                            }
                         }
-                    }
 
-                    WritingToolbarDivider()
+                        WritingToolbarDivider()
 
-                    colorSwatchButton(3)
-                    colorSwatchButton(2)
-                    colorSwatchButton(0)
-                    colorSwatchButton(4)
+                        colorSwatchButton(3)
+                        colorSwatchButton(2)
+                        colorSwatchButton(0)
+                        colorSwatchButton(4)
 
-                    ForEach(Array(viewModel.savedColorPresets.enumerated()), id: \.offset) { index, uiColor in
-                        WritingColorSwatchButton(
-                            color: Color(uiColor: uiColor),
-                            isSelected: viewModel.dynamicColor == uiColor && viewModel.selectedColorID == 999
-                        ) {
-                            viewModel.dynamicColor = uiColor
-                            viewModel.updateSelectedColor(999)
-                        }
-                        .onLongPressGesture {
-                            viewModel.removeColorPreset(at: index)
-                        }
-                    }
-
-                    HStack(spacing: 0) {
-                        ColorPicker("", selection: Binding(
-                            get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
-                            set: { newColor in
-                                viewModel.dynamicColor = UIColor(newColor)
+                        ForEach(Array(viewModel.savedColorPresets.enumerated()), id: \.offset) { index, uiColor in
+                            WritingColorSwatchButton(
+                                color: Color(uiColor: uiColor),
+                                isSelected: viewModel.dynamicColor == uiColor && viewModel.selectedColorID == 999
+                            ) {
+                                viewModel.dynamicColor = uiColor
                                 viewModel.updateSelectedColor(999)
                             }
-                        ))
-                        .labelsHidden()
-                        .frame(width: 32, height: 32)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
-                        )
-
-                        if viewModel.selectedColorID == 999 && viewModel.dynamicColor != nil {
-                            Button {
-                                viewModel.saveCurrentDynamicColor()
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(WritingChromePalette.accent)
-                                    .font(.system(size: 14))
-                                    .offset(x: -8, y: -8)
+                            .onLongPressGesture {
+                                viewModel.removeColorPreset(at: index)
                             }
                         }
+
+                        HStack(spacing: 0) {
+                            ColorPicker("", selection: Binding(
+                                get: { Color(uiColor: viewModel.dynamicColor ?? .black) },
+                                set: { newColor in
+                                    viewModel.dynamicColor = UIColor(newColor)
+                                    viewModel.updateSelectedColor(999)
+                                }
+                            ))
+                            .labelsHidden()
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle().stroke(Color.black.opacity(0.15), lineWidth: 1)
+                            )
+
+                            if viewModel.selectedColorID == 999 && viewModel.dynamicColor != nil {
+                                Button {
+                                    viewModel.saveCurrentDynamicColor()
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(WritingChromePalette.accent)
+                                        .font(.system(size: 14))
+                                        .offset(x: -8, y: -8)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1219,6 +1369,19 @@ struct BlankNoteEditorView: View {
             pageTransitionFlashOpacity = 0
         }
     }
+
+    private var highlightStructureSidebar: some View {
+        HighlightStructureSidebarView(snapshot: viewModel.currentHighlightSnapshot) { role in
+            if viewModel.highlightMode != .structured {
+                viewModel.selectHighlightMode(.structured)
+            }
+            viewModel.selectHighlightRole(role)
+            if !viewModel.isToolSelected(.highlighter) {
+                viewModel.selectTool(.highlighter)
+            }
+        }
+        .frame(width: 320)
+    }
 }
 
 #Preview("BlankNoteEditor") {
@@ -1242,18 +1405,237 @@ private enum PreviewDocumentFactory {
     }
 }
 
-private struct CanvasPaperDecor: View {
+private struct BlankNotePaperPatternView: View {
+    let style: BlankNoteBackgroundStyle
+
     var body: some View {
-        VStack(spacing: 28) {
-            ForEach(0..<12, id: \.self) { _ in
-                Rectangle()
-                    .fill(PharTheme.ColorToken.borderSoft.opacity(0.42))
-                    .frame(height: 1)
+        GeometryReader { proxy in
+            Canvas { context, size in
+                drawPattern(in: context, size: size, style: style)
+            }
+            .opacity(style.patternOpacity)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func drawPattern(in context: GraphicsContext, size: CGSize, style: BlankNoteBackgroundStyle) {
+        let minorColor = style.patternColor
+        let majorColor = style.patternColor.opacity(0.45)
+        let lineWidth: CGFloat = 1
+        let horizontalStep: CGFloat = style == .ruled ? 30 : 28
+        let dotStep: CGFloat = 18
+
+        switch style {
+        case .plain:
+            break
+        case .ruled:
+            for y in stride(from: horizontalStep * 1.8, through: size.height, by: horizontalStep) {
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(path, with: .color(minorColor), lineWidth: lineWidth)
+            }
+        case .grid:
+            for y in stride(from: 0, through: size.height, by: horizontalStep) {
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(path, with: .color(minorColor), lineWidth: lineWidth)
+            }
+            for x in stride(from: 0, through: size.width, by: horizontalStep) {
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(path, with: .color(minorColor), lineWidth: lineWidth)
+            }
+            for x in stride(from: 0, through: size.width, by: horizontalStep * 5) {
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(path, with: .color(majorColor), lineWidth: 1.1)
+            }
+            for y in stride(from: 0, through: size.height, by: horizontalStep * 5) {
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(path, with: .color(majorColor), lineWidth: 1.1)
+            }
+        case .dotGrid:
+            for x in stride(from: 0, through: size.width, by: dotStep) {
+                for y in stride(from: 0, through: size.height, by: dotStep) {
+                    let rect = CGRect(x: x - 1, y: y - 1, width: 2, height: 2)
+                    context.fill(Path(ellipseIn: rect), with: .color(minorColor))
+                }
             }
         }
-        .padding(.horizontal, PharTheme.Spacing.large)
-        .padding(.top, 90)
-        .allowsHitTesting(false)
+    }
+}
+
+private struct BlankNotePageStyleSheet: View {
+    @ObservedObject var viewModel: BlankNoteEditorViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    styleSection(
+                        title: "페이지 용지",
+                        subtitle: "현재 페이지의 비율과 여백 감각을 바꿉니다.",
+                        content: {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 12)], spacing: 12) {
+                                ForEach(BlankNotePaperSize.allCases, id: \.self) { size in
+                                    StyleOptionTile(
+                                        title: size.title,
+                                        subtitle: size.subtitle,
+                                        isSelected: viewModel.currentPagePaperSize == size,
+                                        preview: {
+                                            PaperPreviewShape(
+                                                aspectRatio: size.aspectRatio,
+                                                accent: viewModel.currentPagePaperSize == size ? WritingChromePalette.accent : Color.black.opacity(0.18)
+                                            )
+                                        }
+                                    ) {
+                                        viewModel.updateCurrentPagePaperSize(size)
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    styleSection(
+                        title: "노트 배경",
+                        subtitle: "굿노트처럼 무지, 줄, 격자, 도트 배경을 고릅니다.",
+                        content: {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 12)], spacing: 12) {
+                                ForEach(BlankNoteBackgroundStyle.allCases, id: \.self) { style in
+                                    StyleOptionTile(
+                                        title: style.title,
+                                        subtitle: style.subtitle,
+                                        isSelected: viewModel.currentPageBackgroundStyle == style,
+                                        preview: {
+                                            PaperBackgroundPreview(style: style)
+                                        }
+                                    ) {
+                                        viewModel.updateCurrentPageBackgroundStyle(style)
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+                .padding(20)
+            }
+            .background(PharTheme.ColorToken.appBackground.ignoresSafeArea())
+            .navigationTitle("페이지 스타일")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("완료") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func styleSection<Content: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                Text(subtitle)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+            }
+
+            content()
+        }
+    }
+}
+
+private struct StyleOptionTile<Preview: View>: View {
+    let title: String
+    let subtitle: String
+    let isSelected: Bool
+    let preview: () -> Preview
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                preview()
+                    .frame(height: 76)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? WritingChromePalette.accent : Color.black.opacity(0.10), lineWidth: isSelected ? 2 : 1)
+            )
+            .shadow(color: Color.black.opacity(isSelected ? 0.12 : 0.04), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PaperPreviewShape: View {
+    let aspectRatio: CGFloat
+    let accent: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(accent.opacity(0.8), lineWidth: 1.5)
+            )
+            .overlay {
+                VStack(spacing: 6) {
+                    Rectangle().fill(accent.opacity(0.22)).frame(height: 2)
+                    Rectangle().fill(accent.opacity(0.12)).frame(height: 2)
+                    Rectangle().fill(accent.opacity(0.08)).frame(height: 2)
+                }
+                .padding(14)
+            }
+            .aspectRatio(aspectRatio, contentMode: .fit)
+    }
+}
+
+private struct PaperBackgroundPreview: View {
+    let style: BlankNoteBackgroundStyle
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(style.surfaceColor)
+            .overlay {
+                BlankNotePaperPatternView(style: style)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
     }
 }
 

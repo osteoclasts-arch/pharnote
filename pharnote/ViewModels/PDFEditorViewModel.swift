@@ -92,6 +92,10 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var canDelete: Bool = false
     @Published private(set) var bookmarkedPageIndices: Set<Int> = []
     @Published private(set) var outlineEntries: [OutlineEntry] = []
+    @Published var highlightMode: HighlightStructureMode = .basic
+    @Published var selectedHighlightRole: HighlightStructureRole = .core
+    @Published private(set) var currentHighlightSnapshot: HighlightStructureSnapshot?
+    @Published var isHighlightStructurePanelVisible: Bool = false
     @Published private(set) var storedProgressSnapshot: StudyProgressSnapshot?
     @Published var isReadOnlyMode: Bool = false
     @Published var errorMessage: String?
@@ -112,6 +116,9 @@ final class PDFEditorViewModel: ObservableObject {
     private let eventLogger: StudyEventLogger
     private let libraryStore: LibraryStore
     private let userDefaults: UserDefaults
+    private let highlightStore: HighlightStructureStore
+    private let highlightEngine: HighlightStructureEngine
+    private let documentOCRService: DocumentOCRService
     private var strokePresetConfigurationsByTool: [AnnotationTool: WritingStrokePresetConfiguration]
     private let requestedInitialPageIndex: Int?
     private var thumbnailGenerationTask: Task<Void, Never>?
@@ -135,6 +142,10 @@ final class PDFEditorViewModel: ObservableObject {
     private var copyActionCountByPageIndex: [Int: Int] = [:]
     private var pasteActionCountByPageIndex: [Int: Int] = [:]
     private var pageNavigationHistory: [Int] = []
+    private var highlightSnapshotTask: Task<Void, Never>?
+    private var highlightSyncTask: Task<Void, Never>?
+    private var lastHighlightStrokeCountByPageIndex: [Int: Int] = [:]
+    private var highlightRoleHexByRole: [HighlightStructureRole: String] = [:]
 
     init(
         document: PharDocument,
@@ -143,6 +154,9 @@ final class PDFEditorViewModel: ObservableObject {
         libraryStore: LibraryStore? = nil,
         userDefaults: UserDefaults = .standard
     ) {
+        let highlightStore = HighlightStructureStore()
+        let highlightEngine = HighlightStructureEngine()
+        let documentOCRService = DocumentOCRService()
         let penPresetConfiguration = WritingStrokePresetStore.configuration(
             toolKey: Self.strokePresetToolKey(for: .pen),
             userDefaults: userDefaults
@@ -156,6 +170,9 @@ final class PDFEditorViewModel: ObservableObject {
         self.eventLogger = eventLogger ?? StudyEventLogger.shared
         self.libraryStore = libraryStore ?? LibraryStore()
         self.userDefaults = userDefaults
+        self.highlightStore = highlightStore
+        self.highlightEngine = highlightEngine
+        self.documentOCRService = documentOCRService
         self.strokePresetConfigurationsByTool = [
             .pen: penPresetConfiguration,
             .highlighter: highlighterPresetConfiguration
@@ -167,6 +184,7 @@ final class PDFEditorViewModel: ObservableObject {
             (userDefaults.array(forKey: Self.bookmarkDefaultsKey(for: document.id)) as? [Int]) ?? []
         )
         self.strokeWidth = penPresetConfiguration.values[penPresetConfiguration.selectedIndex]
+        loadHighlightPalettePresets()
     }
 
     func attachPDFView(_ pdfView: PDFView) {
@@ -205,9 +223,11 @@ final class PDFEditorViewModel: ObservableObject {
 
             recordPageVisit(initialPageIndex)
             persistStudyProgress()
+            lastHighlightStrokeCountByPageIndex[initialPageIndex] = currentOverlayDrawing().strokes.count
 
             clearPDFTextSearch(resetQuery: false)
             rebuildOutlineEntries()
+            scheduleHighlightSnapshotRefresh(pageIndex: initialPageIndex)
 
             generateThumbnails(from: pdfURL)
         } catch {
@@ -231,6 +251,8 @@ final class PDFEditorViewModel: ObservableObject {
             recordPageVisit(index)
             persistStudyProgress()
         }
+        lastHighlightStrokeCountByPageIndex[index] = currentOverlayDrawing().strokes.count
+        scheduleHighlightSnapshotRefresh(pageIndex: index)
         refreshEditActionAvailability()
     }
 
@@ -540,7 +562,10 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     var currentToolLabel: String {
-        activeTool?.rawValue ?? "스크롤"
+        if activeTool == .highlighter && highlightMode == .structured {
+            return "구조화 · \(selectedHighlightRole.title)"
+        }
+        return activeTool?.rawValue ?? "스크롤"
     }
 
     func isToolSelected(_ tool: AnnotationTool) -> Bool {
@@ -572,6 +597,11 @@ final class PDFEditorViewModel: ObservableObject {
         )
         if let inkTool = activeInkTool(for: tool) {
             applyStrokePresetConfiguration(for: inkTool)
+        }
+        if tool == .highlighter && highlightMode == .structured {
+            isHighlightStructurePanelVisible = true
+            lastHighlightStrokeCountByPageIndex[currentPageIndex] = currentOverlayDrawing().strokes.count
+            scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
         }
         applyPDFInteractionMode()
     }
@@ -620,6 +650,76 @@ final class PDFEditorViewModel: ObservableObject {
     func updateStrokePreset(_ width: Double, at index: Int) {
         guard let inkTool = activeInkTool() else { return }
         updateStrokePreset(width, at: index, for: inkTool)
+    }
+
+    func selectHighlightMode(_ mode: HighlightStructureMode) {
+        guard highlightMode != mode else { return }
+        highlightMode = mode
+        eventLogger.log(
+            .highlightModeSelected,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "mode": .string(mode.rawValue)
+            ]
+        )
+
+        if mode == .structured {
+            isHighlightStructurePanelVisible = true
+            lastHighlightStrokeCountByPageIndex[currentPageIndex] = currentOverlayDrawing().strokes.count
+        }
+
+        applyPDFInteractionMode()
+        scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
+    }
+
+    func selectHighlightRole(_ role: HighlightStructureRole) {
+        guard selectedHighlightRole != role else { return }
+        selectedHighlightRole = role
+        eventLogger.log(
+            .highlightRoleSelected,
+            document: document,
+            pageID: currentAnalysisPageID,
+            sessionID: sessionID,
+            payload: [
+                "role": .string(role.rawValue)
+            ]
+        )
+        if highlightMode == .structured {
+            isHighlightStructurePanelVisible = true
+            applyPDFInteractionMode()
+            scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
+        }
+    }
+
+    func toggleHighlightStructurePanel() {
+        isHighlightStructurePanelVisible.toggle()
+    }
+
+    func highlightColor(for role: HighlightStructureRole) -> UIColor {
+        HighlightColorCodec.uiColor(
+            from: highlightColorHex(for: role),
+            fallback: HighlightColorCodec.uiColor(from: role.defaultColorHex)
+        )
+    }
+
+    func highlightColorBinding(for role: HighlightStructureRole) -> Binding<Color> {
+        Binding(
+            get: { Color(uiColor: self.highlightColor(for: role)) },
+            set: { newColor in
+                self.updateHighlightRoleColor(UIColor(newColor), for: role)
+            }
+        )
+    }
+
+    func updateHighlightRoleColor(_ color: UIColor, for role: HighlightStructureRole) {
+        let hex = HighlightColorCodec.hexString(from: color)
+        highlightRoleHexByRole[role] = hex
+        userDefaults.set(hex, forKey: highlightRolePaletteKey(for: role))
+        if selectedHighlightRole == role {
+            applyPDFInteractionMode()
+        }
     }
 
     func togglePencilOnlyInput() {
@@ -737,7 +837,9 @@ final class PDFEditorViewModel: ObservableObject {
         case .pen:
             return makePenTool()
         case .highlighter:
-            let color = uiColorForColorID(selectedColorID).withAlphaComponent(0.35)
+            let color = highlightMode == .structured
+                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(0.35)
+                : uiColorForColorID(selectedColorID).withAlphaComponent(0.35)
             return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth))
         case .eraser:
             return PKEraserTool(.vector)
@@ -775,6 +877,8 @@ final class PDFEditorViewModel: ObservableObject {
         dirtyOverlayPages.insert(pageIndex)
         pageLastEditedAt[pageIndex] = Date()
         objectWillChange.send()
+        syncStructuredHighlightsIfNeeded(pageIndex: pageIndex, drawing: drawing)
+        scheduleHighlightSnapshotRefresh(pageIndex: pageIndex)
         scheduleOverlaySave(pageIndex: pageIndex)
         refreshEditActionAvailability()
     }
@@ -798,6 +902,10 @@ final class PDFEditorViewModel: ObservableObject {
     func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
         activeOverlayCanvas = canvas
         objectWillChange.send()
+        if let canvas {
+            lastHighlightStrokeCountByPageIndex[currentPageIndex] = canvas.drawing.strokes.count
+            scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
+        }
         refreshEditActionAvailability()
         applyPDFInteractionMode()
     }
@@ -1232,10 +1340,13 @@ final class PDFEditorViewModel: ObservableObject {
 
     private func markCurrentPageDirtyFromCanvas() {
         guard let canvas = activeOverlayCanvas else { return }
-        overlayDrawingCache[currentPageIndex] = canvas.drawing
+        let drawing = canvas.drawing
+        overlayDrawingCache[currentPageIndex] = drawing
         dirtyOverlayPages.insert(currentPageIndex)
         pageLastEditedAt[currentPageIndex] = Date()
         objectWillChange.send()
+        syncStructuredHighlightsIfNeeded(pageIndex: currentPageIndex, drawing: drawing)
+        scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
         scheduleOverlaySave(pageIndex: currentPageIndex)
         refreshEditActionAvailability()
     }
@@ -1396,6 +1507,13 @@ final class PDFEditorViewModel: ObservableObject {
         return overlayDrawingCache[currentPageIndex] ?? PKDrawing()
     }
 
+    private func currentOverlayDrawing(for pageIndex: Int) -> PKDrawing {
+        if pageIndex == currentPageIndex, let activeOverlayCanvas {
+            return activeOverlayCanvas.drawing
+        }
+        return overlayDrawingCache[pageIndex] ?? PKDrawing()
+    }
+
     private func currentPDFPageText() -> String? {
         guard let pdfDocument, let page = pdfDocument.page(at: currentPageIndex) else { return nil }
         let text = page.string?
@@ -1403,6 +1521,143 @@ final class PDFEditorViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let text, !text.isEmpty else { return nil }
         return text
+    }
+
+    private func scheduleHighlightSnapshotRefresh(pageIndex: Int?) {
+        highlightSnapshotTask?.cancel()
+        guard let pageIndex else {
+            currentHighlightSnapshot = nil
+            return
+        }
+
+        highlightSnapshotTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            await self?.refreshHighlightSnapshot(for: pageIndex)
+        }
+    }
+
+    private func refreshHighlightSnapshot(for pageIndex: Int) async {
+        guard pageIndex == currentPageIndex else { return }
+        let pageKey = "pdf-page-\(pageIndex)"
+        let pageLabel = pageTitle(for: pageIndex)
+        let referenceText = await highlightReferenceText(for: pageIndex)
+        let items = await highlightStore.loadItems(documentURL: documentURL, pageKey: pageKey)
+        let snapshot = highlightEngine.buildSnapshot(
+            pageKey: pageKey,
+            pageLabel: pageLabel,
+            items: items,
+            referenceText: referenceText,
+            generatedAt: Date()
+        )
+        currentHighlightSnapshot = snapshot
+        eventLogger.log(
+            .highlightStructureRefreshed,
+            document: document,
+            pageID: UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex),
+            sessionID: sessionID,
+            payload: [
+                "page_key": .string(pageKey),
+                "item_count": .integer(snapshot.totalCount)
+            ]
+        )
+    }
+
+    private func highlightReferenceText(for pageIndex: Int) async -> String? {
+        if let pdfText = currentPDFPageText(), pageIndex == currentPageIndex {
+            return pdfText
+        }
+
+        if pageIndex == currentPageIndex, let source = analysisSource {
+            let blocks = await documentOCRService.recognizePDFBlocks(source: source)
+            let joined = blocks.map(\.text).joined(separator: "\n")
+            if !joined.isEmpty {
+                return joined
+            }
+        }
+
+        return nil
+    }
+
+    private func syncStructuredHighlightsIfNeeded(pageIndex: Int, drawing: PKDrawing) {
+        guard highlightMode == .structured else { return }
+
+        let currentCount = drawing.strokes.count
+        let lastCount = lastHighlightStrokeCountByPageIndex[pageIndex] ?? currentCount
+        if currentCount == lastCount {
+            return
+        }
+
+        if currentCount > lastCount, selectedTool != .highlighter {
+            lastHighlightStrokeCountByPageIndex[pageIndex] = currentCount
+            return
+        }
+
+        highlightSyncTask?.cancel()
+        highlightSyncTask = Task { [weak self] in
+            await self?.syncStructuredHighlights(pageIndex: pageIndex, drawing: drawing, previousCount: lastCount)
+        }
+    }
+
+    private func syncStructuredHighlights(pageIndex: Int, drawing: PKDrawing, previousCount: Int) async {
+        let pageKey = "pdf-page-\(pageIndex)"
+        let pageLabel = pageTitle(for: pageIndex)
+        var items = await highlightStore.loadItems(documentURL: documentURL, pageKey: pageKey)
+        let currentCount = drawing.strokes.count
+
+        if currentCount < previousCount {
+            items = highlightEngine.syncItems(currentItems: items, drawing: drawing)
+        } else if currentCount > previousCount {
+            let appendedStrokes = drawing.strokes.dropFirst(previousCount)
+            let referenceText = await highlightReferenceText(for: pageIndex)
+            let newItems = appendedStrokes.map { stroke in
+                highlightEngine.captureItem(
+                    documentID: document.id,
+                    pageKey: pageKey,
+                    pageLabel: pageLabel,
+                    mode: .structured,
+                    role: selectedHighlightRole,
+                    colorHex: highlightColorHex(for: selectedHighlightRole),
+                    stroke: stroke,
+                    referenceText: referenceText
+                )
+            }
+            items.append(contentsOf: newItems)
+        }
+
+        lastHighlightStrokeCountByPageIndex[pageIndex] = currentCount
+        if items.isEmpty {
+            await highlightStore.deleteItems(documentURL: documentURL, pageKey: pageKey)
+        } else {
+            try? await highlightStore.saveItems(items, documentURL: documentURL, pageKey: pageKey)
+        }
+        touchDocumentUpdatedAt()
+        await refreshHighlightSnapshot(for: pageIndex)
+    }
+
+    private func highlightColorHex(for role: HighlightStructureRole) -> String {
+        highlightRoleHexByRole[role] ?? role.defaultColorHex
+    }
+
+    private func loadHighlightPalettePresets() {
+        var presets: [HighlightStructureRole: String] = [:]
+        for role in HighlightStructureRole.allCases {
+            presets[role] = userDefaults.string(forKey: highlightRolePaletteKey(for: role)) ?? role.defaultColorHex
+        }
+        highlightRoleHexByRole = presets
+    }
+
+    private func highlightRolePaletteKey(for role: HighlightStructureRole) -> String {
+        "pharnote.highlight.role.\(role.rawValue)"
+    }
+
+    private func touchDocumentUpdatedAt() {
+        var updatedDocument = document
+        updatedDocument.updatedAt = pageLastEditedAt.values.max() ?? Date()
+        if let savedDocument = try? libraryStore.updateDocument(updatedDocument) {
+            document = savedDocument
+        } else {
+            document = updatedDocument
+        }
     }
 
     private var currentProgressSnapshot: StudyProgressSnapshot {

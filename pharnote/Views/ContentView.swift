@@ -79,7 +79,6 @@ private struct PharnoteNotesHomeView: View {
     @ObservedObject var viewModel: LibraryViewModel
 
     @State private var isShowingPDFImportPicker = false
-    @State private var isShowingPastQuestionsDebug = false
     @State private var isShowingSettings = false
     @State private var isShowingSidebar = false
     @State private var isShowingGuide = false
@@ -90,10 +89,6 @@ private struct PharnoteNotesHomeView: View {
 
     private var continueDocuments: [PharDocument] {
         Array(viewModel.filteredDocuments.prefix(8))
-    }
-
-    private var showsInternalTools: Bool {
-        PharFeatureFlags.showsInternalTools
     }
 
     var body: some View {
@@ -127,10 +122,6 @@ private struct PharnoteNotesHomeView: View {
                         )
 
                         quickActionSection
-
-                        if showsInternalTools {
-                            internalToolsSection
-                        }
 
                         continueSection
                     }
@@ -211,9 +202,6 @@ private struct PharnoteNotesHomeView: View {
                 blankNotes: viewModel.blankNoteCount,
                 pdfDocuments: viewModel.pdfCount
             )
-        }
-        .sheet(isPresented: $isShowingPastQuestionsDebug) {
-            PastQuestionsDebugView()
         }
         .sheet(item: $documentBeingRenamed) { document in
             DocumentRenameSheet(
@@ -318,25 +306,6 @@ private struct PharnoteNotesHomeView: View {
                         withAnimation { isShowingGuide = true }
                     }
                 )
-            }
-        }
-    }
-
-    private var internalToolsSection: some View {
-        HomeSurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("TutorHub 기출 DB")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(HomePalette.textPrimary)
-
-                Text("`public.past_questions`를 read-only로 조회하는 내부 디버그 패널입니다. exact lookup, text search, image_url 렌더링을 여기서 바로 확인할 수 있습니다.")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundStyle(HomePalette.textSecondary)
-
-                Button("기출 DB 열기") {
-                    isShowingPastQuestionsDebug = true
-                }
-                .buttonStyle(HomeFilledButtonStyle())
             }
         }
     }
@@ -610,15 +579,9 @@ private struct HomePlannerDaySnapshotCard: View {
             .frame(width: 114, alignment: .leading)
             .padding(.top, 18)
 
-            VStack(alignment: .leading, spacing: 10) {
-                if let first = plannerCenter.dDayItems.first {
-                    HomePlannerDDayCard(item: first, emphasis: true)
-                }
-
-                if plannerCenter.dDayItems.count > 1 {
-                    ForEach(plannerCenter.dDayItems.dropFirst().prefix(2)) { item in
-                        HomePlannerDDayCard(item: item, emphasis: false)
-                    }
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(Array(plannerCenter.dDayItems.prefix(3)).enumerated(), id: \.element.id) { index, item in
+                    HomePlannerDDayCard(item: item, rank: index)
                 }
             }
             .frame(width: 230, alignment: .leading)
@@ -650,24 +613,64 @@ private struct HomePlannerDaySnapshotCard: View {
 
 private struct HomePlannerDDayCard: View {
     let item: PlannerDDayItem
-    let emphasis: Bool
+    let rank: Int
 
     private var tint: Color {
         Color(homeHex: item.accentHex)
     }
 
+    private var isPrimary: Bool {
+        rank == 0
+    }
+
+    private var height: CGFloat {
+        switch rank {
+        case 0: return 96
+        case 1: return 54
+        default: return 48
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        isPrimary ? 14 : 12
+    }
+
+    private var opacityValue: CGFloat {
+        switch rank {
+        case 0: return 1.0
+        case 1: return 0.78
+        default: return 0.62
+        }
+    }
+
+    private var scaleValue: CGFloat {
+        switch rank {
+        case 0: return 1.0
+        case 1: return 0.955
+        default: return 0.92
+        }
+    }
+
+    private var blurValue: CGFloat {
+        switch rank {
+        case 0: return 0
+        case 1: return 0.45
+        default: return 0.9
+        }
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Text(item.displayLabel)
-                .font(.system(size: emphasis ? 28 : 20, weight: .black, design: .rounded))
+                .font(.system(size: isPrimary ? 28 : 20, weight: .black, design: .rounded))
                 .foregroundStyle(HomePalette.textPrimary)
 
             Text(item.title)
-                .font(.system(size: emphasis ? 19 : 15, weight: .semibold, design: .rounded))
+                .font(.system(size: isPrimary ? 19 : 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(HomePalette.textPrimary)
                 .lineLimit(1)
 
-            if emphasis {
+            if isPrimary {
                 Text("☺")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(HomePalette.textPrimary)
@@ -675,18 +678,22 @@ private struct HomePlannerDDayCard: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, emphasis ? 18 : 14)
-        .padding(.vertical, emphasis ? 14 : 10)
+        .padding(.horizontal, isPrimary ? 18 : 14)
+        .padding(.vertical, isPrimary ? 14 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: emphasis ? 96 : 48)
+        .frame(height: height)
         .background(
-            RoundedRectangle(cornerRadius: emphasis ? 14 : 12, style: .continuous)
-                .fill(tint.opacity(emphasis ? 0.95 : 0.55))
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(tint.opacity(isPrimary ? 0.95 : 0.55))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: emphasis ? 14 : 12, style: .continuous)
-                .stroke(HomePalette.textPrimary.opacity(0.72), lineWidth: emphasis ? 1.7 : 1.2)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(HomePalette.textPrimary.opacity(isPrimary ? 0.72 : 0.56), lineWidth: isPrimary ? 1.7 : 1.2)
         )
+        .opacity(opacityValue)
+        .scaleEffect(scaleValue, anchor: .topLeading)
+        .blur(radius: blurValue)
+        .offset(y: CGFloat(rank) * 2)
     }
 }
 
