@@ -6,6 +6,8 @@ import UIKit
 
 @MainActor
 final class BlankNoteEditorViewModel: ObservableObject {
+    private static let highlightInkAlpha: CGFloat = 0.28
+
     enum AnnotationTool: String, CaseIterable, Identifiable {
         case pen = "펜"
         case highlighter = "형광펜"
@@ -40,6 +42,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published var dynamicColor: UIColor? = nil
     @Published var savedColorPresets: [UIColor] = []
     @Published var strokeWidth: Double = 5.0
+    @Published var selectedEraserMode: WritingEraserMode
     @Published private(set) var strokePresetConfiguration: WritingStrokePresetConfiguration
     @Published var isPencilOnlyInputEnabled: Bool
     @Published private(set) var canUndo: Bool = false
@@ -47,6 +50,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     @Published private(set) var canAnalyzeSelection: Bool = false
     @Published var pages: [BlankNotePage] = []
     @Published var activeTextElementID: UUID?
+    @Published var activeTextElementSelectionRange: NSRange?
     @Published private(set) var currentPageID: UUID?
     @Published private(set) var thumbnails: [UUID: UIImage] = [:]
     @Published private(set) var bookmarkedPageIDs: Set<UUID>
@@ -166,6 +170,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
             .pen: penPresetConfiguration,
             .highlighter: highlighterPresetConfiguration
         ]
+        self._selectedEraserMode = Published(initialValue: WritingEraserMode.load(from: userDefaults))
         self._strokePresetConfiguration = Published(initialValue: penPresetConfiguration)
         self.requestedInitialPageID = initialPageKey.flatMap { UUID(uuidString: $0) }
         self.bookmarkedPageIDs = Set((userDefaults.stringArray(forKey: "pharnote.bookmarks.\(document.id.uuidString)") ?? []).compactMap(UUID.init(uuidString:)))
@@ -432,12 +437,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
     var allowsFingerDrawing: Bool {
         guard isCanvasInputEnabled else { return false }
-        switch currentDrawingPolicy() {
-        case .pencilOnly:
-            return false
-        default:
-            return true
-        }
+        return !isPencilOnlyInputEnabled
     }
 
     var isEditingInkTool: Bool {
@@ -446,6 +446,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     var currentToolLabel: String {
+        if activeTool == .eraser {
+            return selectedEraserMode.accessibilityLabel
+        }
         if activeTool == .highlighter && highlightMode == .structured {
             return "구조화 · \(selectedHighlightRole.title)"
         }
@@ -746,6 +749,87 @@ final class BlankNoteEditorViewModel: ObservableObject {
         }
     }
 
+    func updateActiveTextSelectionRange(_ range: NSRange?) {
+        activeTextElementSelectionRange = range?.length ?? 0 > 0 ? range : nil
+    }
+
+    func applyStyleToActiveTextElement(
+        fontSize: Double? = nil,
+        fontWeight: String? = nil,
+        isItalic: Bool? = nil,
+        fontName: String? = nil,
+        alignment: String? = nil,
+        colorHex: String? = nil
+    ) {
+        guard let currentPageID,
+              let activeTextElementID,
+              let pageIndex = pages.firstIndex(where: { $0.id == currentPageID }),
+              let elementIndex = pages[pageIndex].textElements.firstIndex(where: { $0.id == activeTextElementID }) else {
+            return
+        }
+
+        var element = pages[pageIndex].textElements[elementIndex]
+        let selectedRange = activeTextElementSelectionRange
+        let mutable = NSMutableAttributedString(attributedString: element.attributedString())
+        let shouldUpdateWholeElement = selectedRange?.length ?? 0 == 0
+        let targetRange = shouldUpdateWholeElement
+            ? NSRange(location: 0, length: mutable.length)
+            : selectedRange!
+
+        func updatedAttributes(existing: [NSAttributedString.Key: Any]) -> [NSAttributedString.Key: Any] {
+            var attributes = existing
+
+            let resolvedFontSize = fontSize ?? element.fontSize
+            let resolvedFontWeight = fontWeight ?? element.fontWeight
+            let resolvedItalic = isItalic ?? element.isItalic
+            let resolvedFontName = fontName ?? element.fontName
+
+            attributes[.font] = element.makeUIFont(
+                size: resolvedFontSize,
+                weight: resolvedFontWeight,
+                italic: resolvedItalic,
+                fontName: resolvedFontName
+            )
+
+            if let colorHex {
+                attributes[.foregroundColor] = UIColor(Color(hex: colorHex) ?? .black)
+            }
+
+            if let alignment {
+                let paragraphStyle = (attributes[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+                paragraphStyle.alignment = alignmentFromString(alignment)
+                attributes[.paragraphStyle] = paragraphStyle
+            }
+
+            return attributes
+        }
+
+        if shouldUpdateWholeElement {
+            mutable.enumerateAttributes(in: targetRange, options: []) { attrs, range, _ in
+                mutable.setAttributes(updatedAttributes(existing: attrs), range: range)
+            }
+        } else {
+            mutable.enumerateAttributes(in: targetRange, options: []) { attrs, range, _ in
+                mutable.setAttributes(updatedAttributes(existing: attrs), range: range)
+            }
+        }
+
+        element.storeAttributedString(mutable)
+
+        if shouldUpdateWholeElement {
+            if let fontSize { element.fontSize = fontSize }
+            if let fontWeight { element.fontWeight = fontWeight }
+            if let isItalic { element.isItalic = isItalic }
+            if let fontName { element.fontName = fontName }
+            if let alignment { element.alignment = alignment }
+            if let colorHex { element.colorHex = colorHex }
+        }
+
+        pages[pageIndex].textElements[elementIndex] = element
+        canvasDidChange()
+        scheduleHighlightSnapshotRefresh(pageID: currentPageID)
+    }
+
     func updateCurrentPagePaperSize(_ paperSize: BlankNotePaperSize) {
         updateCurrentPageLayout(paperSize: paperSize, backgroundStyle: nil)
     }
@@ -765,6 +849,17 @@ final class BlankNoteEditorViewModel: ObservableObject {
             scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         }
     }
+
+    private func alignmentFromString(_ alignment: String) -> NSTextAlignment {
+        switch alignment {
+        case "center":
+            return .center
+        case "right":
+            return .right
+        default:
+            return .left
+        }
+    }
     
     func selectTool(_ tool: AnnotationTool) {
         if selectedTool == tool && isToolSelectionActive {
@@ -776,6 +871,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
 
         selectedTool = tool
         isToolSelectionActive = true
+        if tool == .pen || tool == .highlighter || tool == .paint || tool == .tape || tool == .eraser {
+            isPencilOnlyInputEnabled = true
+        }
         toolUsageCounts[tool, default: 0] += 1
         if tool == .lasso || tool == .paint, let currentPageID {
             lassoActionCountByPageID[currentPageID, default: 0] += 1
@@ -803,6 +901,16 @@ final class BlankNoteEditorViewModel: ObservableObject {
             scheduleHighlightSnapshotRefresh(pageID: currentPageID)
         }
         refreshUndoRedoState()
+    }
+
+    func selectEraserMode(_ mode: WritingEraserMode) {
+        guard selectedEraserMode != mode else { return }
+        selectedEraserMode = mode
+        mode.save(in: userDefaults)
+        if selectedTool == .eraser && isToolSelectionActive {
+            applyCanvasConfiguration()
+            refreshUndoRedoState()
+        }
     }
 
     func deactivateToolSelection() {
@@ -921,6 +1029,9 @@ final class BlankNoteEditorViewModel: ObservableObject {
     func togglePencilOnlyInput() {
         isPencilOnlyInputEnabled.toggle()
         applyCanvasConfiguration()
+        if isToolSelectionActive && (selectedTool == .pen || selectedTool == .highlighter || selectedTool == .paint || selectedTool == .tape || selectedTool == .eraser) {
+            refreshUndoRedoState()
+        }
         eventLogger.log(
             .inputModeChanged,
             document: document,
@@ -1000,6 +1111,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     func currentTool() -> PKTool {
         let currentKey = [
             selectedTool.rawValue,
+            selectedEraserMode.rawValue,
             highlightMode.rawValue,
             selectedHighlightRole.rawValue,
             highlightColorHex(for: selectedHighlightRole),
@@ -1017,11 +1129,11 @@ final class BlankNoteEditorViewModel: ObservableObject {
             tool = makePenTool()
         case .highlighter:
             let color = highlightMode == .structured
-                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(0.34)
-                : uiColorForColorID(selectedColorID).withAlphaComponent(0.34)
-            tool = PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth + 12))
+                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(Self.highlightInkAlpha)
+                : uiColorForColorID(selectedColorID).withAlphaComponent(Self.highlightInkAlpha)
+            tool = PKInkingTool(.pen, color: color, width: CGFloat(strokeWidth + 10))
         case .eraser:
-            tool = PKEraserTool(.vector)
+            tool = makeEraserTool()
         case .tape:
             let tapeColor = UIColor(PharTheme.ColorToken.accentButter).withAlphaComponent(0.92)
             tool = PKInkingTool(.marker, color: tapeColor, width: CGFloat(strokeWidth * 2.5))
@@ -1489,7 +1601,7 @@ final class BlankNoteEditorViewModel: ObservableObject {
     }
 
     private func saveContentSnapshot() async {
-        let snapshot = BlankNoteContent(version: 4, pages: pages)
+        let snapshot = BlankNoteContent(version: 5, pages: pages)
         do {
             try await noteStore.saveContent(snapshot, documentURL: documentURL)
         } catch {
@@ -1508,6 +1620,14 @@ final class BlankNoteEditorViewModel: ObservableObject {
         case .eraser, .lasso, .paint, .text:
             return nil
         }
+    }
+
+    private func makeEraserTool() -> PKTool {
+        let eraserType = selectedEraserMode.eraserType
+        if #available(iOS 16.4, *), let width = selectedEraserMode.toolWidth() {
+            return PKEraserTool(eraserType, width: width)
+        }
+        return PKEraserTool(eraserType)
     }
 
     private func applyStrokePresetConfiguration(for tool: AnnotationTool) {

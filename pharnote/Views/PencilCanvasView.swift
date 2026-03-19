@@ -120,6 +120,9 @@ struct PencilCanvasView: UIViewRepresentable {
             }
 
             if let eraserTool = tool as? PKEraserTool {
+                if #available(iOS 16.4, *) {
+                    return PKToolPickerEraserItem(type: eraserTool.eraserType, width: eraserTool.width)
+                }
                 return PKToolPickerEraserItem(type: eraserTool.eraserType)
             }
 

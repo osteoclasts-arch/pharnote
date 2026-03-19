@@ -58,6 +58,7 @@ struct PDFDocumentEditorView: View {
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
     @State private var activePaletteTool: PDFEditorViewModel.AnnotationTool? = nil
+    @State private var isShowingEraserModePicker = false
 
     init(document: PharDocument, initialPageKey: String? = nil) {
         let editorViewModel = PDFEditorViewModel(
@@ -1223,7 +1224,7 @@ struct PDFDocumentEditorView: View {
 
                 toolButton(.pen, icon: "pencil.tip")
                 toolButton(.highlighter, icon: "highlighter")
-                toolButton(.eraser, icon: "eraser.fill")
+                eraserToolButton
                 toolButton(.lasso, icon: "lasso")
 
                 dockDivider
@@ -1590,6 +1591,59 @@ struct PDFDocumentEditorView: View {
             )
         )
         .accessibilityLabel("\(tool.rawValue) 도구")
+    }
+
+    private var eraserModePicker: some View {
+        WritingEraserModePickerView(
+            selectedMode: Binding(
+                get: { viewModel.selectedEraserMode },
+                set: { newMode in
+                    viewModel.selectEraserMode(newMode)
+                }
+            ),
+            onSelect: {
+                isShowingEraserModePicker = false
+            }
+        )
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private var eraserToolButton: some View {
+        Button {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                if !viewModel.isToolSelected(.eraser) {
+                    viewModel.selectTool(.eraser)
+                }
+                isShowingEraserModePicker = true
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: "eraser.fill")
+                    .font(.system(size: PharTheme.Icon.toolbar, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+        }
+        .buttonStyle(
+            PharToolbarButtonStyle(
+                isSelected: viewModel.isToolSelected(.eraser),
+                isDestructive: false
+            )
+        )
+        .disabled(viewModel.isReadOnlyMode)
+        .accessibilityLabel("지우개 도구")
+        .popover(
+            isPresented: $isShowingEraserModePicker,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            eraserModePicker
+        }
+        .onChange(of: viewModel.selectedTool) { _, newTool in
+            if newTool != .eraser {
+                isShowingEraserModePicker = false
+            }
+        }
     }
 
     private func colorButton(colorID: Int) -> some View {

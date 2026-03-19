@@ -1,12 +1,31 @@
 import SwiftUI
 
 struct FloatingTextToolbar: View {
-    @Binding var element: PharTextElement
+    let element: PharTextElement
+    let selectionRange: NSRange?
+    let onFontSize: (Double) -> Void
+    let onFontWeight: (String) -> Void
+    let onItalicToggle: () -> Void
+    let onFontName: (String?) -> Void
+    let onAlignment: (String) -> Void
+    let onColorHex: (String) -> Void
     var onDelete: () -> Void
     
     let fontSizes: [Double] = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48]
-    let weights = ["regular", "semibold", "bold"]
+    let fontFamilies: [(label: String, value: String?)] = [
+        ("기본", nil),
+        ("라운드", "rounded"),
+        ("세리프", "serif"),
+        ("고정폭", "monospaced")
+    ]
     let alignments = ["left", "center", "right"]
+    let colorOptions: [(label: String, value: String)] = [
+        ("검정", "#000000"),
+        ("파랑", "#2F6BFF"),
+        ("초록", "#39B37C"),
+        ("주황", "#F0B64C"),
+        ("빨강", "#E45858")
+    ]
     
     var body: some View {
         WritingChromeCapsule {
@@ -15,7 +34,7 @@ struct FloatingTextToolbar: View {
                 Menu {
                     ForEach(fontSizes, id: \.self) { size in
                         Button("\(Int(size))pt") {
-                            element.fontSize = size
+                            onFontSize(size)
                         }
                     }
                 } label: {
@@ -26,6 +45,33 @@ struct FloatingTextToolbar: View {
                             .font(.system(size: 10))
                     }
                     .frame(width: 50, height: 32)
+                        .background(Color.black.opacity(0.05))
+                        .cornerRadius(8)
+                }
+
+                WritingToolbarDivider()
+
+                Menu {
+                    ForEach(fontFamilies, id: \.label) { family in
+                        Button {
+                            onFontName(family.value)
+                        } label: {
+                            HStack {
+                                Text(family.label)
+                                if element.fontName == family.value {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(fontLabel(for: element.fontName))
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                        Image(systemName: "font")
+                            .font(.system(size: 10))
+                    }
+                    .frame(width: 62, height: 32)
                     .background(Color.black.opacity(0.05))
                     .cornerRadius(8)
                 }
@@ -38,14 +84,14 @@ struct FloatingTextToolbar: View {
                         systemName: "bold",
                         isSelected: element.fontWeight == "bold"
                     ) {
-                        element.fontWeight = element.fontWeight == "bold" ? "regular" : "bold"
+                        onFontWeight(element.fontWeight == "bold" ? "regular" : "bold")
                     }
                     
                     WritingChromeIconButton(
                         systemName: "italic",
                         isSelected: element.isItalic
                     ) {
-                        element.isItalic.toggle()
+                        onItalicToggle()
                     }
                 }
                 
@@ -58,7 +104,7 @@ struct FloatingTextToolbar: View {
                             systemName: "text.align\(align)",
                             isSelected: element.alignment == align
                         ) {
-                            element.alignment = align
+                            onAlignment(align)
                         }
                     }
                 }
@@ -66,12 +112,34 @@ struct FloatingTextToolbar: View {
                 WritingToolbarDivider()
                 
                 // Color (Simplified)
-                Circle()
-                    .fill(Color(hex: element.colorHex) ?? .black)
-                    .frame(width: 24, height: 24)
-                    .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                    .shadow(radius: 1)
-                    .padding(.horizontal, 4)
+                Menu {
+                    ForEach(colorOptions, id: \.value) { option in
+                        Button {
+                            onColorHex(option.value)
+                        } label: {
+                            HStack {
+                                Circle()
+                                    .fill(Color(hex: option.value) ?? .black)
+                                    .frame(width: 10, height: 10)
+                                Text(option.label)
+                            }
+                        }
+                    }
+                } label: {
+                    Circle()
+                        .fill(Color(hex: element.colorHex) ?? .black)
+                        .frame(width: 24, height: 24)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                        .shadow(radius: 1)
+                        .padding(.horizontal, 4)
+                }
+
+                Text((selectionRange?.length ?? 0) > 0 ? "선택 \(selectionRange!.length)" : "전체")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(PharTheme.ColorToken.subtleText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.04), in: Capsule())
                 
                 WritingToolbarDivider()
                 
@@ -85,6 +153,19 @@ struct FloatingTextToolbar: View {
             .padding(.vertical, 8)
         }
         .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+    }
+
+    private func fontLabel(for fontName: String?) -> String {
+        switch fontName {
+        case "rounded":
+            return "R"
+        case "serif":
+            return "S"
+        case "monospaced":
+            return "M"
+        default:
+            return "Aa"
+        }
     }
 }
 

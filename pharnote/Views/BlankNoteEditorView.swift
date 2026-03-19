@@ -26,6 +26,7 @@ struct BlankNoteEditorView: View {
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
     @State private var activePaletteTool: BlankNoteEditorViewModel.AnnotationTool? = nil
+    @State private var isShowingEraserModePicker = false
     @State private var isShowingPageRail = false
     @State private var pageZoomScale: CGFloat = 1.0
     @GestureState private var pageMagnificationDelta: CGFloat = 1.0
@@ -222,41 +223,43 @@ struct BlankNoteEditorView: View {
             let pageWidth = min(772, max(640, geometry.size.width - 110))
             let paperSize = viewModel.currentPagePaperSize
             let pageHeight = pageWidth * paperSize.aspectRatio
-            let railWidth = min(360, max(312, geometry.size.width * 0.32))
+            let railWidth = min(344, max(284, geometry.size.width * 0.28))
+            let railTrailingPadding = max(16, geometry.safeAreaInsets.trailing + 16)
 
             ZStack(alignment: .top) {
                 WritingChromePalette.paper.ignoresSafeArea()
 
-                HStack(spacing: 0) {
-                    ScrollView(.vertical, showsIndicators: true) {
-                        HStack(spacing: 24) {
-                            // 기존 고정 인강 영역 제거
-                            
-                            VStack(spacing: 28) {
-                                zoomableEditorPage(width: pageWidth, height: pageHeight)
+                ScrollView(.vertical, showsIndicators: true) {
+                    HStack(spacing: 24) {
+                        // 기존 고정 인강 영역 제거
+                        
+                        VStack(spacing: 28) {
+                            zoomableEditorPage(width: pageWidth, height: pageHeight)
 
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(Color.white.opacity(0.78))
-                                    .frame(width: pageWidth, height: 170)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .stroke(Color.black.opacity(0.03), lineWidth: 1)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
-                            }
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.78))
+                                .frame(width: pageWidth, height: 170)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(Color.black.opacity(0.03), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 166)
-                        .padding(.bottom, 120)
                     }
                     .frame(maxWidth: .infinity)
-                    .scaleEffect(isShowingPageRail ? 0.988 : 1.0, anchor: .center)
-                    .animation(.easeInOut(duration: 0.18), value: isShowingPageRail)
+                    .padding(.top, 166)
+                    .padding(.bottom, 120)
+                }
+                .frame(maxWidth: .infinity)
+                .scaleEffect(isShowingPageRail ? 0.988 : 1.0, anchor: .center)
+                .animation(.easeInOut(duration: 0.18), value: isShowingPageRail)
 
-                    if isShowingPageRail {
-                        pageRailPanel(width: railWidth)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
+                if isShowingPageRail {
+                    pageRailPanel(width: railWidth)
+                        .frame(maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(.trailing, railTrailingPadding)
+                        .padding(.top, 74)
+                        .transition(.opacity)
                 }
 
                 VStack(spacing: 10) {
@@ -427,8 +430,6 @@ struct BlankNoteEditorView: View {
                 .stroke(Color.black.opacity(0.18), lineWidth: 1.1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 18, x: -2, y: 8)
-        .padding(.trailing, 8)
-        .padding(.top, 74)
         .padding(.bottom, 16)
     }
 
@@ -1018,9 +1019,8 @@ struct BlankNoteEditorView: View {
         ) {
             withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
                 if viewModel.isToolSelected(tool) {
-                    if tool == .pen || tool == .highlighter || tool == .paint {
-                        activePaletteTool = (activePaletteTool == tool) ? nil : tool
-                    }
+                    activePaletteTool = nil
+                    viewModel.deactivateToolSelection()
                 } else {
                     viewModel.selectTool(tool)
                     if tool == .pen || tool == .highlighter || tool == .paint || tool == .tape {
@@ -1262,7 +1262,7 @@ struct BlankNoteEditorView: View {
 
                 toolButton(.pen, icon: "pencil.tip")
                 toolButton(.highlighter, icon: "highlighter")
-                toolButton(.eraser, icon: "eraser.fill")
+                eraserToolButton
                 toolButton(.lasso, icon: "lasso")
 
                 dockDivider
@@ -1334,6 +1334,64 @@ struct BlankNoteEditorView: View {
                 Text(viewModel.currentToolLabel)
                     .font(PharTypography.captionStrong)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
+            }
+        }
+    }
+
+    private var eraserModePicker: some View {
+        WritingEraserModePickerView(
+            selectedMode: Binding(
+                get: { viewModel.selectedEraserMode },
+                set: { newMode in
+                    viewModel.selectEraserMode(newMode)
+                }
+            ),
+            onSelect: {
+                isShowingEraserModePicker = false
+            }
+        )
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private var eraserToolButton: some View {
+        Button {
+            withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
+                if !viewModel.isToolSelected(.eraser) {
+                    viewModel.selectTool(.eraser)
+                }
+                isShowingEraserModePicker = true
+            }
+        } label: {
+            VStack(spacing: 4) {
+                HStack(spacing: 2) {
+                    Image(systemName: "eraser.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .offset(y: 1)
+                }
+                Text("지우개")
+                    .font(PharTypography.eyebrow)
+            }
+            .frame(minWidth: 58, minHeight: PharTheme.HitArea.comfortable)
+            .foregroundStyle(viewModel.isToolSelected(.eraser) ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.inkPrimary)
+            .background(
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                    .fill(viewModel.isToolSelected(.eraser) ? PharTheme.ColorToken.accentBlue.opacity(0.14) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.lift)
+        .popover(
+            isPresented: $isShowingEraserModePicker,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            eraserModePicker
+        }
+        .onChange(of: viewModel.selectedTool) { _, newTool in
+            if newTool != .eraser {
+                isShowingEraserModePicker = false
             }
         }
     }
@@ -2777,5 +2835,104 @@ private struct PageThumbnailCell: View {
                 .foregroundStyle(isSelected ? PharTheme.ColorToken.accentBlue : PharTheme.ColorToken.subtleText)
         }
         .padding(.vertical, PharTheme.Spacing.xxxSmall)
+    }
+}
+
+struct WritingEraserModePickerView: View {
+    @Binding var selectedMode: WritingEraserMode
+    var onSelect: (() -> Void)? = nil
+
+    private let cardWidth: CGFloat = 132
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.large) {
+            Text("지우개 유형")
+                .font(PharTypography.sectionTitle)
+                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            HStack(alignment: .top, spacing: PharTheme.Spacing.medium) {
+                ForEach(WritingEraserMode.allCases) { mode in
+                    Button {
+                        selectedMode = mode
+                        onSelect?()
+                    } label: {
+                        VStack(spacing: PharTheme.Spacing.small) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                                    .fill(selectedMode == mode ? PharTheme.ColorToken.surfacePrimary : PharTheme.ColorToken.surfaceSecondary.opacity(0.7))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                                            .stroke(
+                                                selectedMode == mode ? PharTheme.ColorToken.accentBlue.opacity(0.36) : PharTheme.ColorToken.border.opacity(0.34),
+                                                lineWidth: selectedMode == mode ? 2 : 1
+                                            )
+                                    )
+                                    .shadow(
+                                        color: PharTheme.ColorToken.overlayShadow.opacity(selectedMode == mode ? 0.18 : 0.06),
+                                        radius: selectedMode == mode ? 14 : 8,
+                                        x: 0,
+                                        y: selectedMode == mode ? 8 : 4
+                                    )
+
+                                VStack(spacing: 10) {
+                                    Image(systemName: "eraser")
+                                        .font(.system(size: eraserIconSize(for: mode), weight: .semibold))
+                                        .foregroundStyle(eraserIconColor(for: mode))
+                                        .rotationEffect(.degrees(mode == .stroke ? -6 : 0))
+                                    Text(mode.rawValue)
+                                        .font(PharTypography.bodyStrong)
+                                        .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                                    Text(mode.subtitle)
+                                        .font(PharTypography.caption)
+                                        .foregroundStyle(PharTheme.ColorToken.subtleText)
+                                }
+                                .padding(.vertical, PharTheme.Spacing.medium)
+                                .padding(.horizontal, PharTheme.Spacing.small)
+                            }
+                            .frame(width: cardWidth, height: 146)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text("터치 방식과 지우개 모양에 맞게 고를 수 있습니다.")
+                .font(PharTypography.caption)
+                .foregroundStyle(PharTheme.ColorToken.subtleText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(PharTheme.Spacing.large)
+        .frame(width: 470)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(PharTheme.ColorToken.surfacePrimary)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(PharTheme.ColorToken.border.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    private func eraserIconSize(for mode: WritingEraserMode) -> CGFloat {
+        switch mode {
+        case .precise:
+            return 22
+        case .standard:
+            return 28
+        case .stroke:
+            return 34
+        }
+    }
+
+    private func eraserIconColor(for mode: WritingEraserMode) -> Color {
+        switch mode {
+        case .precise:
+            return PharTheme.ColorToken.inkPrimary.opacity(0.86)
+        case .standard:
+            return PharTheme.ColorToken.inkPrimary
+        case .stroke:
+            return PharTheme.ColorToken.accentBlue
+        }
     }
 }

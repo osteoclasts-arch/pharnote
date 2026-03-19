@@ -7,6 +7,8 @@ import UIKit
 
 @MainActor
 final class PDFEditorViewModel: ObservableObject {
+    private static let highlightInkAlpha: CGFloat = 0.28
+
     struct SectionDraft: Identifiable, Hashable {
         let id: UUID
         var title: String
@@ -82,6 +84,7 @@ final class PDFEditorViewModel: ObservableObject {
     @Published var selectedPenStyle: WritingPenStyle = .ballpoint
     @Published var selectedColorID: Int = 0
     @Published var strokeWidth: Double = 5.0
+    @Published var selectedEraserMode: WritingEraserMode
     @Published private(set) var strokePresetConfiguration: WritingStrokePresetConfiguration
     @Published var isPencilOnlyInputEnabled: Bool = false
     @Published private(set) var canUndo: Bool = false
@@ -177,6 +180,7 @@ final class PDFEditorViewModel: ObservableObject {
             .pen: penPresetConfiguration,
             .highlighter: highlighterPresetConfiguration
         ]
+        self._selectedEraserMode = Published(initialValue: WritingEraserMode.load(from: userDefaults))
         self._strokePresetConfiguration = Published(initialValue: penPresetConfiguration)
         self.requestedInitialPageIndex = Self.pageIndex(from: initialPageKey)
         self.storedProgressSnapshot = document.progress
@@ -553,7 +557,7 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     var allowsPDFNavigation: Bool {
-        !isCanvasInputEnabled
+        true
     }
 
     var isEditingInkTool: Bool {
@@ -562,6 +566,9 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     var currentToolLabel: String {
+        if activeTool == .eraser {
+            return selectedEraserMode.accessibilityLabel
+        }
         if activeTool == .highlighter && highlightMode == .structured {
             return "구조화 · \(selectedHighlightRole.title)"
         }
@@ -581,6 +588,9 @@ final class PDFEditorViewModel: ObservableObject {
 
         selectedTool = tool
         isToolSelectionActive = true
+        if tool == .pen || tool == .highlighter || tool == .paint || tool == .eraser {
+            isPencilOnlyInputEnabled = true
+        }
         toolUsageCounts[tool, default: 0] += 1
         if tool == .lasso || tool == .paint {
             lassoActionCountByPageIndex[currentPageIndex, default: 0] += 1
@@ -604,6 +614,15 @@ final class PDFEditorViewModel: ObservableObject {
             scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
         }
         applyPDFInteractionMode()
+    }
+
+    func selectEraserMode(_ mode: WritingEraserMode) {
+        guard selectedEraserMode != mode else { return }
+        selectedEraserMode = mode
+        mode.save(in: userDefaults)
+        if selectedTool == .eraser && isToolSelectionActive {
+            applyPDFInteractionMode()
+        }
     }
 
     func deactivateToolSelection() {
@@ -838,11 +857,11 @@ final class PDFEditorViewModel: ObservableObject {
             return makePenTool()
         case .highlighter:
             let color = highlightMode == .structured
-                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(0.35)
-                : uiColorForColorID(selectedColorID).withAlphaComponent(0.35)
-            return PKInkingTool(.marker, color: color, width: CGFloat(strokeWidth))
+                ? highlightColor(for: selectedHighlightRole).withAlphaComponent(Self.highlightInkAlpha)
+                : uiColorForColorID(selectedColorID).withAlphaComponent(Self.highlightInkAlpha)
+            return PKInkingTool(.pen, color: color, width: CGFloat(strokeWidth + 10))
         case .eraser:
-            return PKEraserTool(.vector)
+            return makeEraserTool()
         case .lasso, .paint:
             return PKLassoTool()
         }
@@ -854,6 +873,18 @@ final class PDFEditorViewModel: ObservableObject {
 
     func allowsFingerDrawing() -> Bool {
         isCanvasInputEnabled && !isPencilOnlyInputEnabled
+    }
+
+    func currentToolSignature() -> String {
+        [
+            selectedTool.rawValue,
+            selectedEraserMode.rawValue,
+            highlightMode.rawValue,
+            selectedHighlightRole.rawValue,
+            highlightColorHex(for: selectedHighlightRole),
+            "\(selectedColorID)",
+            "\(strokeWidth)"
+        ].joined(separator: "-")
     }
 
     func loadOverlayDrawing(for pageIndex: Int) async -> PKDrawing {
@@ -1360,6 +1391,14 @@ final class PDFEditorViewModel: ObservableObject {
         case .eraser, .lasso, .paint:
             return nil
         }
+    }
+
+    private func makeEraserTool() -> PKTool {
+        let eraserType = selectedEraserMode.eraserType
+        if #available(iOS 16.4, *), let width = selectedEraserMode.toolWidth() {
+            return PKEraserTool(eraserType, width: width)
+        }
+        return PKEraserTool(eraserType)
     }
 
     private func applyStrokePresetConfiguration(for tool: AnnotationTool) {

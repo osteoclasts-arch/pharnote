@@ -13,9 +13,12 @@ struct LiveTextEditingLayer: View {
                             isActive: viewModel.activeTextElementID == element.id,
                             onTap: {
                                 viewModel.activeTextElementID = element.id
+                                viewModel.updateActiveTextSelectionRange(nil)
                             },
-                            onDelete: {
-                                viewModel.deleteTextElement(id: element.id)
+                            onSelectionChange: { range in
+                                if viewModel.activeTextElementID == element.id {
+                                    viewModel.updateActiveTextSelectionRange(range)
+                                }
                             }
                         )
                     }
@@ -27,10 +30,27 @@ struct LiveTextEditingLayer: View {
                 VStack {
                     Spacer()
                     FloatingTextToolbar(
-                        element: Binding(
-                            get: { activeElement },
-                            set: { viewModel.updateTextElement($0) }
-                        ),
+                        element: activeElement,
+                        selectionRange: viewModel.activeTextElementSelectionRange,
+                        onFontSize: { value in
+                            viewModel.applyStyleToActiveTextElement(fontSize: value)
+                        },
+                        onFontWeight: { value in
+                            viewModel.applyStyleToActiveTextElement(fontWeight: value)
+                        },
+                        onItalicToggle: {
+                            let nextValue = !(activeElement.isItalic)
+                            viewModel.applyStyleToActiveTextElement(isItalic: nextValue)
+                        },
+                        onFontName: { value in
+                            viewModel.applyStyleToActiveTextElement(fontName: value)
+                        },
+                        onAlignment: { value in
+                            viewModel.applyStyleToActiveTextElement(alignment: value)
+                        },
+                        onColorHex: { value in
+                            viewModel.applyStyleToActiveTextElement(colorHex: value)
+                        },
                         onDelete: {
                             viewModel.deleteTextElement(id: activeID)
                         }
@@ -53,64 +73,46 @@ struct TextElementView: View {
     @Binding var element: PharTextElement
     let isActive: Bool
     let onTap: () -> Void
-    let onDelete: () -> Void
+    let onSelectionChange: (NSRange?) -> Void
     
     @State private var dragOffset: CGSize = .zero
-    @FocusState private var isFocused: Bool
+    @State private var isEditing: Bool = false
     
     var body: some View {
-        TextField("", text: $element.text, axis: .vertical)
-            .font(.system(
-                size: element.fontSize,
-                weight: weightFromString(element.fontWeight),
-                design: .rounded
-            ))
-            .italic(element.isItalic)
-            .multilineTextAlignment(alignmentFromString(element.alignment))
-            .foregroundStyle(Color(hex: element.colorHex) ?? .black)
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isActive ? PharTheme.ColorToken.accentBlue : .clear, lineWidth: 2)
-                    .background(isActive ? Color.white.opacity(0.1) : .clear)
-            )
-            .frame(minWidth: 100)
-            .offset(x: element.x + dragOffset.width, y: element.y + dragOffset.height)
-            .focused($isFocused)
-            .onTapGesture {
+        RichTextTextView(
+            element: $element,
+            isActive: isActive,
+            onActivate: {
                 onTap()
-                isFocused = true
-            }
-            .gesture(
+                isEditing = true
+            },
+            onSelectionChange: onSelectionChange
+        )
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isActive ? PharTheme.ColorToken.accentBlue : .clear, lineWidth: 2)
+                .background(isActive ? Color.white.opacity(0.1) : .clear)
+        )
+        .frame(minWidth: 100)
+            .offset(x: element.x + dragOffset.width, y: element.y + dragOffset.height)
+            .simultaneousGesture(
                 DragGesture()
                     .onChanged { value in
+                        guard !isEditing else { return }
                         dragOffset = value.translation
                     }
                     .onEnded { value in
+                        guard !isEditing else { return }
                         element.x += value.translation.width
                         element.y += value.translation.height
                         dragOffset = .zero
                     }
             )
-            .onChange(of: isActive) { active in
-                if !active { isFocused = false }
+            .onChange(of: isActive) { _, active in
+                if !active {
+                    isEditing = false
+                }
             }
-    }
-    
-    private func weightFromString(_ weight: String) -> Font.Weight {
-        switch weight {
-        case "bold": return .bold
-        case "semibold": return .semibold
-        case "medium": return .medium
-        default: return .regular
-        }
-    }
-    
-    private func alignmentFromString(_ alignment: String) -> TextAlignment {
-        switch alignment {
-        case "center": return .center
-        case "right": return .trailing
-        default: return .leading
-        }
     }
 }

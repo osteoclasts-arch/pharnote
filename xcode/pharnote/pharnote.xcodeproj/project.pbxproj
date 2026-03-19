@@ -80,6 +80,7 @@
 		D10000102F60000100D10002 /* PharNodeAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000102F60000100D10001 /* PharNodeAIService.swift */; };
 		D10000202F60000100D10002 /* LiveTextEditingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000202F60000100D10001 /* LiveTextEditingLayer.swift */; };
 		D10000302F60000100D10002 /* FloatingTextToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000302F60000100D10001 /* FloatingTextToolbar.swift */; };
+		D10000502F60000100D10002 /* RichTextTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000502F60000100D10001 /* RichTextTextView.swift */; };
 		D10000402F60000100D10002 /* PharAppGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000402F60000100D10001 /* PharAppGuideView.swift */; };
 /* End PBXBuildFile section */
 
@@ -158,6 +159,7 @@
 		D10000102F60000100D10001 /* PharNodeAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharNodeAIService.swift; sourceTree = "<group>"; };
 		D10000202F60000100D10001 /* LiveTextEditingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/LiveTextEditingLayer.swift; sourceTree = "<group>"; };
 		D10000302F60000100D10001 /* FloatingTextToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/FloatingTextToolbar.swift; sourceTree = "<group>"; };
+		D10000502F60000100D10001 /* RichTextTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/RichTextTextView.swift; sourceTree = "<group>"; };
 		D10000402F60000100D10001 /* PharAppGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/PharAppGuideView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -295,6 +297,7 @@
 				E10000402F70000100E10001 /* HighlightStructureViews.swift */,
 				D10000302F60000100D10001 /* FloatingTextToolbar.swift */,
 				D10000202F60000100D10001 /* LiveTextEditingLayer.swift */,
+				D10000502F60000100D10001 /* RichTextTextView.swift */,
 				B4F000042F56000100B4F001 /* LessonDocumentEditorView.swift */,
 				93FC7F7E2F5474A1007D741C /* PencilPassthroughCanvasView.swift */,
 				AA0000132F56000100AA0001 /* SettingsView.swift */,
@@ -482,6 +485,7 @@
 				D10000102F60000100D10002 /* PharNodeAIService.swift in Sources */,
 				D10000202F60000100D10002 /* LiveTextEditingLayer.swift in Sources */,
 				D10000302F60000100D10002 /* FloatingTextToolbar.swift in Sources */,
+				D10000502F60000100D10002 /* RichTextTextView.swift in Sources */,
 				D10000402F60000100D10002 /* PharAppGuideView.swift in Sources */,
 				E10000402F70000100E10002 /* HighlightStructureViews.swift in Sources */,
 				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,

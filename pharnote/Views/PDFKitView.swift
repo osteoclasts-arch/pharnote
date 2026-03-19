@@ -42,10 +42,12 @@ struct PDFKitView: UIViewRepresentable {
         private let onEditAttachment: ((UUID) -> Void)?
         private weak var observedPDFView: PDFView?
         private var pageChangeObserver: NSObjectProtocol?
+        private var scaleFactorObservation: NSKeyValueObservation?
         private var pageCanvases: [Int: PencilPassthroughCanvasView] = [:]
         private var pageContainers: [Int: PDFPageOverlayContainerView] = [:]
         private var canvasPageMap: [ObjectIdentifier: Int] = [:]
         private var managedPDFGestureStates: [ObjectIdentifier: Bool] = [:]
+        private var canvasConfigurationCache: [ObjectIdentifier: CanvasConfigurationSignature] = [:]
 
         init(
             viewModel: PDFEditorViewModel,
@@ -60,6 +62,10 @@ struct PDFKitView: UIViewRepresentable {
         func startObservingPageChanges(of pdfView: PDFView) {
             stopObservingPageChanges()
             observedPDFView = pdfView
+            scaleFactorObservation = pdfView.observe(\.scaleFactor, options: [.initial, .new]) { [weak self, weak pdfView] _, _ in
+                guard let self, let pdfView else { return }
+                self.updateCanvasRenderingScale(in: pdfView)
+            }
             pageChangeObserver = NotificationCenter.default.addObserver(
                 forName: Notification.Name.PDFViewPageChanged,
                 object: pdfView,
@@ -89,6 +95,7 @@ struct PDFKitView: UIViewRepresentable {
                 NotificationCenter.default.removeObserver(pageChangeObserver)
                 self.pageChangeObserver = nil
             }
+            scaleFactorObservation = nil
             if let observedPDFView {
                 restoreManagedPDFGestures(in: observedPDFView)
             }
@@ -97,6 +104,7 @@ struct PDFKitView: UIViewRepresentable {
             pageContainers.removeAll()
             canvasPageMap.removeAll()
             managedPDFGestureStates.removeAll()
+            canvasConfigurationCache.removeAll()
             viewModel.setActiveOverlayCanvas(nil)
         }
 
@@ -192,6 +200,9 @@ struct PDFKitView: UIViewRepresentable {
             pageContainers.forEach { pageIndex, container in
                 configureAttachmentContainer(container, pageIndex: pageIndex)
             }
+            if let observedPDFView {
+                updateCanvasRenderingScale(in: observedPDFView)
+            }
         }
 
         func updatePDFInteractionMode(of pdfView: PDFView) {
@@ -218,6 +229,7 @@ struct PDFKitView: UIViewRepresentable {
             }
 
             updateManagedPDFGestures(in: pdfView, allowsNavigation: allowsNavigation)
+            updateCanvasRenderingScale(in: pdfView)
         }
 
         func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
@@ -232,17 +244,29 @@ struct PDFKitView: UIViewRepresentable {
 
         private func configureCanvas(_ canvas: PencilPassthroughCanvasView) {
             let isInputEnabled = viewModel.isCanvasInputEnabled
+            let signature = CanvasConfigurationSignature(
+                isInputEnabled: isInputEnabled,
+                allowsFingerTouchInput: viewModel.allowsFingerDrawing(),
+                drawingPolicy: viewModel.currentDrawingPolicy(),
+                toolSignature: viewModel.currentToolSignature(),
+                isDrawingEnabled: isInputEnabled
+            )
+            let key = ObjectIdentifier(canvas)
+            guard canvasConfigurationCache[key] != signature else {
+                return
+            }
+            canvasConfigurationCache[key] = signature
+
             canvas.isUserInteractionEnabled = isInputEnabled
-            canvas.allowsFingerTouchInput = viewModel.allowsFingerDrawing()
-            canvas.drawingPolicy = viewModel.currentDrawingPolicy()
+            canvas.allowsFingerTouchInput = signature.allowsFingerTouchInput
+            canvas.drawingPolicy = signature.drawingPolicy
             canvas.tool = viewModel.currentTool()
-            canvas.drawingGestureRecognizer.isEnabled = false
             canvas.drawingGestureRecognizer.isEnabled = isInputEnabled
             if isInputEnabled {
                 canvas.becomeFirstResponder()
             }
             if #available(iOS 18.0, *) {
-                canvas.isDrawingEnabled = isInputEnabled
+                canvas.isDrawingEnabled = signature.isDrawingEnabled
             }
         }
 
@@ -260,6 +284,22 @@ struct PDFKitView: UIViewRepresentable {
             }
             viewModel.setActiveOverlayCanvas(canvas)
             canvas?.becomeFirstResponder()
+            if let observedPDFView {
+                updateCanvasRenderingScale(in: observedPDFView)
+            }
+        }
+
+        private func updateCanvasRenderingScale(in pdfView: PDFView) {
+            let scale = max(1.0, min(pdfView.scaleFactor, 8.0))
+            let renderedScale = UIScreen.main.scale * scale
+            pageCanvases.values.forEach { canvas in
+                if canvas.contentScaleFactor != renderedScale {
+                    canvas.contentScaleFactor = renderedScale
+                }
+                if canvas.layer.contentsScale != renderedScale {
+                    canvas.layer.contentsScale = renderedScale
+                }
+            }
         }
 
         private func conflictingPDFGestures(in pdfView: PDFView) -> [UIGestureRecognizer] {
@@ -345,6 +385,14 @@ struct PDFKitView: UIViewRepresentable {
 
         private func pageKey(for pageIndex: Int) -> String {
             "pdf-page-\(pageIndex)"
+        }
+
+        private struct CanvasConfigurationSignature: Equatable {
+            let isInputEnabled: Bool
+            let allowsFingerTouchInput: Bool
+            let drawingPolicy: PKCanvasViewDrawingPolicy
+            let toolSignature: String
+            let isDrawingEnabled: Bool
         }
     }
 }
