@@ -16,6 +16,7 @@ struct PharDocument: Identifiable, Codable, Hashable {
     var studyMaterial: StudyMaterialMetadata?
     var progress: StudyProgressSnapshot?
     var folderID: UUID?
+    var folderSortOrder: Double?
 
     init(
         id: UUID,
@@ -26,7 +27,8 @@ struct PharDocument: Identifiable, Codable, Hashable {
         path: String,
         studyMaterial: StudyMaterialMetadata? = nil,
         progress: StudyProgressSnapshot? = nil,
-        folderID: UUID? = nil
+        folderID: UUID? = nil,
+        folderSortOrder: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -37,6 +39,7 @@ struct PharDocument: Identifiable, Codable, Hashable {
         self.studyMaterial = studyMaterial
         self.progress = progress
         self.folderID = folderID
+        self.folderSortOrder = folderSortOrder
     }
 }
 

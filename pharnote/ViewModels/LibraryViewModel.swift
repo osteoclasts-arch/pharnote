@@ -194,7 +194,7 @@ final class LibraryViewModel: ObservableObject {
     func loadDocuments() {
         do {
             documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
-            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+            userFolders = try store.loadFolders()
             if didRestoreWorkspaceState {
                 reconcileOpenDocumentTabs()
             } else {
@@ -369,11 +369,35 @@ final class LibraryViewModel: ObservableObject {
         userFolders.first(where: { $0.id == id })
     }
 
+    func folders(parentFolderID: UUID?) -> [UserLibraryFolder] {
+        userFolders
+            .filter { $0.parentFolderID == parentFolderID }
+            .sorted(by: folderSortComparator(_:_:))
+    }
+
+    func folderPath(for folderID: UUID?) -> [UserLibraryFolder] {
+        guard let folderID, let folderNode = folder(withID: folderID) else { return [] }
+
+        var path: [UserLibraryFolder] = [folderNode]
+        var currentParentID = folderNode.parentFolderID
+
+        while let parentID = currentParentID, let parent = folder(withID: parentID) {
+            path.append(parent)
+            currentParentID = parent.parentFolderID
+        }
+
+        return path.reversed()
+    }
+
     func folderDocumentCount(folderID: UUID?) -> Int {
         if let folderID {
-            return documents.filter { $0.folderID == folderID }.count
+            let descendantIDs = folderDescendantIDs(of: folderID)
+            return documents.filter { document in
+                guard let documentFolderID = document.folderID else { return false }
+                return documentFolderID == folderID || descendantIDs.contains(documentFolderID)
+            }.count
         }
-        return documents.filter { $0.folderID == nil }.count
+        return documents.count
     }
 
     func documents(in folderID: UUID?) -> [PharDocument] {
@@ -383,18 +407,15 @@ final class LibraryViewModel: ObservableObject {
         } else {
             base = documents
         }
-        return base.sorted { lhs, rhs in
-            if lhs.updatedAt == rhs.updatedAt {
-                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-            }
-            return lhs.updatedAt > rhs.updatedAt
-        }
+        return base.sorted(by: documentSortComparator(_:_:))
     }
 
-    func createFolder(name: String) {
+    func createFolder(name: String, parentFolderID: UUID? = nil) {
         do {
-            _ = try store.createFolder(name: name)
-            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+            let createdFolder = try store.createFolder(name: name, parentFolderID: parentFolderID)
+            userFolders.append(createdFolder)
+            userFolders = normalizedFolders(userFolders)
+            try store.saveFolders(userFolders)
         } catch {
             errorMessage = "폴더 생성 실패: \(error.localizedDescription)"
         }
@@ -408,8 +429,11 @@ final class LibraryViewModel: ObservableObject {
             var updated = folder
             updated.name = trimmed
             updated.updatedAt = Date()
-            _ = try store.updateFolder(updated)
-            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+            if let index = userFolders.firstIndex(where: { $0.id == updated.id }) {
+                userFolders[index] = updated
+            }
+            userFolders = normalizedFolders(userFolders)
+            try store.saveFolders(userFolders)
         } catch {
             errorMessage = "폴더 이름 변경 실패: \(error.localizedDescription)"
         }
@@ -417,19 +441,114 @@ final class LibraryViewModel: ObservableObject {
 
     func deleteFolder(_ folder: UserLibraryFolder) {
         do {
-            try store.deleteFolder(folder.id)
-            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
-            documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+            let descendantIDs = folderDescendantIDs(of: folder.id)
+            let removableFolderIDs = descendantIDs.union([folder.id])
+            userFolders.removeAll { removableFolderIDs.contains($0.id) }
+            documents = documents.map { document in
+                guard let folderID = document.folderID, removableFolderIDs.contains(folderID) else {
+                    return document
+                }
+                var updated = document
+                updated.folderID = nil
+                updated.folderSortOrder = nil
+                updated.updatedAt = Date()
+                return updated
+            }
+            userFolders = normalizedFolders(userFolders)
+            documents = documents.sorted { $0.updatedAt > $1.updatedAt }
+            try store.saveFolders(userFolders)
+            try store.saveIndex(documents)
         } catch {
             errorMessage = "폴더 삭제 실패: \(error.localizedDescription)"
         }
     }
 
-    func moveDocument(_ document: PharDocument, to folderID: UUID?) {
+    func moveFolder(_ folder: UserLibraryFolder, to parentFolderID: UUID?, before beforeFolderID: UUID? = nil) {
         do {
-            guard let updatedDocument = try store.updateDocumentFolder(documentID: document.id, folderID: folderID) else { return }
-            replaceDocument(updatedDocument)
-            documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+            guard folder.id != parentFolderID else { return }
+            if let parentFolderID, folderDescendantIDs(of: folder.id).contains(parentFolderID) {
+                return
+            }
+
+            guard let movingIndex = userFolders.firstIndex(where: { $0.id == folder.id }) else { return }
+            var movingFolder = userFolders[movingIndex]
+            movingFolder.parentFolderID = parentFolderID
+            movingFolder.updatedAt = Date()
+
+            var targetGroup = userFolders.filter { $0.parentFolderID == parentFolderID && $0.id != movingFolder.id }
+                .sorted(by: folderSortComparator(_:_:))
+
+            if let beforeFolderID, let insertIndex = targetGroup.firstIndex(where: { $0.id == beforeFolderID }) {
+                targetGroup.insert(movingFolder, at: insertIndex)
+            } else {
+                targetGroup.append(movingFolder)
+            }
+
+            targetGroup = targetGroup.enumerated().map { index, folder in
+                var updated = folder
+                updated.sortOrder = Double(index)
+                return updated
+            }
+
+            var updatedFolders = userFolders
+            let targetIDs = Set(targetGroup.map(\.id))
+            updatedFolders.removeAll { targetIDs.contains($0.id) }
+            updatedFolders.append(contentsOf: targetGroup)
+            userFolders = normalizedFolders(updatedFolders)
+            try store.saveFolders(userFolders)
+        } catch {
+            errorMessage = "폴더 이동 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func moveDocument(_ document: PharDocument, to folderID: UUID?, before beforeDocumentID: UUID? = nil) {
+        do {
+            guard let movingIndex = documents.firstIndex(where: { $0.id == document.id }) else { return }
+            let sourceFolderID = documents[movingIndex].folderID
+
+            var movingDocument = documents[movingIndex]
+            movingDocument.folderID = folderID
+            movingDocument.updatedAt = Date()
+
+            var targetGroup = documents.filter { $0.folderID == folderID && $0.id != movingDocument.id }
+                .sorted(by: documentSortComparator(_:_:))
+
+            if let beforeDocumentID, let insertIndex = targetGroup.firstIndex(where: { $0.id == beforeDocumentID }) {
+                targetGroup.insert(movingDocument, at: insertIndex)
+            } else {
+                targetGroup.append(movingDocument)
+            }
+
+            targetGroup = targetGroup.enumerated().map { index, document in
+                var updated = document
+                updated.folderSortOrder = folderID == nil ? nil : Double(index)
+                return updated
+            }
+
+            var updatedDocuments = documents
+            let targetIDs = Set(targetGroup.map(\.id))
+            updatedDocuments.removeAll { targetIDs.contains($0.id) }
+            updatedDocuments.append(contentsOf: targetGroup)
+
+            if let sourceFolderID, sourceFolderID != folderID {
+                let sourceGroup = updatedDocuments
+                    .filter { $0.folderID == sourceFolderID }
+                    .sorted(by: documentSortComparator(_:_:))
+                let reindexedSourceGroup = sourceGroup.enumerated().map { index, document in
+                    var updated = document
+                    updated.folderSortOrder = Double(index)
+                    return updated
+                }
+                let sourceIDs = Set(sourceGroup.map(\.id))
+                updatedDocuments.removeAll { sourceIDs.contains($0.id) }
+                updatedDocuments.append(contentsOf: reindexedSourceGroup)
+            }
+
+            documents = updatedDocuments.sorted { $0.updatedAt > $1.updatedAt }
+            try store.saveIndex(documents)
+            if let savedDocument = documents.first(where: { $0.id == document.id }) {
+                replaceDocument(savedDocument)
+            }
             refreshDashboardSnapshot()
         } catch {
             errorMessage = "문서 폴더 이동 실패: \(error.localizedDescription)"
@@ -617,6 +736,67 @@ final class LibraryViewModel: ObservableObject {
             errorMessage = "교재 정보 저장 실패: \(error.localizedDescription)"
             return false
         }
+    }
+
+    private func folderSortComparator(_ lhs: UserLibraryFolder, _ rhs: UserLibraryFolder) -> Bool {
+        if lhs.sortOrder == rhs.sortOrder {
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+        return lhs.sortOrder < rhs.sortOrder
+    }
+
+    private func documentSortComparator(_ lhs: PharDocument, _ rhs: PharDocument) -> Bool {
+        switch (lhs.folderSortOrder, rhs.folderSortOrder) {
+        case let (left?, right?):
+            if left == right {
+                if lhs.updatedAt == rhs.updatedAt {
+                    return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                }
+                return lhs.updatedAt > rhs.updatedAt
+            }
+            return left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            if lhs.updatedAt == rhs.updatedAt {
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+    }
+
+    private func folderDescendantIDs(of folderID: UUID) -> Set<UUID> {
+        var remaining = [folderID]
+        var visited: Set<UUID> = []
+
+        while let current = remaining.popLast() {
+            for child in userFolders where child.parentFolderID == current && !visited.contains(child.id) {
+                visited.insert(child.id)
+                remaining.append(child.id)
+            }
+        }
+
+        return visited
+    }
+
+    private func normalizedFolders(_ folders: [UserLibraryFolder]) -> [UserLibraryFolder] {
+        let grouped = Dictionary(grouping: folders, by: { $0.parentFolderID })
+        var normalized: [UserLibraryFolder] = []
+
+        for (parentID, siblings) in grouped {
+            let orderedSiblings = siblings.sorted(by: folderSortComparator(_:_:))
+
+            for (index, folder) in orderedSiblings.enumerated() {
+                var updated = folder
+                updated.parentFolderID = parentID
+                updated.sortOrder = Double(index)
+                normalized.append(updated)
+            }
+        }
+
+        return normalized
     }
 
     private var visibleMaterialBaseDocuments: [PharDocument] {

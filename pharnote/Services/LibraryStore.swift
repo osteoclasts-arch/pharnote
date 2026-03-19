@@ -167,12 +167,12 @@ final class LibraryStore {
     }
 
     @discardableResult
-    func createFolder(name: String, accentHex: UInt = 0xF1E1D0) throws -> UserLibraryFolder {
+    func createFolder(name: String, accentHex: UInt = 0xF1E1D0, parentFolderID: UUID? = nil) throws -> UserLibraryFolder {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return UserLibraryFolder(name: "새 폴더", accentHex: accentHex) }
+        guard !trimmed.isEmpty else { return UserLibraryFolder(name: "새 폴더", accentHex: accentHex, parentFolderID: parentFolderID) }
 
         var folders = try loadFolders()
-        let folder = UserLibraryFolder(name: trimmed, accentHex: accentHex)
+        let folder = UserLibraryFolder(name: trimmed, accentHex: accentHex, parentFolderID: parentFolderID)
         folders.append(folder)
         try saveFolders(folders)
         return folder

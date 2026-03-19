@@ -1,6 +1,8 @@
 import PDFKit
+import CoreTransferable
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     var body: some View {
@@ -73,6 +75,28 @@ private struct PharnoteHomeShellView: View {
     }
 }
 
+private struct HomeLibraryDragItem: Codable, Hashable, Transferable {
+    enum Kind: String, Codable {
+        case document
+        case folder
+    }
+
+    let kind: Kind
+    let id: UUID?
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .plainText)
+    }
+
+    static func document(_ id: UUID) -> HomeLibraryDragItem {
+        HomeLibraryDragItem(kind: .document, id: id)
+    }
+
+    static func folder(_ id: UUID?) -> HomeLibraryDragItem {
+        HomeLibraryDragItem(kind: .folder, id: id)
+    }
+}
+
 private struct PharnoteNotesHomeView: View {
     @EnvironmentObject private var analysisCenter: AnalysisCenter
 
@@ -94,19 +118,38 @@ private struct PharnoteNotesHomeView: View {
     }
 
     private var folderTitle: String {
-        selectedFolderID.flatMap { viewModel.folder(withID: $0)?.name } ?? "모두"
+        let path = viewModel.folderPath(for: selectedFolderID).map(\.name)
+        return path.isEmpty ? "모두" : path.joined(separator: " / ")
     }
 
     private var folderSubtitle: String? {
-        selectedFolderID == nil ? "오늘 이어서 공부할 자료" : nil
+        if selectedFolderID == nil {
+            return "오늘 이어서 공부할 자료"
+        }
+        return viewModel.folderPath(for: selectedFolderID).last.map { folder in
+            "\(folder.name) 안의 폴더와 문서"
+        }
     }
 
-    private var folderCards: [UserLibraryFolder] {
-        viewModel.userFolders
+    private var currentFolderChildren: [UserLibraryFolder] {
+        viewModel.folders(parentFolderID: selectedFolderID)
     }
 
-    private func folderCount(for folder: UserLibraryFolder?) -> Int {
-        viewModel.folderDocumentCount(folderID: folder?.id)
+    private func folderMoveTargets() -> [HomeDocumentFolderTarget] {
+        var targets: [HomeDocumentFolderTarget] = [
+            HomeDocumentFolderTarget(id: "all", folderID: nil, title: "모두")
+        ]
+
+        func appendTargets(parentFolderID: UUID?, prefix: String = "") {
+            for folder in viewModel.folders(parentFolderID: parentFolderID) {
+                let displayName = prefix.isEmpty ? folder.name : "\(prefix) / \(folder.name)"
+                targets.append(HomeDocumentFolderTarget(id: folder.id.uuidString, folderID: folder.id, title: displayName))
+                appendTargets(parentFolderID: folder.id, prefix: displayName)
+            }
+        }
+
+        appendTargets(parentFolderID: nil)
+        return targets
     }
 
     private var selectedFolderIsAll: Bool {
@@ -229,17 +272,21 @@ private struct PharnoteNotesHomeView: View {
         }
         .sheet(isPresented: $isShowingFolderManager) {
             HomeFolderManagerSheet(
-                folders: folderCards,
-                onCreate: { name in
-                    viewModel.createFolder(name: name)
+                folders: viewModel.userFolders,
+                onCreate: { name, parentID in
+                    viewModel.createFolder(name: name, parentFolderID: parentID)
                 },
                 onRename: { folder, newName in
                     viewModel.renameFolder(folder, to: newName)
                 },
+                onMove: { folder, parentID in
+                    viewModel.moveFolder(folder, to: parentID)
+                },
                 onDelete: { folder in
                     viewModel.deleteFolder(folder)
-                    if selectedFolderID == folder.id {
-                        selectedFolderID = nil
+                    if let currentSelectedFolderID = selectedFolderID,
+                       viewModel.folderPath(for: currentSelectedFolderID).contains(where: { $0.id == folder.id }) {
+                        self.selectedFolderID = nil
                     }
                 }
             )
@@ -369,6 +416,17 @@ private struct PharnoteNotesHomeView: View {
                     .foregroundStyle(HomePalette.textSecondary)
             }
 
+            if let parentID = selectedFolderID.flatMap({ viewModel.folder(withID: $0)?.parentFolderID }) {
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                        selectedFolderID = parentID
+                    }
+                } label: {
+                    Label("상위 폴더", systemImage: "arrow.left")
+                }
+                .buttonStyle(HomeOutlineButtonStyle())
+            }
+
             if continueDocuments.isEmpty {
                 HomeEmptyContinueCard(
                     createNoteAction: {
@@ -393,18 +451,21 @@ private struct PharnoteNotesHomeView: View {
                                 onShare: {
                                     documentBeingShared = document
                                 },
-                                moveTargets: [
-                                    HomeDocumentFolderTarget(id: "all", folderID: nil, title: "모두")
-                                ] + folderCards.map {
-                                    HomeDocumentFolderTarget(id: $0.id.uuidString, folderID: $0.id, title: $0.name)
-                                },
-                                onMove: { folderID in
-                                    viewModel.moveDocument(document, to: folderID)
+                                moveTargets: folderMoveTargets(),
+                                onMove: { folderID, beforeDocumentID in
+                                    viewModel.moveDocument(document, to: folderID, before: beforeDocumentID)
                                 }
                             )
+                            .draggable(HomeLibraryDragItem.document(document.id))
+                            .dropDestination(for: HomeLibraryDragItem.self) { items, _ in
+                                return handleDrop(items, ontoDocument: document)
+                            }
                         }
                     }
                     .padding(.vertical, 2)
+                }
+                .dropDestination(for: HomeLibraryDragItem.self) { items, _ in
+                    return handleDrop(items, intoFolder: selectedFolderID)
                 }
             }
         }
@@ -434,6 +495,30 @@ private struct PharnoteNotesHomeView: View {
                 .buttonStyle(.plain)
             }
 
+            if selectedFolderID != nil {
+                HStack(spacing: 6) {
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                            selectedFolderID = nil
+                        }
+                    } label: {
+                        Text("모두")
+                    }
+                    .buttonStyle(HomeOutlineButtonStyle())
+
+                    ForEach(viewModel.folderPath(for: selectedFolderID)) { folder in
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                selectedFolderID = folder.id
+                            }
+                        } label: {
+                            Text(folder.name)
+                        }
+                        .buttonStyle(HomeOutlineButtonStyle())
+                    }
+                }
+            }
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     Button {
@@ -451,7 +536,7 @@ private struct PharnoteNotesHomeView: View {
                     }
                     .buttonStyle(.plain)
 
-                    ForEach(folderCards) { folder in
+                    ForEach(currentFolderChildren) { folder in
                         Button {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
                                 selectedFolderID = folder.id
@@ -459,13 +544,17 @@ private struct PharnoteNotesHomeView: View {
                         } label: {
                             HomeFolderCard(
                                 title: folder.name,
-                                subtitle: "폴더 안 문서",
-                                count: folderCount(for: folder),
+                                subtitle: folderPathSubtitle(for: folder),
+                                count: viewModel.folderDocumentCount(folderID: folder.id),
                                 accent: Color(homeHex: folder.accentHex),
                                 isSelected: selectedFolderID == folder.id
                             )
                         }
                         .buttonStyle(.plain)
+                        .draggable(HomeLibraryDragItem.folder(folder.id))
+                        .dropDestination(for: HomeLibraryDragItem.self) { items, _ in
+                            return handleDrop(items, ontoFolder: folder)
+                        }
                     }
                 }
                 .padding(.vertical, 2)
@@ -482,6 +571,54 @@ private struct PharnoteNotesHomeView: View {
                 }
             }
         )
+    }
+
+    private func folderPathSubtitle(for folder: UserLibraryFolder) -> String {
+        let names = viewModel.folderPath(for: folder.id).map(\.name)
+        guard names.count > 1 else { return "루트 폴더" }
+        return names.dropLast().joined(separator: " / ")
+    }
+
+    private func handleDrop(_ items: [HomeLibraryDragItem], intoFolder folderID: UUID?) -> Bool {
+        guard let item = items.first else { return false }
+        switch item.kind {
+        case .document:
+            guard let id = item.id, let document = viewModel.document(withID: id) else { return false }
+            viewModel.moveDocument(document, to: folderID)
+            return true
+        case .folder:
+            guard let id = item.id, let folder = viewModel.folder(withID: id) else { return false }
+            viewModel.moveFolder(folder, to: folderID)
+            return true
+        }
+    }
+
+    private func handleDrop(_ items: [HomeLibraryDragItem], ontoFolder folder: UserLibraryFolder) -> Bool {
+        guard let item = items.first else { return false }
+        switch item.kind {
+        case .document:
+            guard let id = item.id, let document = viewModel.document(withID: id) else { return false }
+            viewModel.moveDocument(document, to: folder.id)
+            return true
+        case .folder:
+            guard let id = item.id, let movingFolder = viewModel.folder(withID: id), movingFolder.id != folder.id else { return false }
+            viewModel.moveFolder(movingFolder, to: folder.id)
+            return true
+        }
+    }
+
+    private func handleDrop(_ items: [HomeLibraryDragItem], ontoDocument target: PharDocument) -> Bool {
+        guard let item = items.first else { return false }
+        switch item.kind {
+        case .document:
+            guard let id = item.id, let movingDocument = viewModel.document(withID: id), movingDocument.id != target.id else { return false }
+            viewModel.moveDocument(movingDocument, to: target.folderID, before: target.id)
+            return true
+        case .folder:
+            guard let id = item.id, let movingFolder = viewModel.folder(withID: id) else { return false }
+            viewModel.moveFolder(movingFolder, to: target.folderID)
+            return true
+        }
     }
 }
 
@@ -1875,8 +2012,9 @@ private struct HomeFolderManagerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let folders: [UserLibraryFolder]
-    let onCreate: (String) -> Void
+    let onCreate: (String, UUID?) -> Void
     let onRename: (UserLibraryFolder, String) -> Void
+    let onMove: (UserLibraryFolder, UUID?) -> Void
     let onDelete: (UserLibraryFolder) -> Void
 
     @State private var newFolderName: String = ""
@@ -1889,44 +2027,19 @@ private struct HomeFolderManagerSheet: View {
                     TextField("폴더 이름", text: $newFolderName)
                         .textInputAutocapitalization(.never)
 
-                    Button("추가") {
+                    Button("루트에 추가") {
                         let trimmed = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
-                        onCreate(trimmed)
+                        onCreate(trimmed, nil)
                         newFolderName = ""
                     }
                     .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
                 Section("기존 폴더") {
-                    ForEach(folders) { folder in
-                        VStack(alignment: .leading, spacing: 10) {
-                            TextField(
-                                "폴더 이름",
-                                text: Binding(
-                                    get: { renameDrafts[folder.id] ?? folder.name },
-                                    set: { renameDrafts[folder.id] = $0 }
-                                )
-                            )
-                            .textInputAutocapitalization(.never)
-
-                            HStack {
-                                Button("이름 변경") {
-                                    let nextName = (renameDrafts[folder.id] ?? folder.name)
-                                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                                    guard !nextName.isEmpty else { return }
-                                    onRename(folder, nextName)
-                                }
-
-                                Spacer(minLength: 0)
-
-                                Button("삭제", role: .destructive) {
-                                    onDelete(folder)
-                                }
-                            }
-                            .font(.system(size: 14, weight: .semibold))
-                        }
-                        .padding(.vertical, 4)
+                    ForEach(folderRows(parentFolderID: nil, depth: 0)) { row in
+                        folderRow(row)
+                            .padding(.leading, CGFloat(row.depth) * 14)
                     }
                 }
             }
@@ -1939,6 +2052,71 @@ private struct HomeFolderManagerSheet: View {
                 }
             }
         }
+    }
+
+    private func folderRows(parentFolderID: UUID?, depth: Int) -> [FolderRow] {
+        folders
+            .filter { $0.parentFolderID == parentFolderID }
+            .sorted { lhs, rhs in
+                if lhs.sortOrder == rhs.sortOrder {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.sortOrder < rhs.sortOrder
+            }
+            .flatMap { folder in
+                [FolderRow(folder: folder, depth: depth)] + folderRows(parentFolderID: folder.id, depth: depth + 1)
+            }
+    }
+
+    @ViewBuilder
+    private func folderRow(_ row: FolderRow) -> some View {
+        let folder = row.folder
+        VStack(alignment: .leading, spacing: 8) {
+            TextField(
+                "폴더 이름",
+                text: Binding(
+                    get: { renameDrafts[folder.id] ?? folder.name },
+                    set: { renameDrafts[folder.id] = $0 }
+                )
+            )
+            .textInputAutocapitalization(.never)
+
+            HStack {
+                Button("이름 변경") {
+                    let nextName = (renameDrafts[folder.id] ?? folder.name)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !nextName.isEmpty else { return }
+                    onRename(folder, nextName)
+                }
+
+                Button("하위 폴더") {
+                    onCreate("새 폴더", folder.id)
+                }
+
+                Spacer(minLength: 0)
+
+                Button("삭제", role: .destructive) {
+                    onDelete(folder)
+                }
+            }
+            .font(.system(size: 14, weight: .semibold))
+        }
+        .padding(.vertical, 4)
+        .draggable(HomeLibraryDragItem.folder(folder.id))
+        .dropDestination(for: HomeLibraryDragItem.self) { items, _ in
+            guard let item = items.first, item.kind == .folder, let id = item.id, let movingFolder = folders.first(where: { $0.id == id }), movingFolder.id != folder.id else {
+                return false
+            }
+            onMove(movingFolder, folder.id)
+            return true
+        }
+    }
+
+    private struct FolderRow: Identifiable {
+        let folder: UserLibraryFolder
+        let depth: Int
+
+        var id: UUID { folder.id }
     }
 }
 
@@ -1979,7 +2157,7 @@ private struct HomeContinueDocumentCard: View {
     let onRename: () -> Void
     let onShare: () -> Void
     let moveTargets: [HomeDocumentFolderTarget]
-    let onMove: (UUID?) -> Void
+    let onMove: (UUID?, UUID?) -> Void
 
     private var labelText: String {
         if let subject = document.studyMaterial?.subject, subject != .unspecified {
@@ -2032,7 +2210,7 @@ private struct HomeContinueDocumentCard: View {
                     Menu("폴더로 이동") {
                         ForEach(moveTargets) { target in
                             Button(target.title) {
-                                onMove(target.folderID)
+                                onMove(target.folderID, nil)
                             }
                         }
                     }

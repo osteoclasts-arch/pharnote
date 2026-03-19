@@ -58,18 +58,24 @@ struct UserLibraryFolder: Identifiable, Codable, Hashable {
     var createdAt: Date
     var updatedAt: Date
     var accentHex: UInt
+    var parentFolderID: UUID?
+    var sortOrder: Double
 
     init(
         id: UUID = UUID(),
         name: String,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        accentHex: UInt = 0xF1E1D0
+        accentHex: UInt = 0xF1E1D0,
+        parentFolderID: UUID? = nil,
+        sortOrder: Double = 0
     ) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.accentHex = accentHex
+        self.parentFolderID = parentFolderID
+        self.sortOrder = sortOrder
     }
 }
