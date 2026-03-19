@@ -72,8 +72,14 @@ final class LibraryStore {
         let documents: [PharDocument]
     }
 
+    private struct FolderIndex: Codable {
+        let version: Int
+        let folders: [UserLibraryFolder]
+    }
+
     private let fileManager: FileManager
     private let indexFileName = "LibraryIndex.json"
+    private let foldersFileName = "LibraryFolders.json"
     private let dashboardFileName = "PharnodeDashboardSnapshot.json"
     private let ubiquityContainerIdentifier = "iCloud.nodephar.pharnote"
 
@@ -102,6 +108,10 @@ final class LibraryStore {
         documentsDirectory.appendingPathComponent(dashboardFileName, isDirectory: false)
     }
 
+    private var foldersFileURL: URL {
+        documentsDirectory.appendingPathComponent(foldersFileName, isDirectory: false)
+    }
+
     func loadIndex() throws -> [PharDocument] {
         try ensureDocumentsDirectoryExists()
 
@@ -126,6 +136,84 @@ final class LibraryStore {
         let data = try encoder.encode(index)
         try data.write(to: indexFileURL, options: .atomic)
         try writeDashboardSnapshot(documents, using: encoder)
+    }
+
+    func loadFolders() throws -> [UserLibraryFolder] {
+        try ensureDocumentsDirectoryExists()
+
+        guard fileManager.fileExists(atPath: foldersFileURL.path) else {
+            return []
+        }
+
+        let data = try Data(contentsOf: foldersFileURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if let decoded = try? decoder.decode(FolderIndex.self, from: data) {
+            return decoded.folders.sorted { $0.updatedAt > $1.updatedAt }
+        }
+
+        return []
+    }
+
+    func saveFolders(_ folders: [UserLibraryFolder]) throws {
+        try ensureDocumentsDirectoryExists()
+        let index = FolderIndex(version: 1, folders: folders)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(index)
+        try data.write(to: foldersFileURL, options: .atomic)
+    }
+
+    @discardableResult
+    func createFolder(name: String, accentHex: UInt = 0xF1E1D0) throws -> UserLibraryFolder {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return UserLibraryFolder(name: "새 폴더", accentHex: accentHex) }
+
+        var folders = try loadFolders()
+        let folder = UserLibraryFolder(name: trimmed, accentHex: accentHex)
+        folders.append(folder)
+        try saveFolders(folders)
+        return folder
+    }
+
+    @discardableResult
+    func updateFolder(_ updatedFolder: UserLibraryFolder) throws -> UserLibraryFolder {
+        var folders = try loadFolders()
+        if let index = folders.firstIndex(where: { $0.id == updatedFolder.id }) {
+            folders[index] = updatedFolder
+        } else {
+            folders.append(updatedFolder)
+        }
+        try saveFolders(folders)
+        return updatedFolder
+    }
+
+    func deleteFolder(_ folderID: UUID) throws {
+        var folders = try loadFolders()
+        folders.removeAll { $0.id == folderID }
+        try saveFolders(folders)
+
+        var documents = try loadIndex()
+        var changed = false
+        for index in documents.indices where documents[index].folderID == folderID {
+            documents[index].folderID = nil
+            changed = true
+        }
+        if changed {
+            try saveIndex(documents)
+        }
+    }
+
+    @discardableResult
+    func updateDocumentFolder(documentID: UUID, folderID: UUID?) throws -> PharDocument? {
+        var documents = try loadIndex()
+        guard let index = documents.firstIndex(where: { $0.id == documentID }) else { return nil }
+        documents[index].folderID = folderID
+        documents[index].updatedAt = Date()
+        try saveIndex(documents)
+        return documents[index]
     }
 
     func loadDashboardSnapshot() throws -> PharnodeDashboardSnapshot {

@@ -49,6 +49,7 @@ final class LibraryViewModel: ObservableObject {
     }
 
     @Published private(set) var documents: [PharDocument] = []
+    @Published private(set) var userFolders: [UserLibraryFolder] = []
     @Published var selectedFolder: LibraryFolder? = .all
     @Published var searchQuery: String = ""
     @Published var navigationPath = NavigationPath()
@@ -193,6 +194,7 @@ final class LibraryViewModel: ObservableObject {
     func loadDocuments() {
         do {
             documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
             if didRestoreWorkspaceState {
                 reconcileOpenDocumentTabs()
             } else {
@@ -361,6 +363,77 @@ final class LibraryViewModel: ObservableObject {
 
     func document(withID id: UUID) -> PharDocument? {
         documents.first(where: { $0.id == id })
+    }
+
+    func folder(withID id: UUID) -> UserLibraryFolder? {
+        userFolders.first(where: { $0.id == id })
+    }
+
+    func folderDocumentCount(folderID: UUID?) -> Int {
+        if let folderID {
+            return documents.filter { $0.folderID == folderID }.count
+        }
+        return documents.filter { $0.folderID == nil }.count
+    }
+
+    func documents(in folderID: UUID?) -> [PharDocument] {
+        let base: [PharDocument]
+        if let folderID {
+            base = documents.filter { $0.folderID == folderID }
+        } else {
+            base = documents
+        }
+        return base.sorted { lhs, rhs in
+            if lhs.updatedAt == rhs.updatedAt {
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+    }
+
+    func createFolder(name: String) {
+        do {
+            _ = try store.createFolder(name: name)
+            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            errorMessage = "폴더 생성 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func renameFolder(_ folder: UserLibraryFolder, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        do {
+            var updated = folder
+            updated.name = trimmed
+            updated.updatedAt = Date()
+            _ = try store.updateFolder(updated)
+            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            errorMessage = "폴더 이름 변경 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteFolder(_ folder: UserLibraryFolder) {
+        do {
+            try store.deleteFolder(folder.id)
+            userFolders = try store.loadFolders().sorted { $0.updatedAt > $1.updatedAt }
+            documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            errorMessage = "폴더 삭제 실패: \(error.localizedDescription)"
+        }
+    }
+
+    func moveDocument(_ document: PharDocument, to folderID: UUID?) {
+        do {
+            guard let updatedDocument = try store.updateDocumentFolder(documentID: document.id, folderID: folderID) else { return }
+            replaceDocument(updatedDocument)
+            documents = try store.loadIndex().sorted { $0.updatedAt > $1.updatedAt }
+            refreshDashboardSnapshot()
+        } catch {
+            errorMessage = "문서 폴더 이동 실패: \(error.localizedDescription)"
+        }
     }
 
     func refreshOCRSearchResults() {

@@ -51,3 +51,25 @@ enum LibraryFolder: CaseIterable, Identifiable {
         }
     }
 }
+
+struct UserLibraryFolder: Identifiable, Codable, Hashable {
+    let id: UUID
+    var name: String
+    var createdAt: Date
+    var updatedAt: Date
+    var accentHex: UInt
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        accentHex: UInt = 0xF1E1D0
+    ) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.accentHex = accentHex
+    }
+}
