@@ -21,6 +21,20 @@
                ReferencedContainer = "container:pharnote.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "FA2002012F90000100FA2201"
+               BuildableName = "pharnoteShareExtension.appex"
+               BlueprintName = "pharnoteShareExtension"
+               ReferencedContainer = "container:pharnote.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

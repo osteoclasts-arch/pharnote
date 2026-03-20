@@ -26,6 +26,8 @@
 		FA1000142F80000100FA0002 /* ReviewEvidenceMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000042F80000100FA0001 /* ReviewEvidenceMapper.swift */; };
 		FA1000152F80000100FA0002 /* ProblemSelectionOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000052F80000100FA0001 /* ProblemSelectionOverlayView.swift */; };
 		FA1000162F80000100FA0002 /* ProblemReviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000062F80000100FA0001 /* ProblemReviewPanel.swift */; };
+		FA2000112F90000100FA2001 /* PharnoteShareSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2000012F90000100FA2001 /* PharnoteShareSupport.swift */; };
+		FA2000122F90000100FA2002 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2000022F90000100FA2002 /* ShareViewController.swift */; };
 		BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */; };
 		93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */; };
 		93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F742F5474A1007D741C /* LibraryViewModel.swift */; };
@@ -108,6 +110,11 @@
 		FA1000042F80000100FA0001 /* ReviewEvidenceMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewEvidenceMapper.swift; sourceTree = "<group>"; };
 		FA1000052F80000100FA0001 /* ProblemSelectionOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemSelectionOverlayView.swift; sourceTree = "<group>"; };
 		FA1000062F80000100FA0001 /* ProblemReviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReviewPanel.swift; sourceTree = "<group>"; };
+		FA2000012F90000100FA2001 /* PharnoteShareSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharnoteShareSupport.swift; sourceTree = "<group>"; };
+		FA2000022F90000100FA2002 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		FA2000032F90000100FA2003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FA2000042F90000100FA2004 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+		FA2000052F90000100FA2005 /* pharnoteShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = pharnoteShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingPenStyle.swift; sourceTree = "<group>"; };
 		93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchModels.swift; sourceTree = "<group>"; };
 		93FC7F682F5474A1007D741C /* LibraryFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolder.swift; sourceTree = "<group>"; };
@@ -207,6 +214,7 @@
 			isa = PBXGroup;
 			children = (
 				93FC7F1B2F5473E9007D741C /* pharnote.app */,
+				FA2000052F90000100FA2005 /* pharnoteShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -323,6 +331,24 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		FA2001012F90000100FA2101 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				FA2000012F90000100FA2001 /* PharnoteShareSupport.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		FA2001022F90000100FA2102 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				FA2000022F90000100FA2002 /* ShareViewController.swift */,
+				FA2000032F90000100FA2003 /* Info.plist */,
+				FA2000042F90000100FA2004 /* ShareExtension.entitlements */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
 		93FC7F822F5474A1007D741C /* pharnote */ = {
 			isa = PBXGroup;
 			children = (
@@ -330,6 +356,8 @@
 				93FC7F652F5474A1007D741C /* DesignSystem */,
 				93FC7F6A2F5474A1007D741C /* Models */,
 				AA0000342F56000100AA0001 /* Resources */,
+				FA2001012F90000100FA2101 /* Shared */,
+				FA2001022F90000100FA2102 /* ShareExtension */,
 				93FC7F722F5474A1007D741C /* Services */,
 				93FC7F762F5474A1007D741C /* ViewModels */,
 				93FC7F7F2F5474A1007D741C /* Views */,
@@ -382,6 +410,24 @@
 			productReference = 93FC7F1B2F5473E9007D741C /* pharnote.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FA2002012F90000100FA2201 /* pharnoteShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FA2002022F90000100FA2202 /* Build configuration list for PBXNativeTarget "pharnoteShareExtension" */;
+			buildPhases = (
+				FA2002032F90000100FA2203 /* Sources */,
+				FA2002042F90000100FA2204 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = pharnoteShareExtension;
+			packageProductDependencies = (
+			);
+			productName = pharnoteShareExtension;
+			productReference = FA2000052F90000100FA2005 /* pharnoteShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -393,6 +439,9 @@
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					93FC7F1A2F5473E9007D741C = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					FA2002012F90000100FA2201 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -412,6 +461,7 @@
 			projectRoot = "";
 			targets = (
 				93FC7F1A2F5473E9007D741C /* pharnote */,
+				FA2002012F90000100FA2201 /* pharnoteShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -512,7 +562,24 @@
 				E10000402F70000100E10002 /* HighlightStructureViews.swift in Sources */,
 				FA1000152F80000100FA0002 /* ProblemSelectionOverlayView.swift in Sources */,
 				FA1000162F80000100FA0002 /* ProblemReviewPanel.swift in Sources */,
+				FA2000112F90000100FA2001 /* PharnoteShareSupport.swift in Sources */,
 				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA2002032F90000100FA2203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA2000112F90000100FA2001 /* PharnoteShareSupport.swift in Sources */,
+				FA2000122F90000100FA2002 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA2002042F90000100FA2204 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -650,6 +717,33 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = pharnote;
+				INFOPLIST_KEY_CFBundleDocumentTypes = (
+					{
+						CFBundleTypeName = "Portable Document Format";
+						CFBundleTypeRole = Viewer;
+						LSHandlerRank = Owner;
+						LSItemContentTypes = (
+							"com.adobe.pdf",
+						);
+					},
+					{
+						CFBundleTypeName = "Image";
+						CFBundleTypeRole = Viewer;
+						LSHandlerRank = Owner;
+						LSItemContentTypes = (
+							"public.image",
+						);
+					}
+				);
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleURLName = "pharnote";
+						CFBundleURLSchemes = (
+							"pharnote",
+						);
+					}
+				);
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 					INFOPLIST_KEY_NSMicrophoneUsageDescription = "문서에 음성 메모를 녹음하려면 마이크 접근이 필요합니다.";
 					INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
 					INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
@@ -693,6 +787,33 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = pharnote;
+				INFOPLIST_KEY_CFBundleDocumentTypes = (
+					{
+						CFBundleTypeName = "Portable Document Format";
+						CFBundleTypeRole = Viewer;
+						LSHandlerRank = Owner;
+						LSItemContentTypes = (
+							"com.adobe.pdf",
+						);
+					},
+					{
+						CFBundleTypeName = "Image";
+						CFBundleTypeRole = Viewer;
+						LSHandlerRank = Owner;
+						LSItemContentTypes = (
+							"public.image",
+						);
+					}
+				);
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleURLName = "pharnote";
+						CFBundleURLSchemes = (
+							"pharnote",
+						);
+					}
+				);
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 					INFOPLIST_KEY_NSMicrophoneUsageDescription = "문서에 음성 메모를 녹음하려면 마이크 접근이 필요합니다.";
 					INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
 					INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "문서에 사진을 첨부하려면 사진 라이브러리 접근이 필요합니다.";
@@ -724,6 +845,62 @@
 			};
 			name = Release;
 		};
+		FA2002052F90000100FA2205 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../../pharnote/ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4Z57MNVFP;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ../../pharnote/ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote.ShareExtension;
+				PRODUCT_NAME = pharnoteShareExtension;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FA2002062F90000100FA2206 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../../pharnote/ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4Z57MNVFP;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ../../pharnote/ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nodephar.pharnote.ShareExtension;
+				PRODUCT_NAME = pharnoteShareExtension;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -741,6 +918,15 @@
 			buildConfigurations = (
 				93FC7F272F5473EB007D741C /* Debug */,
 				93FC7F282F5473EB007D741C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA2002022F90000100FA2202 /* Build configuration list for PBXNativeTarget "pharnoteShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA2002052F90000100FA2205 /* Debug */,
+				FA2002062F90000100FA2206 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

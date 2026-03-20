@@ -63,6 +63,17 @@ private struct PharnoteHomeShellView: View {
                     .padding(.horizontal, 24)
             }
         }
+        .onOpenURL { url in
+            if let shareImportURL = PharnoteShareImportURL.parse(url) {
+                selectedTab = .notes
+                libraryViewModel.openIncomingSharedDocument(from: shareImportURL.token)
+                return
+            }
+
+            guard url.isFileURL else { return }
+            selectedTab = .notes
+            libraryViewModel.openIncomingDocument(from: url)
+        }
     }
 
     private var showsTabBar: Bool {

@@ -69,6 +69,7 @@ final class LibraryViewModel: ObservableObject {
     private let catalogManager: StudyMaterialCatalogManager
     private let userDefaults: UserDefaults
     private var materialRecognizer: StudyMaterialRecognizer
+    private let sharedIncomingDocumentStore = PharnoteSharedIncomingDocumentStore()
     private var searchTask: Task<Void, Never>?
     private var didRestoreWorkspaceState = false
     private let workspaceStateDefaultsKey = "pharnote.workspace-state"
@@ -239,10 +240,31 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
-    func importDocument(from sourceURL: URL) {
+    func importDocument(from sourceURL: URL, openImmediately: Bool = false) {
         switch importedFileKind(for: sourceURL) {
         case .pdf:
-            importPDF(from: sourceURL)
+            do {
+                let suggestion = materialRecognizer.suggest(from: sourceURL)
+                let newDocument = try store.importPDF(
+                    from: sourceURL,
+                    suggestedMaterial: suggestion.resolvedMetadata(
+                        title: suggestion.normalizedTitle,
+                        provider: suggestion.provider,
+                        subject: suggestion.subject
+                    ),
+                    pageCountHint: suggestion.totalPages
+                )
+                documents.insert(newDocument, at: 0)
+                refreshDashboardSnapshot()
+
+                if openImmediately {
+                    openDocument(newDocument)
+                } else {
+                    pendingPDFImportSelection = PendingPDFImportSelection(document: newDocument, suggestion: suggestion)
+                }
+            } catch {
+                errorMessage = "PDF 가져오기 실패: \(error.localizedDescription)"
+            }
         case .image:
             do {
                 let newDocument = try store.importImageAsPDF(from: sourceURL)
@@ -255,6 +277,20 @@ final class LibraryViewModel: ObservableObject {
         case .unsupported:
             errorMessage = "지원하지 않는 파일 형식입니다. PDF 또는 이미지 파일을 선택해 주세요."
         }
+    }
+
+    func openIncomingDocument(from sourceURL: URL) {
+        importDocument(from: sourceURL, openImmediately: true)
+    }
+
+    func openIncomingSharedDocument(from token: String) {
+        guard let sourceURL = sharedIncomingDocumentStore.incomingFileURL(for: token) else {
+            errorMessage = "공유된 PDF를 찾을 수 없습니다."
+            return
+        }
+
+        importDocument(from: sourceURL, openImmediately: true)
+        sharedIncomingDocumentStore.removeIncomingFile(for: token)
     }
 
     func applyImportedPDFSelection(
