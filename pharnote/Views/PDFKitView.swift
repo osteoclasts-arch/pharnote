@@ -116,6 +116,7 @@ struct PDFKitView: UIViewRepresentable {
             if let existingContainer = pageContainers[pageIndex] {
                 configureCanvas(existingContainer.canvas)
                 configureAttachmentContainer(existingContainer, pageIndex: pageIndex)
+                configureProblemSelectionContainer(existingContainer, pageIndex: pageIndex)
                 return existingContainer
             }
 
@@ -149,6 +150,7 @@ struct PDFKitView: UIViewRepresentable {
                 onEditAttachment: onEditAttachment
             )
             configureAttachmentContainer(container, pageIndex: pageIndex)
+            configureProblemSelectionContainer(container, pageIndex: pageIndex)
 
             pageCanvases[pageIndex] = canvas
             pageContainers[pageIndex] = container
@@ -199,6 +201,7 @@ struct PDFKitView: UIViewRepresentable {
             pageCanvases.values.forEach { configureCanvas($0) }
             pageContainers.forEach { pageIndex, container in
                 configureAttachmentContainer(container, pageIndex: pageIndex)
+                configureProblemSelectionContainer(container, pageIndex: pageIndex)
             }
             if let observedPDFView {
                 updateCanvasRenderingScale(in: observedPDFView)
@@ -273,9 +276,177 @@ struct PDFKitView: UIViewRepresentable {
         private func configureAttachmentContainer(_ container: PDFPageOverlayContainerView, pageIndex: Int) {
             container.updateAttachmentLayer(
                 pageKey: pageKey(for: pageIndex),
-                allowsInteraction: !viewModel.isCanvasInputEnabled && !viewModel.isReadOnlyMode,
+                allowsInteraction: !viewModel.isCanvasInputEnabled && !viewModel.isReadOnlyMode && !viewModel.isProblemSelectionModeActive,
                 onEditAttachment: onEditAttachment
             )
+        }
+
+        private func configureProblemSelectionContainer(_ container: PDFPageOverlayContainerView, pageIndex: Int) {
+            let selection = viewModel.problemSelection
+            let isActivePage = pageIndex == viewModel.currentPageIndex
+            let selectionOnThisPage = selection?.pageIndex == pageIndex ? selection : nil
+            let cardModel = selectionCardModel(for: pageIndex)
+
+            container.updateProblemSelectionLayer(
+                documentId: viewModel.document.id,
+                pageId: UUID.stableAnalysisPageID(namespace: viewModel.document.id, pageIndex: pageIndex),
+                pageIndex: pageIndex,
+                isEnabled: viewModel.isProblemSelectionModeActive && isActivePage,
+                selection: selectionOnThisPage,
+                cardModel: cardModel,
+                onSelectionCompleted: { [weak self] completedSelection in
+                    self?.viewModel.handleProblemSelection(completedSelection)
+                },
+                onPrimaryAction: { [weak self] in
+                    self?.handleProblemSelectionPrimaryAction()
+                },
+                onSecondaryAction: { [weak self] in
+                    self?.handleProblemSelectionSecondaryAction()
+                },
+                onCancelAction: { [weak self] in
+                    self?.viewModel.clearProblemSelection()
+                }
+            )
+        }
+
+        private func selectionCardModel(for pageIndex: Int) -> ProblemSelectionOverlayView.SelectionCardModel? {
+            guard let selection = viewModel.problemSelection, selection.pageIndex == pageIndex else { return nil }
+            let currentMatch = viewModel.problemRecognitionResult?.bestMatch ?? selection.recognizedMatch
+            let reviewKey = reviewIdentityKey(for: selection, match: currentMatch)
+
+            if let session = viewModel.problemReviewSession, session.pageIndex == pageIndex {
+                if session.status == .completed {
+                    return ProblemSelectionOverlayView.SelectionCardModel(
+                        title: session.problemMatch?.displayTitle ?? "Review saved",
+                        subtitle: "\(session.answers.count) responses saved",
+                        statusText: "완료",
+                        primaryActionTitle: "닫기",
+                        secondaryActionTitle: nil
+                    )
+                }
+
+                return ProblemSelectionOverlayView.SelectionCardModel(
+                    title: session.problemMatch?.displayTitle ?? "복기 진행 중",
+                    subtitle: viewModel.problemReviewMessage ?? "복기를 이어가고 있습니다.",
+                    statusText: autosaveStatusText(viewModel.problemReviewAutosaveStatus),
+                    primaryActionTitle: "계속하기",
+                    secondaryActionTitle: "중단"
+                )
+            }
+
+            if viewModel.reviewedProblemKeys.contains(reviewKey) {
+                return ProblemSelectionOverlayView.SelectionCardModel(
+                    title: currentMatch?.displayTitle ?? "Review saved",
+                    subtitle: "이 문제의 복기가 이미 저장되었습니다.",
+                    statusText: "완료",
+                    primaryActionTitle: "닫기",
+                    secondaryActionTitle: nil
+                )
+            }
+
+            if let match = viewModel.problemRecognitionResult?.bestMatch {
+                return ProblemSelectionOverlayView.SelectionCardModel(
+                    title: match.displayTitle,
+                    subtitle: trimmed(selection.recognitionText) ?? "선택한 문제를 인식했습니다.",
+                    statusText: "인식됨",
+                    primaryActionTitle: "복기 시작",
+                    secondaryActionTitle: "매칭 변경"
+                )
+            }
+
+            if let result = viewModel.problemRecognitionResult {
+                switch result.status {
+                case .matching:
+                    return ProblemSelectionOverlayView.SelectionCardModel(
+                        title: "문제를 찾는 중",
+                        subtitle: "선택 영역을 바탕으로 문제를 비교하고 있습니다.",
+                        statusText: "검색 중",
+                        primaryActionTitle: "잠시만요",
+                        secondaryActionTitle: nil
+                    )
+                case .ambiguous:
+                    return ProblemSelectionOverlayView.SelectionCardModel(
+                        title: "후보가 여러 개입니다",
+                        subtitle: "가장 가까운 문제부터 확인하세요.",
+                        statusText: "애매함",
+                        primaryActionTitle: "복기 시작",
+                        secondaryActionTitle: "후보 변경"
+                    )
+                case .failed:
+                    return ProblemSelectionOverlayView.SelectionCardModel(
+                        title: "문제 인식 실패",
+                        subtitle: "선택은 유지됩니다. 복기부터 시작할 수 있습니다.",
+                        statusText: "재시도",
+                        primaryActionTitle: "기본 복기",
+                        secondaryActionTitle: "다시 선택"
+                    )
+                case .idle, .matched:
+                    break
+                }
+            }
+
+            return ProblemSelectionOverlayView.SelectionCardModel(
+                title: "선택된 문제",
+                subtitle: "복기를 시작할 준비가 되었습니다.",
+                statusText: "대기",
+                primaryActionTitle: "복기 시작",
+                secondaryActionTitle: nil
+            )
+        }
+
+        private func handleProblemSelectionPrimaryAction() {
+            if let session = viewModel.problemReviewSession {
+                if session.status == .completed {
+                    viewModel.clearProblemSelection()
+                } else {
+                    viewModel.isProblemReviewPanelVisible = true
+                }
+                return
+            }
+
+            viewModel.startProblemReview(using: viewModel.problemRecognitionResult?.bestMatch)
+        }
+
+        private func handleProblemSelectionSecondaryAction() {
+            if viewModel.problemReviewSession != nil {
+                viewModel.abandonCurrentProblemReview()
+                return
+            }
+
+            if viewModel.problemRecognitionResult?.status == .ambiguous {
+                viewModel.changeProblemMatch()
+                return
+            }
+
+            if viewModel.problemRecognitionResult?.status == .failed {
+                viewModel.clearProblemSelection()
+            }
+        }
+
+        private func autosaveStatusText(_ status: ReviewAutosaveStatus) -> String {
+            switch status {
+            case .idle:
+                return "대기"
+            case .saving:
+                return "저장 중"
+            case .saved:
+                return "저장됨"
+            case .retryNeeded:
+                return "재시도 필요"
+            }
+        }
+
+        private func trimmed(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        private func reviewIdentityKey(for selection: ProblemSelection, match: ProblemMatch?) -> String {
+            if let canonical = trimmed(match?.canonicalProblemId) {
+                return canonical
+            }
+            return selection.selectionSignature
         }
 
         private func setActiveOverlayCanvas(_ canvas: PencilPassthroughCanvasView?) {
@@ -400,6 +571,7 @@ struct PDFKitView: UIViewRepresentable {
 private final class PDFPageOverlayContainerView: UIView {
     let canvas: PencilPassthroughCanvasView
     private let attachmentView: DocumentWorkspaceAttachmentCanvasUIView
+    private let selectionOverlay = ProblemSelectionOverlayView()
     private var pageKey: String?
 
     init(
@@ -420,6 +592,7 @@ private final class PDFPageOverlayContainerView: UIView {
 
         addSubview(attachmentView)
         addSubview(canvas)
+        addSubview(selectionOverlay)
     }
 
     @available(*, unavailable)
@@ -431,12 +604,21 @@ private final class PDFPageOverlayContainerView: UIView {
         super.layoutSubviews()
         attachmentView.frame = bounds
         canvas.frame = bounds
+        selectionOverlay.frame = bounds
         if canvas.contentSize != bounds.size {
             canvas.contentSize = bounds.size
         }
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let selectionPoint = convert(point, to: selectionOverlay)
+        if selectionOverlay.isUserInteractionEnabled,
+           !selectionOverlay.isHidden,
+           selectionOverlay.alpha > 0.01,
+           selectionOverlay.point(inside: selectionPoint, with: event) {
+            return true
+        }
+
         let canvasPoint = convert(point, to: canvas)
         if canvas.isUserInteractionEnabled,
            !canvas.isHidden,
@@ -451,6 +633,14 @@ private final class PDFPageOverlayContainerView: UIView {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard !isHidden, alpha > 0.01, isUserInteractionEnabled else { return nil }
+
+        let selectionPoint = convert(point, to: selectionOverlay)
+        if selectionOverlay.isUserInteractionEnabled,
+           !selectionOverlay.isHidden,
+           selectionOverlay.alpha > 0.01,
+           selectionOverlay.point(inside: selectionPoint, with: event) {
+            return selectionOverlay.hitTest(selectionPoint, with: event) ?? selectionOverlay
+        }
 
         let canvasPoint = convert(point, to: canvas)
         if canvas.isUserInteractionEnabled,
@@ -476,6 +666,36 @@ private final class PDFPageOverlayContainerView: UIView {
         self.pageKey = pageKey
         attachmentView.onEditAttachment = onEditAttachment
         attachmentView.update(pageKey: pageKey, allowsInteraction: allowsInteraction)
+        setNeedsLayout()
+    }
+
+    func updateProblemSelectionLayer(
+        documentId: UUID,
+        pageId: UUID,
+        pageIndex: Int,
+        isEnabled: Bool,
+        selection: ProblemSelection?,
+        cardModel: ProblemSelectionOverlayView.SelectionCardModel?,
+        onSelectionCompleted: ((ProblemSelection) -> Void)?,
+        onPrimaryAction: (() -> Void)?,
+        onSecondaryAction: (() -> Void)?,
+        onCancelAction: (() -> Void)?
+    ) {
+        selectionOverlay.documentId = documentId
+        selectionOverlay.pageId = pageId
+        selectionOverlay.pageIndex = pageIndex
+        selectionOverlay.selectionType = .wholeProblem
+        selectionOverlay.isSelectionEnabled = isEnabled
+        selectionOverlay.onSelectionCompleted = onSelectionCompleted
+        selectionOverlay.onPrimaryAction = onPrimaryAction
+        selectionOverlay.onSecondaryAction = onSecondaryAction
+        selectionOverlay.onCancelAction = onCancelAction
+
+        selectionOverlay.selectedSelection = selection
+        selectionOverlay.cardModel = cardModel
+        if selection == nil, cardModel == nil {
+            selectionOverlay.clearSelection()
+        }
         setNeedsLayout()
     }
 }

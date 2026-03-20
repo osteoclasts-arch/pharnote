@@ -613,6 +613,14 @@ final class NodeAnalysisViewModel: ObservableObject {
     private func recommendationQueryCandidates(for weakness: NodeAnalysisWeaknessRecord) -> [String] {
         let seeds = weakness.recommendationSeedTerms
         var candidates: [String] = []
+        let reviewNodeSeeds = Array(
+            Set(
+                (weakness.review.derivedNodeLabels ?? []) +
+                (weakness.review.derivedNodeIds ?? [])
+            )
+        )
+        .sorted()
+        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         if let unit = weakness.unitLabel {
             let joinedWithKeywords = ([unit] + seeds.filter { $0 != unit }.prefix(2)).joined(separator: " ")
@@ -625,6 +633,11 @@ final class NodeAnalysisViewModel: ObservableObject {
         if !seeds.isEmpty {
             candidates.append(Array(seeds.prefix(3)).joined(separator: " "))
             candidates.append(Array(seeds.prefix(2)).joined(separator: " "))
+        }
+
+        if !reviewNodeSeeds.isEmpty {
+            candidates.append(Array(reviewNodeSeeds.prefix(3)).joined(separator: " "))
+            candidates.append(Array(reviewNodeSeeds.prefix(2)).joined(separator: " "))
         }
 
         if let fallback = weakness.question.contentPreview.nonEmpty,

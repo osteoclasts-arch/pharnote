@@ -233,93 +233,99 @@ struct PDFDocumentEditorView: View {
     }
 
     private var editorCanvas: some View {
-        ZStack(alignment: .top) {
-            WritingChromePalette.paper.ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                WritingChromePalette.paper.ignoresSafeArea()
 
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white,
-                            PharTheme.ColorToken.canvasBackground,
-                            PharTheme.ColorToken.surfaceSecondary
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white,
+                                PharTheme.ColorToken.canvasBackground,
+                                PharTheme.ColorToken.surfaceSecondary
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                        .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
-                }
-                .overlay(alignment: .topLeading) {
-                    PDFCanvasDecor()
-                }
-                .padding(PharTheme.Spacing.medium)
-
-            PDFKitView(
-                viewModel: viewModel,
-                workspaceController: workspaceController
-            ) { attachmentID in
-                viewModel.deactivateToolSelection()
-                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
-            }
-                .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
-                .padding(PharTheme.Spacing.medium)
-
-            RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
-                .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
-                .padding(PharTheme.Spacing.medium)
-                .allowsHitTesting(false)
-
-            VStack(spacing: 10) {
-                HStack(alignment: .center, spacing: 12) {
-                    backToHomeButton
-                    WritingDocumentChipStrip(
-                        chips: workspaceChips,
-                        onSelect: handleWorkspaceChipSelection,
-                        onClose: handleWorkspaceChipClose,
-                        onRename: { documentID in
-                            guard documentID == viewModel.document.id else { return }
-                            documentBeingRenamed = viewModel.document
-                        }
-                    )
-                }
-                chromeToolbar
-                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
-                    chromeAnalyzeCallout
-                }
-                if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
-                    chromeSelectionBar
-                }
-            }
-            .padding(.top, 18)
-            .padding(.horizontal, 28)
-
-            if isSidebarExpanded {
-                HStack {
-                    Spacer(minLength: 0)
-                    workspaceSidebar
-                }
-                .padding(.top, 116)
-                .padding(.trailing, 18)
-                .padding(.bottom, 18)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer(minLength: 0)
-                    WritingShareFAB {
-                        isShowingShareSheet = true
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                            .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
                     }
-                    .padding(.trailing, isSidebarExpanded ? 366 : 28)
-                    .padding(.bottom, 24)
+                    .overlay(alignment: .topLeading) {
+                        PDFCanvasDecor()
+                    }
+                    .padding(PharTheme.Spacing.medium)
+
+                PDFKitView(
+                    viewModel: viewModel,
+                    workspaceController: workspaceController
+                ) { attachmentID in
+                    viewModel.deactivateToolSelection()
+                    imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
+                }
+                    .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
+                    .padding(PharTheme.Spacing.medium)
+
+                RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
+                    .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
+                    .padding(PharTheme.Spacing.medium)
+                    .allowsHitTesting(false)
+
+                VStack(spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        backToHomeButton
+                        WritingDocumentChipStrip(
+                            chips: workspaceChips,
+                            onSelect: handleWorkspaceChipSelection,
+                            onClose: handleWorkspaceChipClose,
+                            onRename: { documentID in
+                                guard documentID == viewModel.document.id else { return }
+                                documentBeingRenamed = viewModel.document
+                            }
+                        )
+                    }
+                    chromeToolbar
+                    if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
+                        chromeAnalyzeCallout
+                    }
+                    if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
+                        chromeSelectionBar
+                    }
+                }
+                .padding(.top, 18)
+                .padding(.horizontal, 28)
+
+                if viewModel.isProblemReviewPanelVisible {
+                    problemReviewPanelOverlay(containerWidth: proxy.size.width)
+                }
+
+                if isSidebarExpanded {
+                    HStack {
+                        Spacer(minLength: 0)
+                        workspaceSidebar
+                    }
+                    .padding(.top, 116)
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 18)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer(minLength: 0)
+                        WritingShareFAB {
+                            isShowingShareSheet = true
+                        }
+                        .padding(.trailing, isSidebarExpanded ? 366 : 28)
+                        .padding(.bottom, 24)
+                    }
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var chromeToolbar: some View {
@@ -447,7 +453,7 @@ struct PDFDocumentEditorView: View {
     }
 
     private var chromeAnalyzeCallout: some View {
-        WritingAnalyzeHintBubble(text: "분석 받고 싶은 문제를 태깅하세요!")
+        WritingAnalyzeHintBubble(text: "선택한 문제를 복기해보세요!")
     }
 
     private var chromeInkPalette: some View {
@@ -605,24 +611,31 @@ struct PDFDocumentEditorView: View {
         WritingChromeCapsule(fill: .white) {
             HStack(spacing: 10) {
                 WritingAccentActionButton(
-                    title: "분석하기",
+                    title: viewModel.problemReviewSession?.status == .inProgress ? "복기 이어가기" : "복기 시작",
                     systemName: "waveform.path.ecg.text",
-                    isEnabled: viewModel.canAnalyzeCurrentSelection
+                    isEnabled: viewModel.problemSelection != nil
                 ) {
-                    isShowingAnalyzeSheet = true
+                    if viewModel.problemReviewSession?.status == .inProgress {
+                        viewModel.isProblemReviewPanelVisible = true
+                    } else {
+                        viewModel.startProblemReview(using: viewModel.problemRecognitionResult?.bestMatch)
+                    }
                 }
 
-                selectionPill("복사", systemName: "doc.on.doc", isEnabled: viewModel.canCopy) {
-                    viewModel.copySelection()
+                selectionPill("다시 선택", systemName: "lasso", isEnabled: viewModel.problemSelection != nil) {
+                    viewModel.clearProblemSelection()
                 }
-                selectionPill("잘라내기", systemName: "scissors", isEnabled: viewModel.canCut) {
-                    viewModel.cutSelection()
+
+                if viewModel.problemRecognitionResult?.status == .ambiguous {
+                    selectionPill("후보 변경", systemName: "arrow.triangle.2.circlepath", isEnabled: true) {
+                        viewModel.changeProblemMatch()
+                    }
                 }
-                selectionPill("붙여넣기", systemName: "doc.on.clipboard", isEnabled: viewModel.canPaste) {
-                    viewModel.pasteSelection()
-                }
-                selectionPill("삭제", systemName: "trash", isEnabled: viewModel.canDelete) {
-                    viewModel.deleteSelection()
+
+                if viewModel.problemReviewSession != nil {
+                    selectionPill("패널 보기", systemName: "rectangle.bottomthird.inset.fill", isEnabled: true) {
+                        viewModel.isProblemReviewPanelVisible = true
+                    }
                 }
             }
         }
@@ -1296,26 +1309,63 @@ struct PDFDocumentEditorView: View {
     private var selectionActionsBar: some View {
         PharSurfaceCard(fill: PharTheme.ColorToken.surfacePrimary.opacity(0.92)) {
             HStack(spacing: PharTheme.Spacing.xSmall) {
-                selectionActionButton(title: "복사", systemName: "doc.on.doc", isEnabled: viewModel.canCopy) {
-                    viewModel.copySelection()
+                selectionActionButton(
+                    title: viewModel.problemReviewSession?.status == .inProgress ? "복기 이어가기" : "복기 시작",
+                    systemName: "waveform.path.ecg.text",
+                    isEnabled: viewModel.problemSelection != nil
+                ) {
+                    if viewModel.problemReviewSession?.status == .inProgress {
+                        viewModel.isProblemReviewPanelVisible = true
+                    } else {
+                        viewModel.startProblemReview(using: viewModel.problemRecognitionResult?.bestMatch)
+                    }
                 }
-                selectionActionButton(title: "잘라내기", systemName: "scissors", isEnabled: viewModel.canCut) {
-                    viewModel.cutSelection()
+
+                selectionActionButton(title: "다시 선택", systemName: "lasso", isEnabled: viewModel.problemSelection != nil) {
+                    viewModel.clearProblemSelection()
                 }
-                selectionActionButton(title: "붙여넣기", systemName: "doc.on.clipboard", isEnabled: viewModel.canPaste) {
-                    viewModel.pasteSelection()
+
+                if viewModel.problemRecognitionResult?.status == .ambiguous {
+                    selectionActionButton(title: "후보 변경", systemName: "arrow.triangle.2.circlepath", isEnabled: true) {
+                        viewModel.changeProblemMatch()
+                    }
                 }
-                selectionActionButton(title: "삭제", systemName: "trash", isEnabled: viewModel.canDelete, isDestructive: true) {
-                    viewModel.deleteSelection()
+
+                if viewModel.problemReviewSession != nil {
+                    selectionActionButton(title: "패널 열기", systemName: "rectangle.bottomthird.inset.fill", isEnabled: true) {
+                        viewModel.isProblemReviewPanelVisible = true
+                    }
                 }
 
                 Spacer(minLength: 0)
 
-                Text("선택 후 드래그로 이동")
+                Text(viewModel.problemReviewMessage ?? "선택한 문제를 바로 복기할 수 있습니다.")
                     .font(PharTypography.caption)
                     .foregroundStyle(PharTheme.ColorToken.subtleText)
             }
         }
+    }
+
+    private func problemReviewPanelOverlay(containerWidth: CGFloat) -> some View {
+        let isCompactWidth = containerWidth < 720
+        let maxPanelWidth = isCompactWidth
+            ? max(containerWidth - 24, 0)
+            : min(max(containerWidth * 0.34, 340), 460)
+
+        return VStack {
+            Spacer(minLength: 0)
+            HStack {
+                Spacer(minLength: 0)
+                ProblemReviewPanel(viewModel: viewModel)
+                    .frame(maxWidth: maxPanelWidth, alignment: .leading)
+                    .padding(.horizontal, isCompactWidth ? 12 : 0)
+                    .padding(.trailing, isCompactWidth ? 0 : 28)
+                    .padding(.bottom, isCompactWidth ? 14 : 28)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .allowsHitTesting(true)
+        .animation(PharTheme.AnimationToken.toolbarVisibility, value: viewModel.isProblemReviewPanelVisible)
     }
 
     private var workspacePanel: some View {

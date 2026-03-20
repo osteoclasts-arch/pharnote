@@ -212,6 +212,9 @@ nonisolated struct AnalysisPostSolveReview: Codable, Hashable, Sendable {
     var reviewPath: [AnalysisReviewStepResponse]?
     var primaryStuckPoint: String?
     var lassoSelectedPointIds: [String]?
+    var derivedNodeIds: [String]?
+    var derivedNodeLabels: [String]?
+    var derivedEvidenceTypes: [String]?
     var freeMemo: String?
     var analyzedAt: Date
 }
@@ -1135,6 +1138,35 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
         let trimmedMemo = freeMemo.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallbackStuck = reviewPath.first(where: { $0.status == .failed })?.stepId
             ?? reviewPath.first(where: { $0.status == .partial })?.stepId
+        var derivedNodeIds: [String] = []
+        var derivedNodeLabels: [String] = []
+        var derivedEvidenceTypes: [String] = []
+
+        func appendDerived(option: AnalysisReviewOptionDefinition?) {
+            guard let option else { return }
+            let nodeId = option.searchKeywords.first ?? option.id
+            if !derivedNodeIds.contains(nodeId) {
+                derivedNodeIds.append(nodeId)
+            }
+            if !derivedNodeLabels.contains(option.title) {
+                derivedNodeLabels.append(option.title)
+            }
+            if !derivedEvidenceTypes.contains(option.id) {
+                derivedEvidenceTypes.append(option.id)
+            }
+        }
+
+        if let firstApproachID,
+           let option = promptSet.firstApproachOptions.first(where: { $0.id == firstApproachID }) {
+            appendDerived(option: option)
+        }
+
+        for step in promptSet.stepDefinitions {
+            if let selectedOptionID = selectedOptionID(for: step.id),
+               let option = promptSet.optionDefinition(for: selectedOptionID) {
+                appendDerived(option: option)
+            }
+        }
 
         return AnalysisPostSolveReview(
             subject: promptSet.subject,
@@ -1143,6 +1175,9 @@ nonisolated struct AnalysisPostSolveReviewDraft: Hashable, Sendable {
             reviewPath: reviewPath,
             primaryStuckPoint: primaryStuckPointID ?? fallbackStuck,
             lassoSelectedPointIds: nil,
+            derivedNodeIds: derivedNodeIds.isEmpty ? nil : derivedNodeIds,
+            derivedNodeLabels: derivedNodeLabels.isEmpty ? nil : derivedNodeLabels,
+            derivedEvidenceTypes: derivedEvidenceTypes.isEmpty ? nil : derivedEvidenceTypes,
             freeMemo: trimmedMemo.isEmpty ? nil : trimmedMemo,
             analyzedAt: analyzedAt
         )

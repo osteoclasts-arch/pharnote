@@ -204,6 +204,60 @@ actor DocumentOCRService {
         return mergedBlocks
     }
 
+    func recognizePDFSelectionBlocks(
+        document: PharDocument,
+        pageIndex: Int,
+        normalizedRect: CGRect
+    ) async -> [AnalysisTextBlock] {
+        guard let pageImage = renderPDFPageImage(document: document, pageIndex: pageIndex, longEdge: 2400),
+              let cgImage = pageImage.cgImage else {
+            return []
+        }
+
+        let sanitizedRect = clamp(normalizedRect, to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard sanitizedRect.width > 0.01, sanitizedRect.height > 0.01 else { return [] }
+
+        let cropRect = CGRect(
+            x: sanitizedRect.minX * CGFloat(cgImage.width),
+            y: sanitizedRect.minY * CGFloat(cgImage.height),
+            width: sanitizedRect.width * CGFloat(cgImage.width),
+            height: sanitizedRect.height * CGFloat(cgImage.height)
+        )
+        .integral
+
+        guard cropRect.width >= 24, cropRect.height >= 24,
+              let croppedImage = cgImage.cropping(to: cropRect) else {
+            return []
+        }
+
+        let context = makeProcessingContext(
+            document: document,
+            customWords: makeCustomWords(document: document, manualTags: [])
+        )
+        let uiImage = UIImage(cgImage: croppedImage)
+        return recognizeBlocks(
+            from: uiImage,
+            kind: "ocr-selection",
+            pageIndex: pageIndex,
+            context: context,
+            shouldTile: false,
+            confidenceFloor: 0.18
+        )
+    }
+
+    func recognizePDFSelectionText(
+        document: PharDocument,
+        pageIndex: Int,
+        normalizedRect: CGRect
+    ) async -> String? {
+        let blocks = await recognizePDFSelectionBlocks(
+            document: document,
+            pageIndex: pageIndex,
+            normalizedRect: normalizedRect
+        )
+        return joinedText(from: blocks)
+    }
+
     func recognizeIndexedText(document: PharDocument, pageKey: String) async -> String? {
         switch document.type {
         case .blankNote:
@@ -595,6 +649,16 @@ actor DocumentOCRService {
 
         let files = try? FileManager.default.contentsOfDirectory(at: packageURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
         return files?.first(where: { $0.pathExtension.lowercased() == "pdf" })
+    }
+
+    private func clamp(_ rect: CGRect, to bounds: CGRect) -> CGRect {
+        let originX = min(max(rect.origin.x, bounds.minX), bounds.maxX)
+        let originY = min(max(rect.origin.y, bounds.minY), bounds.maxY)
+        let maxX = min(max(rect.maxX, bounds.minX), bounds.maxX)
+        let maxY = min(max(rect.maxY, bounds.minY), bounds.maxY)
+        let width = max(maxX - originX, 0)
+        let height = max(maxY - originY, 0)
+        return CGRect(x: originX, y: originY, width: width, height: height)
     }
 
     private func blankNoteFingerprint(source: BlankNoteAnalysisSource) -> String {

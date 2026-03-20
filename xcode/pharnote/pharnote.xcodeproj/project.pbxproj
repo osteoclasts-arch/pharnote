@@ -20,6 +20,12 @@
 		93FC7F862F5474A1007D741C /* pharnoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F812F5474A1007D741C /* pharnoteApp.swift */; };
 		93FC7F872F5474A1007D741C /* BlankNoteEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F732F5474A1007D741C /* BlankNoteEditorViewModel.swift */; };
 		93FC7F882F5474A1007D741C /* BlankNoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F662F5474A1007D741C /* BlankNoteContent.swift */; };
+		FA1000112F80000100FA0002 /* ProblemReviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000012F80000100FA0001 /* ProblemReviewModels.swift */; };
+		FA1000122F80000100FA0002 /* ReviewSessionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000022F80000100FA0001 /* ReviewSessionRepository.swift */; };
+		FA1000132F80000100FA0002 /* ProblemRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000032F80000100FA0001 /* ProblemRecognitionService.swift */; };
+		FA1000142F80000100FA0002 /* ReviewEvidenceMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000042F80000100FA0001 /* ReviewEvidenceMapper.swift */; };
+		FA1000152F80000100FA0002 /* ProblemSelectionOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000052F80000100FA0001 /* ProblemSelectionOverlayView.swift */; };
+		FA1000162F80000100FA0002 /* ProblemReviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000062F80000100FA0001 /* ProblemReviewPanel.swift */; };
 		BB0001BB2F5700000000BB02 /* WritingPenStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */; };
 		93FC7F892F5474A1007D741C /* PencilCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */; };
 		93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FC7F742F5474A1007D741C /* LibraryViewModel.swift */; };
@@ -96,6 +102,12 @@
 		93FC7F632F5474A1007D741C /* PharControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharControls.swift; sourceTree = "<group>"; };
 		93FC7F642F5474A1007D741C /* PharTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharTheme.swift; sourceTree = "<group>"; };
 		93FC7F662F5474A1007D741C /* BlankNoteContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlankNoteContent.swift; sourceTree = "<group>"; };
+		FA1000012F80000100FA0001 /* ProblemReviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReviewModels.swift; sourceTree = "<group>"; };
+		FA1000022F80000100FA0001 /* ReviewSessionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewSessionRepository.swift; sourceTree = "<group>"; };
+		FA1000032F80000100FA0001 /* ProblemRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemRecognitionService.swift; sourceTree = "<group>"; };
+		FA1000042F80000100FA0001 /* ReviewEvidenceMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewEvidenceMapper.swift; sourceTree = "<group>"; };
+		FA1000052F80000100FA0001 /* ProblemSelectionOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemSelectionOverlayView.swift; sourceTree = "<group>"; };
+		FA1000062F80000100FA0001 /* ProblemReviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReviewPanel.swift; sourceTree = "<group>"; };
 		BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingPenStyle.swift; sourceTree = "<group>"; };
 		93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingSearchModels.swift; sourceTree = "<group>"; };
 		93FC7F682F5474A1007D741C /* LibraryFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolder.swift; sourceTree = "<group>"; };
@@ -214,6 +226,7 @@
 				AA0000172F56000100AA0001 /* AnalysisModels.swift */,
 				93FC7F662F5474A1007D741C /* BlankNoteContent.swift */,
 				E10000102F70000100E10001 /* HighlightStructureModels.swift */,
+				FA1000012F80000100FA0001 /* ProblemReviewModels.swift */,
 					BB0001AA2F5700000000BB01 /* WritingPenStyle.swift */,
 				93FC7F672F5474A1007D741C /* HandwritingSearchModels.swift */,
 				93FC7F682F5474A1007D741C /* LibraryFolder.swift */,
@@ -239,6 +252,9 @@
 				AA0000442F56000100AA0001 /* DocumentOCRService.swift */,
 				E10000202F70000100E10001 /* HighlightStructureEngine.swift */,
 				E10000302F70000100E10001 /* HighlightStructureStore.swift */,
+				FA1000022F80000100FA0001 /* ReviewSessionRepository.swift */,
+				FA1000032F80000100FA0001 /* ProblemRecognitionService.swift */,
+				FA1000042F80000100FA0001 /* ReviewEvidenceMapper.swift */,
 				AA0000582F56000100AA0001 /* NodeAnalysisStore.swift */,
 				AA0000482F56000100AA0001 /* PastQuestionsService.swift */,
 				AA0000362F56000100AA0001 /* StudyMaterialCatalogManager.swift */,
@@ -293,6 +309,8 @@
 				93FC7F7B2F5474A1007D741C /* PDFImportPicker.swift */,
 				93FC7F7C2F5474A1007D741C /* PDFKitView.swift */,
 				93FC7F7D2F5474A1007D741C /* PencilCanvasView.swift */,
+				FA1000052F80000100FA0001 /* ProblemSelectionOverlayView.swift */,
+				FA1000062F80000100FA0001 /* ProblemReviewPanel.swift */,
 				D10000402F60000100D10001 /* PharAppGuideView.swift */,
 				E10000402F70000100E10001 /* HighlightStructureViews.swift */,
 				D10000302F60000100D10001 /* FloatingTextToolbar.swift */,
@@ -433,6 +451,9 @@
 				AA0000432F56000100AA0001 /* DocumentOCRService.swift in Sources */,
 				AA0000532F56000100AA0001 /* NodeAnalysisModels.swift in Sources */,
 				AA0000452F56000100AA0001 /* PastQuestionModels.swift in Sources */,
+				FA1000122F80000100FA0002 /* ReviewSessionRepository.swift in Sources */,
+				FA1000132F80000100FA0002 /* ProblemRecognitionService.swift in Sources */,
+				FA1000142F80000100FA0002 /* ReviewEvidenceMapper.swift in Sources */,
 				AA0000542F56000100AA0001 /* NodeAnalysisStore.swift in Sources */,
 				AA0000472F56000100AA0001 /* PastQuestionsService.swift in Sources */,
 				AA0000352F56000100AA0001 /* StudyMaterialCatalogManager.swift in Sources */,
@@ -457,6 +478,7 @@
 				93FC7F8A2F5474A1007D741C /* LibraryViewModel.swift in Sources */,
 				AA0000552F56000100AA0001 /* NodeAnalysisViewModel.swift in Sources */,
 				AA0000492F56000100AA0001 /* PastQuestionsDebugViewModel.swift in Sources */,
+				FA1000112F80000100FA0002 /* ProblemReviewModels.swift in Sources */,
 				93FC7F8B2F5474A1007D741C /* LibraryStore.swift in Sources */,
 				93FC7F8C2F5474A1007D741C /* PharControls.swift in Sources */,
 				93FC7F8D2F5474A1007D741C /* LibraryView.swift in Sources */,
@@ -488,6 +510,8 @@
 				D10000502F60000100D10002 /* RichTextTextView.swift in Sources */,
 				D10000402F60000100D10002 /* PharAppGuideView.swift in Sources */,
 				E10000402F70000100E10002 /* HighlightStructureViews.swift in Sources */,
+				FA1000152F80000100FA0002 /* ProblemSelectionOverlayView.swift in Sources */,
+				FA1000162F80000100FA0002 /* ProblemReviewPanel.swift in Sources */,
 				B4F000042F56000100B4F002 /* LessonDocumentEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

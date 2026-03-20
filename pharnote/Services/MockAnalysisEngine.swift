@@ -11,7 +11,13 @@ actor AnalysisPipelineEngine {
         let evidence = makeEvidence(bundle: bundle, features: features, classification: classification, scores: scores)
         let misconceptions = makeMisconceptions(features: features, classification: classification, scores: scores)
         let reviewPlan = makeReviewPlan(features: features, classification: classification, scores: scores)
-        let actions = makeRecommendedActions(classification: classification, concepts: concepts, reviewPlan: reviewPlan, scores: scores)
+        let actions = makeRecommendedActions(
+            classification: classification,
+            concepts: concepts,
+            reviewPlan: reviewPlan,
+            scores: scores,
+            bundle: bundle
+        )
         let badges = makeBadges(classification: classification, scores: scores, reviewPlan: reviewPlan)
 
         return AnalysisResult(
@@ -71,7 +77,13 @@ actor AnalysisPipelineEngine {
             text: loweredText
         )
         let inferredUnit = inferUnit(subject: inferredSubject, text: loweredText)
-        let inferredConcepts = inferConcepts(subject: inferredSubject, text: loweredText, manualTags: bundle.content.manualTags)
+        let reviewConcepts = reviewConceptLabels(from: bundle.behavior.postSolveReview)
+        let inferredConcepts = inferConcepts(
+            subject: inferredSubject,
+            text: loweredText,
+            manualTags: bundle.content.manualTags,
+            reviewConcepts: reviewConcepts
+        )
         let reviewResponses = bundle.behavior.postSolveReview?.reviewPath ?? []
         let reviewAnsweredCount = reviewResponses.filter { $0.status != .notTried }.count
         let reviewFailedStepCount = reviewResponses.filter { $0.status == .failed }.count
@@ -270,7 +282,7 @@ actor AnalysisPipelineEngine {
         let labels = Array(features.inferredConcepts.prefix(3))
         return labels.enumerated().map { index, label in
             AnalysisConceptNode(
-                nodeId: "\(bundle.document.documentId.uuidString.lowercased()).concept.\(index)",
+                nodeId: reviewConceptNodeID(for: label, index: index, bundle: bundle),
                 label: label,
                 masteryScore: clamped(masteryScore - Double(index) * 0.07, min: 0.2, max: 0.95),
                 confidenceScore: clamped(confidenceScore - Double(index) * 0.05, min: 0.2, max: 0.96)
@@ -333,6 +345,11 @@ actor AnalysisPipelineEngine {
             if let freeMemo = review.freeMemo?.trimmingCharacters(in: .whitespacesAndNewlines),
                !freeMemo.isEmpty {
                 parts.append("메모 \(String(freeMemo.prefix(32)))")
+            }
+            if let nodeLabels = review.derivedNodeLabels, !nodeLabels.isEmpty {
+                parts.append("노드 \(nodeLabels.prefix(3).joined(separator: ", "))")
+            } else if let nodeIds = review.derivedNodeIds, !nodeIds.isEmpty {
+                parts.append("노드 \(nodeIds.prefix(3).joined(separator: ", "))")
             }
 
             items.append(
@@ -408,7 +425,8 @@ actor AnalysisPipelineEngine {
         classification: AnalysisClassification,
         concepts: [AnalysisConceptNode],
         reviewPlan: AnalysisReviewPlan,
-        scores: ScoredSignals
+        scores: ScoredSignals,
+        bundle: AnalysisBundle
     ) -> [AnalysisRecommendedAction] {
         let focusConcept = concepts.first?.label ?? "핵심 개념"
         var actions: [AnalysisRecommendedAction] = []
@@ -463,12 +481,12 @@ actor AnalysisPipelineEngine {
             )
         }
 
-        if scores.struggleScore > 0.5 {
+        if scores.struggleScore > 0.5 || (bundle.behavior.postSolveReview?.derivedNodeIds?.isEmpty == false) {
             actions.append(
                 AnalysisRecommendedAction(
                     id: UUID(),
-                    title: "pharnode에서 취약 지점 점검",
-                    detail: "마찰이 높게 잡힌 페이지라 장기 대시보드에서 취약 단원 흐름과 같이 보는 편이 좋습니다.",
+                    title: "pharnode에서 취약 노드 점검",
+                    detail: "복기에서 잡힌 노드 태그를 장기 대시보드에서 다시 열어 보면 BrainTree 연결이 더 선명해집니다.",
                     style: .inspectInPharnode
                 )
             )
@@ -620,11 +638,7 @@ actor AnalysisPipelineEngine {
         return candidates.first(where: { text.contains($0.lowercased()) || text.contains($0) })
     }
 
-    private func inferConcepts(subject: String?, text: String, manualTags: [String]) -> [String] {
-        if !manualTags.isEmpty {
-            return orderedUnique(manualTags)
-        }
-
+    private func inferConcepts(subject: String?, text: String, manualTags: [String], reviewConcepts: [String] = []) -> [String] {
         let subjectConcepts: [String: [String]] = [
             "수학": ["치환적분", "부분적분", "정적분", "미분계수", "극한", "수열", "확률", "경우의 수"],
             "국어": ["주제 파악", "선지 판단", "문학 개념", "비문학 구조"],
@@ -637,7 +651,7 @@ actor AnalysisPipelineEngine {
             "한국사": ["시대 구분", "정책 변화", "사료 해석"]
         ]
 
-        var matches: [String] = []
+        var matches: [String] = orderedUnique(reviewConcepts + manualTags)
         if let subject, let candidates = subjectConcepts[subject] {
             matches.append(contentsOf: candidates.filter { text.contains($0.lowercased()) || text.contains($0) })
         }
@@ -655,6 +669,74 @@ actor AnalysisPipelineEngine {
         }
 
         return Array(orderedUnique(matches).prefix(3))
+    }
+
+    private func reviewConceptLabels(from review: AnalysisPostSolveReview?) -> [String] {
+        guard let review else { return [] }
+
+        var labels: [String] = []
+
+        if let nodeLabels = review.derivedNodeLabels {
+            labels.append(contentsOf: nodeLabels)
+        }
+
+        if labels.isEmpty, let nodeIds = review.derivedNodeIds {
+            labels.append(contentsOf: nodeIds.map(reviewNodeLabel(for:)))
+        }
+
+        if labels.isEmpty, let primaryStuckPoint = review.primaryStuckPoint {
+            labels.append(readableReviewStepLabel(primaryStuckPoint))
+        }
+
+        return orderedUnique(labels)
+    }
+
+    private func reviewNodeLabel(for identifier: String) -> String {
+        switch identifier {
+        case "ST-01":
+            return "문장/지문 이해"
+        case "ST-02":
+            return "흐름·화자 전환"
+        case "KI-01":
+            return "핵심 파악"
+        case "AP-03":
+            return "보기 적용"
+        case "CV-01":
+            return "선지 판단"
+        case "CV-05":
+            return "근거 점검"
+        case "TIME-01":
+            return "시간 관리"
+        case "MATH-COND-01":
+            return "조건 감지"
+        case "MATH-DOCTRINE-01":
+            return "도식/도구 회상"
+        case "MATH-APP-01":
+            return "풀이 방향"
+        case "MATH-EXEC-01":
+            return "전개/계산"
+        case "MATH-EXEC-02":
+            return "정리/계산 실수"
+        case "MATH-JUDGE-01":
+            return "선지 판단"
+        default:
+            return humanizedReviewIdentifier(identifier)
+        }
+    }
+
+    private func reviewConceptNodeID(for label: String, index: Int, bundle: AnalysisBundle) -> String {
+        if let review = bundle.behavior.postSolveReview,
+           let derivedNodeIds = review.derivedNodeIds,
+           let derivedNodeLabels = review.derivedNodeLabels,
+           let matchIndex = derivedNodeLabels.firstIndex(of: label),
+           derivedNodeIds.indices.contains(matchIndex) {
+            return derivedNodeIds[matchIndex]
+        }
+        let sanitized = label
+            .lowercased()
+            .replacingOccurrences(of: " ", with: ".")
+            .replacingOccurrences(of: "/", with: ".")
+        return "\(bundle.document.documentId.uuidString.lowercased()).review.\(sanitized).\(index)"
     }
 
     private func fallbackKeywords(from text: String) -> [String] {

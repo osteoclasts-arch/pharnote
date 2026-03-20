@@ -296,6 +296,14 @@ nonisolated struct NodeAnalysisReviewDiagnosis: Hashable, Sendable {
     var delayWarning: String? = nil
 }
 
+nonisolated struct NodeAnalysisReviewNodeChip: Identifiable, Hashable, Sendable {
+    var nodeId: String
+    var label: String
+    var detail: String?
+
+    var id: String { "\(nodeId)::\(label)" }
+}
+
 extension NodeAnalysisWeaknessRecord {
     nonisolated private var reviewPromptSet: AnalysisPostSolveReviewPromptSet {
         AnalysisPostSolveReviewPromptSet.promptSet(for: question)
@@ -346,41 +354,101 @@ extension NodeAnalysisWeaknessRecord {
         synthesizeDiagnosis()
     }
 
-    nonisolated private func synthesizeDiagnosis() -> NodeAnalysisReviewDiagnosis {
-        let options = selectedReviewOptions()
-        var stuckNodes: [String] = []
-        
-        for option in options {
-            if !option.searchKeywords.isEmpty {
-                stuckNodes.append(contentsOf: option.searchKeywords)
-            }
+    nonisolated var reviewNodeChips: [NodeAnalysisReviewNodeChip] {
+        reviewNodeReferences().map { reference in
+            NodeAnalysisReviewNodeChip(
+                nodeId: reference.nodeId,
+                label: reference.label,
+                detail: reference.detail
+            )
         }
-        
-        // Prefer first keyword as the primary blocked node
-        let blockedNode = stuckNodes.first ?? (reviewPromptSet.subject == .math ? "N-MATH-GEN" : "N-GEN-01")
-        
-        let summary = review.primaryStuckPoint.map { "막힌 지점: \(reviewPromptSet.stepTitle(for: $0))" } 
-            ?? "\(reviewPromptSet.subject.title) 학습 흐름 분석 결과입니다."
-            
+    }
+
+    nonisolated private func synthesizeDiagnosis() -> NodeAnalysisReviewDiagnosis {
+        let references = reviewNodeReferences()
+        let blockedNode = references.first?.displayLine ?? (reviewPromptSet.subject == .math ? "N-MATH-GEN" : "N-GEN-01")
+
+        let summary: String
+        if let firstReference = references.first {
+            let extraCount = max(references.count - 1, 0)
+            summary = extraCount > 0
+                ? "복기에서 \(firstReference.displayLine) 외 \(extraCount)개 노드가 연결되었습니다."
+                : "복기에서 \(firstReference.displayLine) 노드가 가장 먼저 잡혔습니다."
+        } else {
+            summary = review.primaryStuckPoint.map { "막힌 지점: \(reviewPromptSet.stepTitle(for: $0))" }
+                ?? "\(reviewPromptSet.subject.title) 학습 흐름 분석 결과입니다."
+        }
+
         return makeDiagnosis(
             categoryTitle: "\(reviewPromptSet.subject.title) 학습 진단",
             summary: summary,
             blockedNode: blockedNode,
-            nextAction: "복기 결과를 바탕으로 취약 지점을 보완하고 추천 문항으로 실력을 다지세요."
+            nextAction: references.isEmpty
+                ? "복기 결과를 바탕으로 취약 지점을 보완하고 추천 문항으로 실력을 다지세요."
+                : "PharNode에서 \(references.first?.displayLine ?? "복기 노드")를 다시 열어 같은 노드 흐름을 확인하세요."
         )
     }
 
-    nonisolated private func selectedReviewOptions() -> [AnalysisReviewOptionDefinition] {
-        var options: [AnalysisReviewOptionDefinition] = []
-        if let firstID = review.firstApproach, let opt = reviewPromptSet.optionDefinition(for: firstID) {
-            options.append(opt)
+    nonisolated private struct ReviewNodeReference: Hashable, Sendable {
+        var nodeId: String
+        var label: String
+        var detail: String?
+
+        var displayLine: String {
+            "\(nodeId) · \(label)"
         }
-        for response in review.reviewPath ?? [] {
-            if let id = response.selectedOptionId, let opt = reviewPromptSet.optionDefinition(for: id) {
-                options.append(opt)
+    }
+
+    nonisolated private func reviewNodeReferences() -> [ReviewNodeReference] {
+        var references: [ReviewNodeReference] = []
+        var seenNodeIds: Set<String> = []
+
+        func append(option: AnalysisReviewOptionDefinition?, detail: String? = nil) {
+            guard let option else { return }
+            let nodeId = option.searchKeywords.first ?? option.id
+            guard seenNodeIds.insert(nodeId).inserted else { return }
+            references.append(
+                ReviewNodeReference(
+                    nodeId: nodeId,
+                    label: option.title,
+                    detail: detail
+                )
+            )
+        }
+
+        if let derivedNodeIds = review.derivedNodeIds,
+           let derivedNodeLabels = review.derivedNodeLabels {
+            for (index, nodeId) in derivedNodeIds.enumerated() {
+                let label = derivedNodeLabels.indices.contains(index) ? derivedNodeLabels[index] : nodeId
+                guard seenNodeIds.insert(nodeId).inserted else { continue }
+                references.append(
+                    ReviewNodeReference(
+                        nodeId: nodeId,
+                        label: label,
+                        detail: review.derivedEvidenceTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+                    )
+                )
             }
         }
-        return options
+
+        if let firstID = review.firstApproach,
+           let option = reviewPromptSet.optionDefinition(for: firstID) {
+            append(option: option)
+        }
+
+        for response in review.reviewPath ?? [] {
+            guard let selectedOptionID = response.selectedOptionId,
+                  let option = reviewPromptSet.optionDefinition(for: selectedOptionID) else {
+                continue
+            }
+            append(option: option, detail: response.linkedStrokeId)
+        }
+
+        if let primaryStuckPoint = review.primaryStuckPoint {
+            append(option: AnalysisReviewOptionDefinition(id: primaryStuckPoint, title: reviewPromptSet.stepTitle(for: primaryStuckPoint)))
+        }
+
+        return references
     }
 
     nonisolated var recommendationSeedTerms: [String] {
@@ -458,11 +526,23 @@ extension NodeAnalysisWeaknessRecord {
             AnalysisReviewOptionDefinition(id: $0, title: reviewPromptSet.stepTitle(for: $0))
         })
 
+        if let derivedNodeLabels = review.derivedNodeLabels {
+            for label in derivedNodeLabels {
+                appendTerms(from: AnalysisReviewOptionDefinition(id: label, title: label))
+            }
+        }
+
+        if let derivedNodeIds = review.derivedNodeIds {
+            for nodeId in derivedNodeIds {
+                appendTerms(from: AnalysisReviewOptionDefinition(id: nodeId, title: nodeId))
+            }
+        }
+
         return Array(prioritizedTerms.prefix(6))
     }
 
     nonisolated private var selectedReviewTitles: [String] {
-        selectedReviewOptions().map { $0.title }
+        reviewNodeReferences().map { $0.label }
     }
 
     nonisolated private var diagnosisWhyLine: String {

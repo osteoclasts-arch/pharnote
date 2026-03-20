@@ -708,6 +708,10 @@ struct NodeAnalysisWorkspaceView: View {
                     .foregroundStyle(PharTheme.ColorToken.inkSecondary)
 
                 diagnosisPanel(for: record.reviewDiagnosis)
+
+                if !record.reviewNodeChips.isEmpty {
+                    reviewNodeSection(for: record)
+                }
             }
         }
     }
@@ -749,6 +753,44 @@ struct NodeAnalysisWorkspaceView: View {
             Text(body)
                 .font(PharTypography.body)
                 .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+        }
+    }
+
+    private func reviewNodeSection(for record: NodeAnalysisWeaknessRecord) -> some View {
+        VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+            Text("BrainTree 연결 노드")
+                .font(PharTypography.captionStrong)
+                .foregroundStyle(PharTheme.ColorToken.inkSecondary)
+
+            VStack(alignment: .leading, spacing: PharTheme.Spacing.small) {
+                ForEach(record.reviewNodeChips) { chip in
+                    HStack(alignment: .top, spacing: PharTheme.Spacing.small) {
+                        VStack(alignment: .leading, spacing: PharTheme.Spacing.xxxSmall) {
+                            Text(chip.nodeId)
+                                .font(PharTypography.captionStrong)
+                                .foregroundStyle(PharTheme.ColorToken.accentBlue)
+                            Text(chip.label)
+                                .font(PharTypography.bodyStrong)
+                                .foregroundStyle(PharTheme.ColorToken.inkPrimary)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        if let detail = chip.detail {
+                            PharTagPill(
+                                text: detail,
+                                tint: PharTheme.ColorToken.surfaceTertiary,
+                                foreground: PharTheme.ColorToken.inkSecondary
+                            )
+                        }
+                    }
+                    .padding(PharTheme.Spacing.small)
+                    .background(
+                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
+                            .fill(PharTheme.ColorToken.surfaceSecondary)
+                    )
+                }
+            }
         }
     }
 

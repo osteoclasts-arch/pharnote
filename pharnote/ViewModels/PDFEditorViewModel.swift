@@ -102,6 +102,14 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var storedProgressSnapshot: StudyProgressSnapshot?
     @Published var isReadOnlyMode: Bool = false
     @Published var errorMessage: String?
+    @Published private(set) var problemSelection: ProblemSelection?
+    @Published private(set) var problemRecognitionResult: ProblemRecognitionResult?
+    @Published private(set) var problemReviewSession: ReviewSession?
+    @Published private(set) var problemReviewSchema: ReviewSchema?
+    @Published private(set) var problemReviewAutosaveStatus: ReviewAutosaveStatus = .idle
+    @Published private(set) var reviewedProblemKeys: Set<String> = []
+    @Published private(set) var problemReviewMessage: String?
+    @Published var isProblemReviewPanelVisible: Bool = false
 
     @Published private(set) var document: PharDocument
     let annotationColors: [AnnotationColor] = [
@@ -122,6 +130,9 @@ final class PDFEditorViewModel: ObservableObject {
     private let highlightStore: HighlightStructureStore
     private let highlightEngine: HighlightStructureEngine
     private let documentOCRService: DocumentOCRService
+    private let reviewSessionRepository: ReviewSessionRepository
+    private let problemRecognitionService: ProblemRecognitionService
+    private let reviewEvidenceMapper: ReviewEvidenceMapper
     private var strokePresetConfigurationsByTool: [AnnotationTool: WritingStrokePresetConfiguration]
     private let requestedInitialPageIndex: Int?
     private var thumbnailGenerationTask: Task<Void, Never>?
@@ -149,6 +160,9 @@ final class PDFEditorViewModel: ObservableObject {
     private var highlightSyncTask: Task<Void, Never>?
     private var lastHighlightStrokeCountByPageIndex: [Int: Int] = [:]
     private var highlightRoleHexByRole: [HighlightStructureRole: String] = [:]
+    private var problemRecognitionTask: Task<Void, Never>?
+    private var problemReviewAutosaveTask: Task<Void, Never>?
+    private var completedProblemReviewByPageIndex: [Int: AnalysisPostSolveReview] = [:]
 
     init(
         document: PharDocument,
@@ -160,6 +174,9 @@ final class PDFEditorViewModel: ObservableObject {
         let highlightStore = HighlightStructureStore()
         let highlightEngine = HighlightStructureEngine()
         let documentOCRService = DocumentOCRService()
+        let reviewSessionRepository = ReviewSessionRepository()
+        let problemRecognitionService = ProblemRecognitionService(documentOCRService: documentOCRService)
+        let reviewEvidenceMapper = ReviewEvidenceMapper()
         let penPresetConfiguration = WritingStrokePresetStore.configuration(
             toolKey: Self.strokePresetToolKey(for: .pen),
             userDefaults: userDefaults
@@ -176,6 +193,9 @@ final class PDFEditorViewModel: ObservableObject {
         self.highlightStore = highlightStore
         self.highlightEngine = highlightEngine
         self.documentOCRService = documentOCRService
+        self.reviewSessionRepository = reviewSessionRepository
+        self.problemRecognitionService = problemRecognitionService
+        self.reviewEvidenceMapper = reviewEvidenceMapper
         self.strokePresetConfigurationsByTool = [
             .pen: penPresetConfiguration,
             .highlighter: highlighterPresetConfiguration
@@ -234,6 +254,9 @@ final class PDFEditorViewModel: ObservableObject {
             scheduleHighlightSnapshotRefresh(pageIndex: initialPageIndex)
 
             generateThumbnails(from: pdfURL)
+            Task { [weak self] in
+                await self?.refreshReviewHistory()
+            }
         } catch {
             errorMessage = "PDF 로드 실패: \(error.localizedDescription)"
         }
@@ -409,8 +432,12 @@ final class PDFEditorViewModel: ObservableObject {
         return UUID.stableAnalysisPageID(namespace: document.id, pageIndex: currentPageIndex)
     }
 
+    var isProblemSelectionModeActive: Bool {
+        isToolSelected(.lasso) && !isReadOnlyMode
+    }
+
     var canAnalyzeCurrentSelection: Bool {
-        analysisSource != nil && activeTool == .lasso && (canCopy || canCut || canDelete)
+        problemSelection != nil || problemRecognitionResult?.bestMatch != nil
     }
 
     var currentAnalysisScope: AnalysisScope {
@@ -493,6 +520,136 @@ final class PDFEditorViewModel: ObservableObject {
         }
     }
 
+    func handleProblemSelection(_ selection: ProblemSelection) {
+        guard !isReadOnlyMode else { return }
+        problemSelection = selection
+        problemRecognitionResult = ProblemRecognitionResult(
+            selectionId: selection.id,
+            bestMatch: nil,
+            candidates: [],
+            confidence: 0,
+            status: .matching,
+            recognitionText: nil,
+            reason: "matching"
+        )
+        problemReviewSession = nil
+        problemReviewSchema = nil
+        problemReviewMessage = nil
+        problemReviewAutosaveStatus = .idle
+        isProblemReviewPanelVisible = false
+
+        problemRecognitionTask?.cancel()
+        problemRecognitionTask = Task { [weak self] in
+            await self?.recognizeProblemSelection(selection)
+        }
+    }
+
+    func clearProblemSelection() {
+        problemRecognitionTask?.cancel()
+        problemReviewAutosaveTask?.cancel()
+        problemSelection = nil
+        problemRecognitionResult = nil
+        problemReviewSession = nil
+        problemReviewSchema = nil
+        problemReviewMessage = nil
+        problemReviewAutosaveStatus = .idle
+        isProblemReviewPanelVisible = false
+    }
+
+    func startProblemReview(using candidate: ProblemMatch? = nil) {
+        Task { [weak self] in
+            await self?.startProblemReviewAsync(using: candidate)
+        }
+    }
+
+    func changeProblemMatch() {
+        problemReviewMessage = "후보를 다시 고를 수 있도록 현재 매칭을 보류했습니다."
+        problemRecognitionResult = ProblemRecognitionResult(
+            selectionId: problemSelection?.id ?? UUID(),
+            bestMatch: nil,
+            candidates: problemRecognitionResult?.candidates ?? [],
+            confidence: 0,
+            status: .ambiguous,
+            recognitionText: problemRecognitionResult?.recognitionText,
+            reason: "manual_change_requested"
+        )
+        isProblemReviewPanelVisible = true
+    }
+
+    func updateProblemReviewAnswer(
+        stepId: String,
+        selectedOptionIds: [String],
+        freeText: String? = nil
+    ) {
+        guard let session = problemReviewSession else { return }
+        var updatedSession = session
+        let now = Date()
+        let existing = updatedSession.answers.first(where: { $0.stepId == stepId })
+        let answer = ReviewAnswer(
+            id: existing?.id ?? UUID(),
+            stepId: stepId,
+            selectedOptionIds: selectedOptionIds,
+            freeText: trimmedNonEmpty(freeText),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+        )
+
+        updatedSession.answers.removeAll { $0.stepId == stepId }
+        updatedSession.answers.append(answer)
+        updatedSession.updatedAt = now
+        updatedSession.status = .inProgress
+        updatedSession.derivedTags = reviewEvidenceMapper.derivedEvidence(
+            for: updatedSession,
+            schema: problemReviewSchema ?? ReviewSchemaRegistry.schema(for: updatedSession.subject)
+        )
+        updatedSession.lastAutosavedAt = nil
+        problemReviewSession = updatedSession
+        problemReviewAutosaveStatus = .saving
+        scheduleProblemReviewAutosave()
+
+        if let schema = problemReviewSchema, updatedSession.answers.count >= schema.steps.count {
+            Task { [weak self] in
+                await self?.completeCurrentProblemReview()
+            }
+        }
+    }
+
+    func goBackInProblemReview() {
+        guard var session = problemReviewSession, !session.answers.isEmpty else { return }
+        session.answers.removeLast()
+        session.updatedAt = Date()
+        session.derivedTags = reviewEvidenceMapper.derivedEvidence(
+            for: session,
+            schema: problemReviewSchema ?? ReviewSchemaRegistry.schema(for: session.subject)
+        )
+        session.lastAutosavedAt = nil
+        problemReviewSession = session
+        problemReviewAutosaveStatus = .saving
+        scheduleProblemReviewAutosave()
+    }
+
+    func abandonCurrentProblemReview() {
+        problemReviewAutosaveTask?.cancel()
+        guard let session = problemReviewSession else {
+            clearProblemSelection()
+            return
+        }
+
+        var updatedSession = session
+        updatedSession.status = .abandoned
+        updatedSession.updatedAt = Date()
+        updatedSession.autosaveVersion += 1
+        Task {
+            try? await reviewSessionRepository.upsert(updatedSession)
+        }
+
+        problemReviewSession = nil
+        problemReviewSchema = nil
+        isProblemReviewPanelVisible = false
+        problemReviewAutosaveStatus = .idle
+        problemReviewMessage = "복기를 중단했습니다."
+    }
+
     var analysisSource: PDFPageAnalysisSource? {
         guard pageCount > 0 else { return nil }
 
@@ -534,8 +691,230 @@ final class PDFEditorViewModel: ObservableObject {
             zoomEventCount: 0,
             navigationPath: pageNavigationHistory.map { "page-\($0 + 1)" },
             sourceFingerprint: resolvePDFFileName(),
-            postSolveReview: nil
+            postSolveReview: completedProblemReviewByPageIndex[currentPageIndex]
         )
+    }
+
+    private func refreshReviewHistory() async {
+        do {
+            let sessions = try await reviewSessionRepository.loadSessions(for: document.id)
+            var completedKeys: Set<String> = []
+            var completedByPage: [Int: AnalysisPostSolveReview] = [:]
+
+            for session in sessions where session.status == .completed {
+                completedKeys.insert(reviewIdentityKey(for: session))
+                if completedByPage[session.pageIndex] == nil {
+                    let schema = problemReviewSchema ?? ReviewSchemaRegistry.schema(for: session.subject)
+                    completedByPage[session.pageIndex] = reviewEvidenceMapper.makePostSolveReview(
+                        from: session,
+                        schema: schema
+                    )
+                }
+            }
+
+            reviewedProblemKeys = completedKeys
+            for (pageIndex, payload) in completedByPage {
+                completedProblemReviewByPageIndex[pageIndex] = payload
+            }
+        } catch {
+            problemReviewMessage = "복기 기록을 불러오지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    private func recognizeProblemSelection(_ selection: ProblemSelection) async {
+        let selectionText = selection.recognitionText ?? currentPDFPageText()
+        let selectionBlocks = currentPDFPageText().map { [AnalysisTextBlock(kind: "pdf-text", text: $0, pageIndex: selection.pageIndex)] } ?? []
+        let context = ProblemRecognitionContext(
+            document: document,
+            selection: selection,
+            pageTextBlocks: selectionBlocks,
+            hint: nil,
+            pastQuestionsConfiguration: PastQuestionsConfigurationStore.shared.configuration
+        )
+
+        let result = await problemRecognitionService.recognize(context)
+        var updatedSelection = selection
+        updatedSelection.recognitionStatus = result.status
+        updatedSelection.recognitionText = result.recognitionText ?? selectionText
+        updatedSelection.recognizedMatch = result.bestMatch
+        problemSelection = updatedSelection
+        problemRecognitionResult = result
+        problemReviewMessage = recognitionMessage(for: result)
+        isProblemReviewPanelVisible = true
+    }
+
+    private func startProblemReviewAsync(using candidate: ProblemMatch?) async {
+        guard let selection = problemSelection else { return }
+
+        let match = candidate ?? problemRecognitionResult?.bestMatch
+        let subject = match?.subject ?? document.studyMaterial?.subject ?? .unspecified
+        let schema = ReviewSchemaRegistry.schema(for: subject)
+        let sessionSelection = update(selection, with: match, status: .matched)
+        let resumeKey = reviewIdentityKey(for: sessionSelection, match: match)
+
+        do {
+            if let existingDraft = try await reviewSessionRepository.loadLatestDraft(for: resumeKey) {
+                var resumed = existingDraft
+                resumed.selection = sessionSelection
+                resumed.problemMatch = match ?? existingDraft.problemMatch
+                resumed.subject = subject
+                resumed.status = .inProgress
+                resumed.updatedAt = Date()
+                resumed.lastAutosavedAt = Date()
+                resumed.autosaveVersion += 1
+                resumed.derivedTags = reviewEvidenceMapper.derivedEvidence(for: resumed, schema: schema)
+                try await reviewSessionRepository.upsert(resumed)
+                problemSelection = sessionSelection
+                problemReviewSession = resumed
+                problemReviewSchema = schema
+                problemReviewAutosaveStatus = .saved
+                isProblemReviewPanelVisible = true
+                problemReviewMessage = "진행 중인 복기를 이어갑니다."
+                return
+            }
+
+            var session = ReviewSession(
+                id: UUID(),
+                userId: nil,
+                documentId: document.id,
+                pageId: sessionSelection.pageId,
+                pageIndex: sessionSelection.pageIndex,
+                selectionId: sessionSelection.id,
+                selection: sessionSelection,
+                canonicalProblemId: match?.canonicalProblemId,
+                problemMatch: match,
+                subject: subject,
+                status: .draft,
+                startedAt: Date(),
+                updatedAt: Date(),
+                completedAt: nil,
+                schemaVersion: schema.version,
+                answers: [],
+                derivedTags: [],
+                autosaveVersion: 0,
+                lastAutosavedAt: nil,
+                lastAutosaveErrorMessage: nil
+            )
+            session.derivedTags = reviewEvidenceMapper.derivedEvidence(for: session, schema: schema)
+            try await reviewSessionRepository.upsert(session)
+
+            session.status = .inProgress
+            session.updatedAt = Date()
+            session.lastAutosavedAt = Date()
+            session.autosaveVersion += 1
+            session.derivedTags = reviewEvidenceMapper.derivedEvidence(for: session, schema: schema)
+            try await reviewSessionRepository.upsert(session)
+
+            problemSelection = sessionSelection
+            problemReviewSession = session
+            problemReviewSchema = schema
+            problemReviewAutosaveStatus = .saved
+            isProblemReviewPanelVisible = true
+            problemReviewMessage = match == nil ? "기본 복기 세트를 시작합니다." : "복기를 시작합니다."
+        } catch {
+            problemReviewAutosaveStatus = .retryNeeded
+            problemReviewMessage = "복기를 시작하지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    private func update(_ selection: ProblemSelection, with match: ProblemMatch?, status: ProblemSelectionRecognitionStatus) -> ProblemSelection {
+        var updated = selection
+        updated.recognizedMatch = match
+        updated.recognitionStatus = status
+        updated.updatedAt = Date()
+        if updated.recognitionText == nil {
+            updated.recognitionText = currentPDFPageText()
+        }
+        return updated
+    }
+
+    private func scheduleProblemReviewAutosave() {
+        problemReviewAutosaveTask?.cancel()
+        problemReviewAutosaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            await self?.autosaveCurrentProblemReviewSession()
+        }
+    }
+
+    private func autosaveCurrentProblemReviewSession() async {
+        guard var session = problemReviewSession, let schema = problemReviewSchema else { return }
+        problemReviewAutosaveStatus = .saving
+        session.updatedAt = Date()
+        session.lastAutosavedAt = Date()
+        session.autosaveVersion += 1
+        session.derivedTags = reviewEvidenceMapper.derivedEvidence(for: session, schema: schema)
+
+        do {
+            try await reviewSessionRepository.upsert(session)
+            problemReviewSession = session
+            problemReviewAutosaveStatus = .saved
+            problemReviewMessage = "저장됨"
+        } catch {
+            session.lastAutosaveErrorMessage = error.localizedDescription
+            problemReviewSession = session
+            problemReviewAutosaveStatus = .retryNeeded
+            problemReviewMessage = "저장 실패: \(error.localizedDescription)"
+        }
+    }
+
+    private func completeCurrentProblemReview() async {
+        guard var session = problemReviewSession, let schema = problemReviewSchema else { return }
+        session.status = .completed
+        session.completedAt = Date()
+        session.updatedAt = Date()
+        session.lastAutosavedAt = Date()
+        session.autosaveVersion += 1
+        session.derivedTags = reviewEvidenceMapper.derivedEvidence(for: session, schema: schema)
+
+        do {
+            try await reviewSessionRepository.upsert(session)
+            problemReviewSession = session
+            problemReviewAutosaveStatus = .saved
+            problemReviewMessage = "복기가 저장되었습니다."
+            reviewedProblemKeys.insert(reviewIdentityKey(for: session))
+            completedProblemReviewByPageIndex[session.pageIndex] = reviewEvidenceMapper.makePostSolveReview(from: session, schema: schema)
+            isProblemReviewPanelVisible = false
+        } catch {
+            problemReviewSession = session
+            problemReviewAutosaveStatus = .retryNeeded
+            problemReviewMessage = "복기 저장 실패: \(error.localizedDescription)"
+        }
+    }
+
+    private func recognitionMessage(for result: ProblemRecognitionResult) -> String? {
+        switch result.status {
+        case .matched:
+            return result.bestMatch.map { "\($0.displayTitle) 인식됨" } ?? "문제를 인식했습니다."
+        case .ambiguous:
+            return "후보가 여러 개입니다. 확인이 필요합니다."
+        case .failed:
+            return "일치하는 문제를 바로 찾지 못했습니다."
+        case .idle, .matching:
+            return nil
+        }
+    }
+
+    private func reviewIdentityKey(for session: ReviewSession) -> String {
+        if let canonical = trimmedNonEmpty(session.canonicalProblemId) {
+            return canonical
+        }
+        if let matchKey = trimmedNonEmpty(session.problemMatch?.canonicalProblemId) {
+            return matchKey
+        }
+        return session.selection.selectionSignature
+    }
+
+    private func reviewIdentityKey(for selection: ProblemSelection, match: ProblemMatch?) -> String {
+        if let canonical = trimmedNonEmpty(match?.canonicalProblemId) {
+            return canonical
+        }
+        return selection.selectionSignature
+    }
+
+    private func trimmedNonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     var canGoToPreviousPDFTextResult: Bool {
@@ -553,7 +932,7 @@ final class PDFEditorViewModel: ObservableObject {
     }
 
     var isCanvasInputEnabled: Bool {
-        !isReadOnlyMode && isToolSelectionActive
+        !isReadOnlyMode && isToolSelectionActive && activeTool != .lasso
     }
 
     var allowsPDFNavigation: Bool {
