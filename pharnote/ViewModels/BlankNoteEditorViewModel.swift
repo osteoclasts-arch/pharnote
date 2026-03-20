@@ -5,7 +5,7 @@ import SwiftUI
 import UIKit
 
 @MainActor
-final class BlankNoteEditorViewModel: ObservableObject {
+final class BlankNoteEditorViewModel: ObservableObject, LectureFloatingBrowserState {
     private static let highlightInkAlpha: CGFloat = 0.28
 
     enum AnnotationTool: String, CaseIterable, Identifiable {

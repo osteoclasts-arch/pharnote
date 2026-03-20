@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct LectureFloatingBrowserView: View {
-    @ObservedObject var viewModel: BlankNoteEditorViewModel
+struct LectureFloatingBrowserView<ViewModel: LectureFloatingBrowserState>: View {
+    @ObservedObject var viewModel: ViewModel
     @State private var isLoading = false
     @State private var urlInput: String = ""
     @State private var allowsPopups = false

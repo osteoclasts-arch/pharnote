@@ -50,11 +50,9 @@ struct PDFDocumentEditorView: View {
     @State private var isShowingAnalyzeSheet = false
     @State private var isShowingSectionEditor = false
     @State private var isShowingShareSheet = false
-    @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
     @State private var documentBeingRenamed: PharDocument?
-    @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
     @State private var activePaletteTool: PDFEditorViewModel.AnnotationTool? = nil
@@ -114,6 +112,7 @@ struct PDFDocumentEditorView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 viewModel.saveAllOverlayPagesImmediately()
+                viewModel.saveAllTextAnnotationPagesImmediately()
                 audioController.handleBackgroundTransition()
             }
         }
@@ -154,49 +153,13 @@ struct PDFDocumentEditorView: View {
                 }
             )
         }
-        .sheet(isPresented: $isShowingTextComposer) {
-            WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
-                workspaceController.addTextEntry(text)
-                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                    isSidebarExpanded = true
-                }
-            }
-        }
         .sheet(isPresented: $isShowingPhotoPicker) {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 viewModel.deactivateToolSelection()
-                DispatchQueue.main.async {
-                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
-                    imageEditorContext = WritingImageEditorContext(
-                        draft: draft,
-                        attachmentID: nil,
-                        basePlacement: nil
-                    )
-                }
+                workspaceController.importImageData(data, suggestedFileName: fileName, preferredPlacement: nil)
             } onCancel: {
                 isShowingPhotoPicker = false
-            }
-        }
-        .fullScreenCover(item: $imageEditorContext) { context in
-            WritingImageInsertionEditorSheet(
-                draft: context.draft,
-                basePlacement: context.basePlacement
-            ) { data, fileName, placement in
-                if let attachmentID = context.attachmentID {
-                    workspaceController.replaceImageAttachmentData(
-                        id: attachmentID,
-                        data: data,
-                        suggestedFileName: fileName,
-                        preferredPlacement: placement
-                    )
-                } else {
-                    workspaceController.importImageData(
-                        data,
-                        suggestedFileName: fileName,
-                        preferredPlacement: placement
-                    )
-                }
             }
         }
         .sheet(isPresented: $isShowingFilePicker) {
@@ -261,12 +224,16 @@ struct PDFDocumentEditorView: View {
                 PDFKitView(
                     viewModel: viewModel,
                     workspaceController: workspaceController
-                ) { attachmentID in
-                    viewModel.deactivateToolSelection()
-                    imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
-                }
+                )
                     .clipShape(RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous))
                     .padding(PharTheme.Spacing.medium)
+
+                if viewModel.isLectureModeEnabled {
+                    LectureFloatingBrowserView(viewModel: viewModel)
+                        .padding(.top, 132)
+                        .padding(.leading, 28)
+                        .transition(.scale.combined(with: .opacity))
+                }
 
                 RoundedRectangle(cornerRadius: PharTheme.CornerRadius.large, style: .continuous)
                     .fill(PharTheme.ColorToken.accentBlue.opacity(pageTransitionFlashOpacity))
@@ -287,6 +254,14 @@ struct PDFDocumentEditorView: View {
                         )
                     }
                     chromeToolbar
+                    if viewModel.isTextInsertionModeActive {
+                        WritingChromeCapsule(fill: .white) {
+                            Label("페이지를 탭해 텍스트를 추가", systemImage: "cursorarrow.click")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(WritingChromePalette.ink.opacity(0.72))
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     if viewModel.isToolSelected(.lasso) && !viewModel.isReadOnlyMode {
                         chromeAnalyzeCallout
                     }
@@ -356,9 +331,7 @@ struct PDFDocumentEditorView: View {
                     toolChromeButton(.eraser, icon: "eraser", isEnabled: !viewModel.isReadOnlyMode)
                     toolChromeButton(.lasso, icon: "lasso", isEnabled: !viewModel.isReadOnlyMode)
 
-                    WritingChromeIconButton(systemName: "textformat", accentTint: true) {
-                        isShowingTextComposer = true
-                    }
+                    toolChromeButton(.text, icon: "text.cursor", isEnabled: !viewModel.isReadOnlyMode)
                     WritingChromeIconButton(
                         systemName: audioController.isRecording ? "stop.circle.fill" : "mic.fill",
                         accentTint: true,
@@ -418,6 +391,18 @@ struct PDFDocumentEditorView: View {
                     ) {
                         withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
                             isSidebarExpanded.toggle()
+                        }
+                    }
+
+                    WritingToolbarDivider()
+
+                    WritingChromeIconButton(
+                        systemName: "video.fill",
+                        accentTint: true,
+                        isSelected: viewModel.isLectureModeEnabled
+                    ) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            viewModel.isLectureModeEnabled.toggle()
                         }
                     }
                 }
@@ -691,7 +676,7 @@ struct PDFDocumentEditorView: View {
     }
 
     private func toolChromeButton(_ tool: PDFEditorViewModel.AnnotationTool, icon: String, isEnabled: Bool = true) -> some View {
-        WritingChromeIconButton(
+        let baseButton = WritingChromeIconButton(
             systemName: icon,
             isSelected: viewModel.isToolSelected(tool),
             isEnabled: isEnabled
@@ -711,28 +696,36 @@ struct PDFDocumentEditorView: View {
                 }
             }
         }
-        .popover(
-            isPresented: Binding(
-                get: { activePaletteTool == tool },
-                set: { isOpen in
-                    if !isOpen && activePaletteTool == tool {
-                        activePaletteTool = nil
+
+        if tool == .pen || tool == .highlighter || tool == .paint {
+            return AnyView(
+                baseButton
+                    .popover(
+                        isPresented: Binding(
+                            get: { activePaletteTool == tool },
+                            set: { isOpen in
+                                if !isOpen && activePaletteTool == tool {
+                                    activePaletteTool = nil
+                                }
+                            }
+                        ),
+                        attachmentAnchor: .rect(.bounds),
+                        arrowEdge: .top
+                    ) {
+                        if tool == .paint {
+                            chromePaintPalette
+                                .padding(8)
+                                .presentationCompactAdaptation(.popover)
+                        } else {
+                            chromeInkPalette
+                                .padding(8)
+                                .presentationCompactAdaptation(.popover)
+                        }
                     }
-                }
-            ),
-            attachmentAnchor: .rect(.bounds),
-            arrowEdge: .top
-        ) {
-            if tool == .paint {
-                chromePaintPalette
-                    .padding(8)
-                    .presentationCompactAdaptation(.popover)
-            } else {
-                chromeInkPalette
-                    .padding(8)
-                    .presentationCompactAdaptation(.popover)
-            }
+            )
         }
+
+        return AnyView(baseButton)
     }
 
     private func colorSwatchButton(_ colorID: Int) -> some View {
@@ -1853,12 +1846,7 @@ struct PDFDocumentEditorView: View {
 
     private func handlePasteImageAction() {
         viewModel.deactivateToolSelection()
-        guard let draft = workspaceController.pastedImageDraft() else { return }
-        imageEditorContext = WritingImageEditorContext(
-            draft: draft,
-            attachmentID: nil,
-            basePlacement: nil
-        )
+        workspaceController.importImageFromPasteboard()
     }
 }
 

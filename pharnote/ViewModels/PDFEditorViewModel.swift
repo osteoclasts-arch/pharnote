@@ -6,7 +6,7 @@ import SwiftUI
 import UIKit
 
 @MainActor
-final class PDFEditorViewModel: ObservableObject {
+final class PDFEditorViewModel: ObservableObject, LectureFloatingBrowserState {
     private static let highlightInkAlpha: CGFloat = 0.28
 
     struct SectionDraft: Identifiable, Hashable {
@@ -21,6 +21,7 @@ final class PDFEditorViewModel: ObservableObject {
         case eraser = "지우개"
         case lasso = "라쏘"
         case paint = "붓/채우기"
+        case text = "텍스트"
 
         var id: String { rawValue }
     }
@@ -95,6 +96,10 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var canDelete: Bool = false
     @Published private(set) var bookmarkedPageIndices: Set<Int> = []
     @Published private(set) var outlineEntries: [OutlineEntry] = []
+    @Published private(set) var textAnnotationsByPageIndex: [Int: [PDFTextAnnotation]] = [:]
+    @Published private(set) var selectedTextAnnotationID: UUID?
+    @Published private(set) var selectedTextAnnotationPageIndex: Int?
+    @Published private(set) var editingTextAnnotationID: UUID?
     @Published var highlightMode: HighlightStructureMode = .basic
     @Published var selectedHighlightRole: HighlightStructureRole = .core
     @Published private(set) var currentHighlightSnapshot: HighlightStructureSnapshot?
@@ -110,6 +115,10 @@ final class PDFEditorViewModel: ObservableObject {
     @Published private(set) var reviewedProblemKeys: Set<String> = []
     @Published private(set) var problemReviewMessage: String?
     @Published var isProblemReviewPanelVisible: Bool = false
+    @Published var isLectureModeEnabled: Bool = false
+    @Published var lectureWindowPosition: CGPoint = CGPoint(x: 100, y: 100)
+    @Published var isLectureWindowPinned: Bool = false
+    @Published var lectureWebURL: String = "https://www.google.com"
 
     @Published private(set) var document: PharDocument
     let annotationColors: [AnnotationColor] = [
@@ -124,6 +133,7 @@ final class PDFEditorViewModel: ObservableObject {
     private var pdfDocument: PDFDocument?
     private let thumbnailGenerator = PDFThumbnailGenerator()
     private let overlayStore = PDFOverlayStore()
+    private let textAnnotationStore = PDFTextAnnotationStore()
     private let eventLogger: StudyEventLogger
     private let libraryStore: LibraryStore
     private let userDefaults: UserDefaults
@@ -137,8 +147,11 @@ final class PDFEditorViewModel: ObservableObject {
     private let requestedInitialPageIndex: Int?
     private var thumbnailGenerationTask: Task<Void, Never>?
     private var overlaySaveTasks: [Int: Task<Void, Never>] = [:]
+    private var textAnnotationSaveTasks: [Int: Task<Void, Never>] = [:]
     private var dirtyOverlayPages: Set<Int> = []
+    private var dirtyTextAnnotationPages: Set<Int> = []
     private var overlayDrawingCache: [Int: PKDrawing] = [:]
+    private var loadedTextAnnotationPages: Set<Int> = []
     private var pageLastEditedAt: [Int: Date] = [:]
     private weak var activeOverlayCanvas: PencilPassthroughCanvasView?
     private var didLoad = false
@@ -163,6 +176,7 @@ final class PDFEditorViewModel: ObservableObject {
     private var problemRecognitionTask: Task<Void, Never>?
     private var problemReviewAutosaveTask: Task<Void, Never>?
     private var completedProblemReviewByPageIndex: [Int: AnalysisPostSolveReview] = [:]
+    private static let lecturePopupAllowanceKeyPrefix = "lectureBrowser.popups.allowed."
 
     init(
         document: PharDocument,
@@ -252,6 +266,9 @@ final class PDFEditorViewModel: ObservableObject {
             clearPDFTextSearch(resetQuery: false)
             rebuildOutlineEntries()
             scheduleHighlightSnapshotRefresh(pageIndex: initialPageIndex)
+            Task { [weak self] in
+                await self?.loadTextAnnotationsIfNeeded(for: initialPageIndex)
+            }
 
             generateThumbnails(from: pdfURL)
             Task { [weak self] in
@@ -275,11 +292,17 @@ final class PDFEditorViewModel: ObservableObject {
 
         if previousPageIndex != index {
             saveOverlayPageImmediately(previousPageIndex)
+            saveTextAnnotationPageImmediately(previousPageIndex)
+            commitTextAnnotationEditing()
+            clearTextAnnotationSelection()
             recordPageVisit(index)
             persistStudyProgress()
         }
         lastHighlightStrokeCountByPageIndex[index] = currentOverlayDrawing().strokes.count
         scheduleHighlightSnapshotRefresh(pageIndex: index)
+        Task { [weak self] in
+            await self?.loadTextAnnotationsIfNeeded(for: index)
+        }
         refreshEditActionAvailability()
     }
 
@@ -313,14 +336,18 @@ final class PDFEditorViewModel: ObservableObject {
         thumbnailGenerationTask?.cancel()
         thumbnailGenerationTask = nil
         recordPageExit()
+        commitTextAnnotationEditing()
         saveAllOverlayPagesImmediately()
+        saveAllTextAnnotationPagesImmediately()
     }
 
     func closeDocument() async {
         thumbnailGenerationTask?.cancel()
         thumbnailGenerationTask = nil
         recordPageExit()
+        commitTextAnnotationEditing()
         await saveAllOverlayPagesImmediatelyAndWait()
+        await saveAllTextAnnotationPagesImmediatelyAndWait()
         persistStudyProgress()
         guard didLogDocumentOpen else { return }
         eventLogger.log(
@@ -406,6 +433,9 @@ final class PDFEditorViewModel: ObservableObject {
     var inputModeLabel: String {
         if isReadOnlyMode {
             return "Read Only"
+        }
+        if isTextInsertionModeActive {
+            return "Text Placement"
         }
         if !isToolSelectionActive {
             return "Scroll Mode"
@@ -951,6 +981,9 @@ final class PDFEditorViewModel: ObservableObject {
         if activeTool == .highlighter && highlightMode == .structured {
             return "구조화 · \(selectedHighlightRole.title)"
         }
+        if activeTool == .text {
+            return "텍스트"
+        }
         return activeTool?.rawValue ?? "스크롤"
     }
 
@@ -961,8 +994,16 @@ final class PDFEditorViewModel: ObservableObject {
     func selectTool(_ tool: AnnotationTool) {
         if selectedTool == tool && isToolSelectionActive {
             isToolSelectionActive = false
+            if tool == .text {
+                commitTextAnnotationEditing()
+                clearTextAnnotationSelection()
+            }
             applyPDFInteractionMode()
             return
+        }
+
+        if selectedTool == .text || tool != .text {
+            commitTextAnnotationEditing()
         }
 
         selectedTool = tool
@@ -992,6 +1033,9 @@ final class PDFEditorViewModel: ObservableObject {
             lastHighlightStrokeCountByPageIndex[currentPageIndex] = currentOverlayDrawing().strokes.count
             scheduleHighlightSnapshotRefresh(pageIndex: currentPageIndex)
         }
+        if tool != .text {
+            clearTextAnnotationSelection()
+        }
         applyPDFInteractionMode()
     }
 
@@ -1007,6 +1051,8 @@ final class PDFEditorViewModel: ObservableObject {
     func deactivateToolSelection() {
         guard isToolSelectionActive else { return }
         isToolSelectionActive = false
+        commitTextAnnotationEditing()
+        clearTextAnnotationSelection()
         applyPDFInteractionMode()
     }
 
@@ -1137,12 +1183,26 @@ final class PDFEditorViewModel: ObservableObject {
 
     func toggleReadOnlyMode() {
         isReadOnlyMode.toggle()
+        if isReadOnlyMode {
+            commitTextAnnotationEditing()
+            clearTextAnnotationSelection()
+        }
         refreshEditActionAvailability()
         applyPDFInteractionMode()
     }
 
     func toggleCurrentPageBookmark() {
         toggleBookmark(for: currentPageIndex)
+    }
+
+    func lecturePopupAllowed(for urlString: String) -> Bool {
+        guard let key = lecturePopupAllowanceKey(for: urlString) else { return false }
+        return userDefaults.bool(forKey: key)
+    }
+
+    func setLecturePopupAllowed(_ allowed: Bool, for urlString: String) {
+        guard let key = lecturePopupAllowanceKey(for: urlString) else { return }
+        userDefaults.set(allowed, forKey: key)
     }
 
     func toggleBookmark(for pageIndex: Int) {
@@ -1167,6 +1227,24 @@ final class PDFEditorViewModel: ObservableObject {
                 "page_index": .integer(pageIndex)
             ]
         )
+    }
+
+    private func lecturePopupAllowanceKey(for urlString: String) -> String? {
+        guard let url = normalizedLectureURL(from: urlString),
+              let host = url.host?.lowercased(),
+              !host.isEmpty else {
+            return nil
+        }
+        return Self.lecturePopupAllowanceKeyPrefix + host
+    }
+
+    private func normalizedLectureURL(from urlString: String) -> URL? {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+        return URL(string: "https://\(trimmed)")
     }
 
     func isPageBookmarked(_ pageIndex: Int) -> Bool {
@@ -1243,6 +1321,8 @@ final class PDFEditorViewModel: ObservableObject {
             return makeEraserTool()
         case .lasso, .paint:
             return PKLassoTool()
+        case .text:
+            return makePenTool()
         }
     }
 
@@ -1264,6 +1344,10 @@ final class PDFEditorViewModel: ObservableObject {
             "\(selectedColorID)",
             "\(strokeWidth)"
         ].joined(separator: "-")
+    }
+
+    var isTextInsertionModeActive: Bool {
+        isToolSelected(.text) && !isReadOnlyMode
     }
 
     func loadOverlayDrawing(for pageIndex: Int) async -> PKDrawing {
@@ -1401,6 +1485,194 @@ final class PDFEditorViewModel: ObservableObject {
         
         canvas.drawing = newDrawing
         overlayDrawingDidChange(pageIndex: pageIndex, drawing: newDrawing)
+    }
+
+    func loadTextAnnotationsIfNeeded(for pageIndex: Int) async {
+        guard pageIndex >= 0 else { return }
+        guard !loadedTextAnnotationPages.contains(pageIndex) else { return }
+        let annotations = await textAnnotationStore.loadAnnotations(documentURL: documentURL, pageIndex: pageIndex)
+        loadedTextAnnotationPages.insert(pageIndex)
+        textAnnotationsByPageIndex[pageIndex] = annotations.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func textAnnotations(for pageIndex: Int) -> [PDFTextAnnotation] {
+        textAnnotationsByPageIndex[pageIndex] ?? []
+    }
+
+    func createTextAnnotation(pageIndex: Int, pageRect: CGRect) -> PDFTextAnnotation {
+        let pageId = UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex)
+        let annotation = PDFTextAnnotation(
+            pageId: pageId,
+            pageIndex: pageIndex,
+            x: Double(pageRect.minX),
+            y: Double(pageRect.minY),
+            width: Double(pageRect.width),
+            height: Double(pageRect.height),
+            fontSize: 20,
+            fontWeight: "regular",
+            fontStyle: "normal",
+            textColor: "#111111",
+            textAlignment: "left"
+        )
+        upsertTextAnnotation(annotation)
+        selectTextAnnotation(id: annotation.id, pageIndex: pageIndex)
+        beginEditingTextAnnotation(id: annotation.id, pageIndex: pageIndex)
+        return annotation
+    }
+
+    func upsertTextAnnotation(_ annotation: PDFTextAnnotation) {
+        var updated = annotation
+        updated.updatedAt = Date()
+        let pageIndex = updated.pageIndex
+        var pageAnnotations = textAnnotationsByPageIndex[pageIndex] ?? []
+        if let existingIndex = pageAnnotations.firstIndex(where: { $0.id == updated.id }) {
+            pageAnnotations[existingIndex] = updated
+        } else {
+            pageAnnotations.append(updated)
+        }
+        pageAnnotations.sort { $0.createdAt < $1.createdAt }
+        textAnnotationsByPageIndex[pageIndex] = pageAnnotations
+        dirtyTextAnnotationPages.insert(pageIndex)
+        scheduleTextAnnotationSave(pageIndex: pageIndex)
+        objectWillChange.send()
+    }
+
+    func deleteTextAnnotation(id: UUID, pageIndex: Int) {
+        guard var pageAnnotations = textAnnotationsByPageIndex[pageIndex] else { return }
+        guard pageAnnotations.contains(where: { $0.id == id }) else { return }
+        pageAnnotations.removeAll { $0.id == id }
+        textAnnotationsByPageIndex[pageIndex] = pageAnnotations
+        if selectedTextAnnotationID == id {
+            clearTextAnnotationSelection()
+        }
+        if editingTextAnnotationID == id {
+            editingTextAnnotationID = nil
+        }
+        dirtyTextAnnotationPages.insert(pageIndex)
+        scheduleTextAnnotationSave(pageIndex: pageIndex)
+        objectWillChange.send()
+    }
+
+    func duplicateTextAnnotation(id: UUID, pageIndex: Int) {
+        guard let annotation = textAnnotationsByPageIndex[pageIndex]?.first(where: { $0.id == id }) else { return }
+        var copy = annotation
+        copy.id = UUID()
+        copy.pageId = UUID.stableAnalysisPageID(namespace: document.id, pageIndex: pageIndex)
+        copy.x += 16
+        copy.y = max(copy.y - 16, 0)
+        copy.createdAt = Date()
+        copy.updatedAt = copy.createdAt
+        copy.isEditing = false
+        copy.isSelected = false
+        upsertTextAnnotation(copy)
+        selectTextAnnotation(id: copy.id, pageIndex: pageIndex)
+    }
+
+    func selectTextAnnotation(id: UUID?, pageIndex: Int?) {
+        if let editingTextAnnotationID, editingTextAnnotationID != id {
+            commitTextAnnotationEditing()
+        }
+        selectedTextAnnotationID = id
+        selectedTextAnnotationPageIndex = id == nil ? nil : pageIndex
+        objectWillChange.send()
+    }
+
+    func beginEditingTextAnnotation(id: UUID, pageIndex: Int) {
+        if let editingTextAnnotationID, editingTextAnnotationID != id {
+            commitTextAnnotationEditing()
+        }
+        selectedTextAnnotationID = id
+        selectedTextAnnotationPageIndex = pageIndex
+        editingTextAnnotationID = id
+        objectWillChange.send()
+    }
+
+    func commitTextAnnotationEditing(forceDeleteEmpty: Bool = true) {
+        guard let activeEditingTextAnnotationID = editingTextAnnotationID else {
+            return
+        }
+
+        let pageIndex = selectedTextAnnotationPageIndex ?? currentPageIndex
+        guard var pageAnnotations = textAnnotationsByPageIndex[pageIndex],
+              let annotationIndex = pageAnnotations.firstIndex(where: { $0.id == activeEditingTextAnnotationID }) else {
+            editingTextAnnotationID = nil
+            return
+        }
+
+        var annotation = pageAnnotations[annotationIndex]
+        annotation.updatedAt = Date()
+        pageAnnotations[annotationIndex] = annotation
+
+        if forceDeleteEmpty && annotation.isEmpty {
+            pageAnnotations.remove(at: annotationIndex)
+            selectedTextAnnotationID = nil
+            selectedTextAnnotationPageIndex = nil
+        }
+
+        textAnnotationsByPageIndex[pageIndex] = pageAnnotations
+        editingTextAnnotationID = nil
+        dirtyTextAnnotationPages.insert(pageIndex)
+        scheduleTextAnnotationSave(pageIndex: pageIndex)
+        objectWillChange.send()
+    }
+
+    func clearTextAnnotationSelection() {
+        selectedTextAnnotationID = nil
+        selectedTextAnnotationPageIndex = nil
+        if editingTextAnnotationID != nil {
+            editingTextAnnotationID = nil
+        }
+        objectWillChange.send()
+    }
+
+    func saveAllTextAnnotationPagesImmediately() {
+        Task {
+            await saveAllTextAnnotationPagesImmediatelyAndWait()
+        }
+    }
+
+    func saveAllTextAnnotationPagesImmediatelyAndWait() async {
+        textAnnotationSaveTasks.values.forEach { $0.cancel() }
+        textAnnotationSaveTasks.removeAll()
+
+        let dirtyPages = Array(dirtyTextAnnotationPages)
+        for pageIndex in dirtyPages {
+            await persistTextAnnotationPageIfNeeded(pageIndex: pageIndex, force: true)
+        }
+    }
+
+    private func scheduleTextAnnotationSave(pageIndex: Int) {
+        textAnnotationSaveTasks[pageIndex]?.cancel()
+        textAnnotationSaveTasks[pageIndex] = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+            } catch {
+                return
+            }
+            await self?.persistTextAnnotationPageIfNeeded(pageIndex: pageIndex, force: false)
+        }
+    }
+
+    private func saveTextAnnotationPageImmediately(_ pageIndex: Int) {
+        textAnnotationSaveTasks[pageIndex]?.cancel()
+        textAnnotationSaveTasks.removeValue(forKey: pageIndex)
+        Task {
+            await persistTextAnnotationPageIfNeeded(pageIndex: pageIndex, force: true)
+        }
+    }
+
+    private func persistTextAnnotationPageIfNeeded(pageIndex: Int, force: Bool) async {
+        textAnnotationSaveTasks.removeValue(forKey: pageIndex)
+        guard force || dirtyTextAnnotationPages.contains(pageIndex) else { return }
+        let annotations = textAnnotationsByPageIndex[pageIndex] ?? []
+
+        do {
+            try await textAnnotationStore.saveAnnotations(annotations, documentURL: documentURL, pageIndex: pageIndex)
+            dirtyTextAnnotationPages.remove(pageIndex)
+            touchDocumentUpdatedAt()
+        } catch {
+            errorMessage = "텍스트 저장 실패: \(error.localizedDescription)"
+        }
     }
 
     func undo() {
@@ -1767,7 +2039,7 @@ final class PDFEditorViewModel: ObservableObject {
             return .pen
         case .highlighter:
             return .highlighter
-        case .eraser, .lasso, .paint:
+        case .eraser, .lasso, .paint, .text:
             return nil
         }
     }
@@ -1820,7 +2092,7 @@ final class PDFEditorViewModel: ObservableObject {
             return "pen"
         case .highlighter:
             return "highlighter"
-        case .eraser, .lasso, .paint:
+        case .eraser, .lasso, .paint, .text:
             return "pen"
         }
     }

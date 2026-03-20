@@ -10,6 +10,7 @@
 		F90000102F56000100F90002 /* AppGuidePopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000102F56000100F90001 /* AppGuidePopupView.swift */; };
 		F90000202F56000100F90002 /* PharWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000202F56000100F90001 /* PharWebView.swift */; };
 		F90000302F56000100F90002 /* LectureFloatingBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */; };
+		F90000402F56000100F90002 /* LectureFloatingBrowserState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000402F56000100F90001 /* LectureFloatingBrowserState.swift */; };
 		E10000102F70000100E10002 /* HighlightStructureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000102F70000100E10001 /* HighlightStructureModels.swift */; };
 		E10000202F70000100E10002 /* HighlightStructureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000202F70000100E10001 /* HighlightStructureEngine.swift */; };
 		E10000302F70000100E10002 /* HighlightStructureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000302F70000100E10001 /* HighlightStructureStore.swift */; };
@@ -96,6 +97,7 @@
 		F90000102F56000100F90001 /* AppGuidePopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGuidePopupView.swift; sourceTree = "<group>"; };
 		F90000202F56000100F90001 /* PharWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharWebView.swift; sourceTree = "<group>"; };
 		F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureFloatingBrowserView.swift; sourceTree = "<group>"; };
+		F90000402F56000100F90001 /* LectureFloatingBrowserState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectureFloatingBrowserState.swift; sourceTree = "<group>"; };
 		E10000102F70000100E10001 /* HighlightStructureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStructureModels.swift; sourceTree = "<group>"; };
 		E10000202F70000100E10001 /* HighlightStructureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStructureEngine.swift; sourceTree = "<group>"; };
 		E10000302F70000100E10001 /* HighlightStructureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStructureStore.swift; sourceTree = "<group>"; };
@@ -301,6 +303,7 @@
 				F90000102F56000100F90001 /* AppGuidePopupView.swift */,
 				F90000202F56000100F90001 /* PharWebView.swift */,
 				F90000302F56000100F90001 /* LectureFloatingBrowserView.swift */,
+				F90000402F56000100F90001 /* LectureFloatingBrowserState.swift */,
 				AA0000252F56000100AA0001 /* AnalysisInsightsView.swift */,
 				AA0000272F56000100AA0001 /* AnalysisHistoryView.swift */,
 				AA0000382F56000100AA0001 /* CatalogImportPicker.swift */,
@@ -486,6 +489,7 @@
 				F90000102F56000100F90002 /* AppGuidePopupView.swift in Sources */,
 				F90000202F56000100F90002 /* PharWebView.swift in Sources */,
 				F90000302F56000100F90002 /* LectureFloatingBrowserView.swift in Sources */,
+				F90000402F56000100F90002 /* LectureFloatingBrowserState.swift in Sources */,
 
 				AA0000062F56000100AA0001 /* Note+CoreDataClass.swift in Sources */,
 				AA0000012F56000100AA0001 /* PersistenceController.swift in Sources */,

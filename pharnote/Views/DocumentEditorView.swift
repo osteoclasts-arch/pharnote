@@ -1326,9 +1326,75 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
     var y: Double
     var width: Double
     var height: Double
+    var rotationDegrees: Double
+    var cropX: Double?
+    var cropY: Double?
+    var cropWidth: Double?
+    var cropHeight: Double?
+
+    init(
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        rotationDegrees: Double = 0,
+        cropX: Double? = nil,
+        cropY: Double? = nil,
+        cropWidth: Double? = nil,
+        cropHeight: Double? = nil
+    ) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.rotationDegrees = rotationDegrees
+        self.cropX = cropX
+        self.cropY = cropY
+        self.cropWidth = cropWidth
+        self.cropHeight = cropHeight
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case x, y, width, height, rotationDegrees, cropX, cropY, cropWidth, cropHeight
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        width = try container.decode(Double.self, forKey: .width)
+        height = try container.decode(Double.self, forKey: .height)
+        rotationDegrees = try container.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0
+        cropX = try container.decodeIfPresent(Double.self, forKey: .cropX)
+        cropY = try container.decodeIfPresent(Double.self, forKey: .cropY)
+        cropWidth = try container.decodeIfPresent(Double.self, forKey: .cropWidth)
+        cropHeight = try container.decodeIfPresent(Double.self, forKey: .cropHeight)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(x, forKey: .x)
+        try container.encode(y, forKey: .y)
+        try container.encode(width, forKey: .width)
+        try container.encode(height, forKey: .height)
+        try container.encode(rotationDegrees, forKey: .rotationDegrees)
+        try container.encodeIfPresent(cropX, forKey: .cropX)
+        try container.encodeIfPresent(cropY, forKey: .cropY)
+        try container.encodeIfPresent(cropWidth, forKey: .cropWidth)
+        try container.encodeIfPresent(cropHeight, forKey: .cropHeight)
+    }
 
     var normalizedRect: CGRect {
         CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    var rotationRadians: CGFloat {
+        CGFloat(rotationDegrees * .pi / 180)
+    }
+
+    var cropRect: CGRect? {
+        guard let cropX, let cropY, let cropWidth, let cropHeight else { return nil }
+        return CGRect(x: cropX, y: cropY, width: cropWidth, height: cropHeight)
     }
 
     func clamped(minDimension: CGFloat = 0.12, maxDimension: CGFloat = 0.92) -> DocumentWorkspaceAttachmentPlacement {
@@ -1341,7 +1407,12 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
             x: Double(clampedX),
             y: Double(clampedY),
             width: Double(clampedWidth),
-            height: Double(clampedHeight)
+            height: Double(clampedHeight),
+            rotationDegrees: rotationDegrees,
+            cropX: cropX,
+            cropY: cropY,
+            cropWidth: cropWidth,
+            cropHeight: cropHeight
         )
     }
 
@@ -1356,7 +1427,12 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
             x: Double(currentCenterX - scaledWidth / 2),
             y: Double(currentCenterY - scaledHeight / 2),
             width: Double(scaledWidth),
-            height: Double(scaledHeight)
+            height: Double(scaledHeight),
+            rotationDegrees: rotationDegrees,
+            cropX: cropX,
+            cropY: cropY,
+            cropWidth: cropWidth,
+            cropHeight: cropHeight
         ).clamped()
     }
 
@@ -1400,30 +1476,64 @@ struct DocumentWorkspaceAttachmentPlacement: Codable, Hashable {
             x: Double(originalCenterX - fittedSize.width / 2),
             y: Double(originalCenterY - fittedSize.height / 2),
             width: Double(fittedSize.width),
-            height: Double(fittedSize.height)
+            height: Double(fittedSize.height),
+            rotationDegrees: rotationDegrees,
+            cropX: cropX,
+            cropY: cropY,
+            cropWidth: cropWidth,
+            cropHeight: cropHeight
+        ).clamped()
+    }
+
+    func rotated(by deltaDegrees: Double) -> DocumentWorkspaceAttachmentPlacement {
+        DocumentWorkspaceAttachmentPlacement(
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            rotationDegrees: rotationDegrees + deltaDegrees,
+            cropX: cropX,
+            cropY: cropY,
+            cropWidth: cropWidth,
+            cropHeight: cropHeight
+        ).clamped()
+    }
+
+    func withCropRect(_ cropRect: CGRect?) -> DocumentWorkspaceAttachmentPlacement {
+        DocumentWorkspaceAttachmentPlacement(
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            rotationDegrees: rotationDegrees,
+            cropX: cropRect.map { Double($0.origin.x) },
+            cropY: cropRect.map { Double($0.origin.y) },
+            cropWidth: cropRect.map { Double($0.size.width) },
+            cropHeight: cropRect.map { Double($0.size.height) }
         ).clamped()
     }
 
     static func defaultPlacement(for imageSize: CGSize) -> DocumentWorkspaceAttachmentPlacement {
         guard imageSize.width > 0, imageSize.height > 0 else {
             return DocumentWorkspaceAttachmentPlacement(
-                x: 0.27,
-                y: 0.16,
-                width: 0.46,
-                height: 0.28
+                x: 0.2,
+                y: 0.2,
+                width: 0.6,
+                height: 0.6
             )
         }
 
-        let maxBox = CGSize(width: 0.46, height: 0.32)
+        let maxBox = CGSize(width: 0.6, height: 0.6)
         let fittedSize = AVMakeRect(aspectRatio: imageSize, insideRect: CGRect(origin: .zero, size: maxBox)).size
         let width = max(0.18, fittedSize.width)
         let height = max(0.14, fittedSize.height)
 
         return DocumentWorkspaceAttachmentPlacement(
             x: Double((1 - width) / 2),
-            y: 0.16,
+            y: Double((1 - height) / 2),
             width: Double(width),
-            height: Double(height)
+            height: Double(height),
+            rotationDegrees: 0
         ).clamped()
     }
 }
@@ -1438,6 +1548,63 @@ struct DocumentWorkspaceAttachmentItem: Codable, Hashable, Identifiable, Sendabl
     let createdAt: Date
     var byteCount: Int64
     var placement: DocumentWorkspaceAttachmentPlacement?
+    var zIndex: Int = 0
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, storedFileName, originalFileName, pageKey, pageLabel, createdAt, byteCount, placement, zIndex
+    }
+
+    init(
+        id: UUID,
+        kind: DocumentWorkspaceAttachmentKind,
+        storedFileName: String,
+        originalFileName: String,
+        pageKey: String?,
+        pageLabel: String?,
+        createdAt: Date,
+        byteCount: Int64,
+        placement: DocumentWorkspaceAttachmentPlacement?,
+        zIndex: Int = 0
+    ) {
+        self.id = id
+        self.kind = kind
+        self.storedFileName = storedFileName
+        self.originalFileName = originalFileName
+        self.pageKey = pageKey
+        self.pageLabel = pageLabel
+        self.createdAt = createdAt
+        self.byteCount = byteCount
+        self.placement = placement
+        self.zIndex = zIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(DocumentWorkspaceAttachmentKind.self, forKey: .kind)
+        storedFileName = try container.decode(String.self, forKey: .storedFileName)
+        originalFileName = try container.decode(String.self, forKey: .originalFileName)
+        pageKey = try container.decodeIfPresent(String.self, forKey: .pageKey)
+        pageLabel = try container.decodeIfPresent(String.self, forKey: .pageLabel)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        byteCount = try container.decode(Int64.self, forKey: .byteCount)
+        placement = try container.decodeIfPresent(DocumentWorkspaceAttachmentPlacement.self, forKey: .placement)
+        zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(storedFileName, forKey: .storedFileName)
+        try container.encode(originalFileName, forKey: .originalFileName)
+        try container.encodeIfPresent(pageKey, forKey: .pageKey)
+        try container.encodeIfPresent(pageLabel, forKey: .pageLabel)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(byteCount, forKey: .byteCount)
+        try container.encodeIfPresent(placement, forKey: .placement)
+        try container.encode(zIndex, forKey: .zIndex)
+    }
 
     var displaySize: String {
         ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
@@ -1703,6 +1870,7 @@ final class DocumentWorkspaceController: ObservableObject {
                 )
                 let byteCount = try await store.saveAttachmentData(data, to: destinationURL)
                 let imageSize = UIImage(data: data)?.size ?? CGSize(width: 1600, height: 1200)
+                let nextZIndex = (attachments.map(\.zIndex).max() ?? 0) + 1
                 let attachment = DocumentWorkspaceAttachmentItem(
                     id: attachmentID,
                     kind: .image,
@@ -1712,7 +1880,8 @@ final class DocumentWorkspaceController: ObservableObject {
                     pageLabel: anchor.pageLabel,
                     createdAt: Date(),
                     byteCount: byteCount,
-                    placement: preferredPlacement ?? DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
+                    placement: preferredPlacement ?? DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize),
+                    zIndex: nextZIndex
                 )
                 attachments.insert(attachment, at: 0)
                 selectedAttachmentID = attachment.id
@@ -1883,7 +2052,55 @@ final class DocumentWorkspaceController: ObservableObject {
     func imageAttachments(for pageKey: String?) -> [DocumentWorkspaceAttachmentItem] {
         filteredAttachments(pageKey: pageKey)
             .filter { $0.kind == .image }
-            .sorted { $0.createdAt < $1.createdAt }
+            .sorted {
+                if $0.zIndex == $1.zIndex {
+                    return $0.createdAt < $1.createdAt
+                }
+                return $0.zIndex < $1.zIndex
+            }
+    }
+
+    func duplicateAttachment(_ attachmentID: UUID) {
+        guard let attachment = attachment(withID: attachmentID), attachment.kind == .image else { return }
+        let sourceURL = attachmentFileURL(for: attachment)
+        guard let data = try? Data(contentsOf: sourceURL) else { return }
+        let fileName = "\(URL(fileURLWithPath: attachment.originalFileName).deletingPathExtension().lastPathComponent)-copy.\(sourceURL.pathExtension.isEmpty ? "png" : sourceURL.pathExtension)"
+        let placement = attachment.placement?.clamped()
+        importImageData(data, suggestedFileName: fileName, preferredPlacement: placement)
+    }
+
+    func rotateAttachment(_ attachmentID: UUID, by deltaDegrees: Double = 90) {
+        guard let index = attachments.firstIndex(where: { $0.id == attachmentID }),
+              let placement = attachments[index].placement else { return }
+        attachments[index].placement = placement.rotated(by: deltaDegrees)
+        persistWorkspaceState()
+    }
+
+    func bringAttachmentToFront(_ attachmentID: UUID) {
+        guard let index = attachments.firstIndex(where: { $0.id == attachmentID }) else { return }
+        let nextZIndex = (attachments.map(\.zIndex).max() ?? 0) + 1
+        attachments[index].zIndex = nextZIndex
+        persistWorkspaceState()
+    }
+
+    func sendAttachmentToBack(_ attachmentID: UUID) {
+        guard let index = attachments.firstIndex(where: { $0.id == attachmentID }) else { return }
+        let nextZIndex = (attachments.map(\.zIndex).min() ?? 0) - 1
+        attachments[index].zIndex = nextZIndex
+        persistWorkspaceState()
+    }
+
+    func adjustAttachmentCrop(
+        id attachmentID: UUID,
+        cropRect: CGRect?,
+        persist: Bool
+    ) {
+        guard let index = attachments.firstIndex(where: { $0.id == attachmentID }),
+              let placement = attachments[index].placement else { return }
+        attachments[index].placement = placement.withCropRect(cropRect)
+        if persist {
+            persistWorkspaceState()
+        }
     }
 
     func updateAttachmentPlacement(
@@ -1943,6 +2160,7 @@ final class DocumentWorkspaceController: ObservableObject {
                 attachments[refreshedIndex].placement = preferredPlacement
                     ?? attachments[refreshedIndex].placement?.fitted(to: editedImageSize, scale: 1)
                     ?? DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: editedImageSize)
+                attachments[refreshedIndex].zIndex = max(attachments.map(\.zIndex).max() ?? 0, attachments[refreshedIndex].zIndex)
                 selectedAttachmentID = attachmentID
                 persistWorkspaceState()
             } catch {
@@ -2042,65 +2260,6 @@ final class DocumentWorkspaceController: ObservableObject {
             let imageSize = UIImage(contentsOfFile: fileURL.path)?.size ?? CGSize(width: 1600, height: 1200)
             updatedAttachment.placement = DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
             return updatedAttachment
-        }
-    }
-}
-
-struct WritingTextComposerSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var text: String = ""
-
-    let pageLabel: String?
-    let onSave: (String) -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: PharTheme.Spacing.medium) {
-                if let pageLabel, !pageLabel.isEmpty {
-                    PharTagPill(
-                        text: pageLabel,
-                        tint: PharTheme.ColorToken.accentBlue.opacity(0.16),
-                        foreground: PharTheme.ColorToken.accentBlue
-                    )
-                }
-
-                TextEditor(text: $text)
-                    .font(PharTypography.body)
-                    .padding(PharTheme.Spacing.small)
-                    .frame(minHeight: 220)
-                    .background(
-                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                            .fill(PharTheme.ColorToken.surfaceSecondary.opacity(0.72))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: PharTheme.CornerRadius.medium, style: .continuous)
-                            .stroke(PharTheme.ColorToken.border.opacity(0.35), lineWidth: 1)
-                    )
-
-                Text("텍스트 메모는 현재 페이지에 연결되어 저장됩니다.")
-                    .font(PharTypography.caption)
-                    .foregroundStyle(PharTheme.ColorToken.subtleText)
-
-                Spacer(minLength: 0)
-            }
-            .padding(PharTheme.Spacing.medium)
-            .navigationTitle("텍스트 추가")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") {
-                        onSave(text)
-                        dismiss()
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
         }
     }
 }
@@ -2495,6 +2654,8 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
     private var imageViews: [UUID: DocumentWorkspacePlacedImageView] = [:]
     private var moveStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
     private var resizeStartPlacements: [UUID: DocumentWorkspaceAttachmentPlacement] = [:]
+    private var activeCropAttachmentID: UUID?
+    private let selectionToolbar = DocumentWorkspaceSelectionToolbarView()
 
     init(
         controller: DocumentWorkspaceController,
@@ -2506,7 +2667,13 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         backgroundColor = .clear
         isOpaque = false
         clipsToBounds = true
+        addSubview(selectionToolbar)
         subscribeToController()
+        configureSelectionToolbar()
+
+        let backgroundTap = UITapGestureRecognizer(target: self, action: #selector(handleCanvasBackgroundTap(_:)))
+        backgroundTap.cancelsTouchesInView = false
+        addGestureRecognizer(backgroundTap)
     }
 
     @available(*, unavailable)
@@ -2519,18 +2686,24 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         self.allowsInteraction = allowsInteraction
         syncImageViews()
         updateSelectionState()
+        updateToolbarVisibility()
         setNeedsLayout()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         layoutImageViews()
+        layoutSelectionToolbar()
+        layoutCropOverlays()
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         guard allowsInteraction else { return false }
+        if activeCropAttachmentID != nil {
+            return true
+        }
 
-        for imageView in subviews.reversed() {
+        for imageView in imageViews.values {
             let convertedPoint = imageView.convert(point, from: self)
             if imageView.point(inside: convertedPoint, with: event) {
                 return true
@@ -2562,6 +2735,9 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
             imageViews.removeValue(forKey: id)
             moveStartPlacements.removeValue(forKey: id)
             resizeStartPlacements.removeValue(forKey: id)
+            if activeCropAttachmentID == id {
+                activeCropAttachmentID = nil
+            }
         }
 
         for attachment in visibleAttachments {
@@ -2577,7 +2753,8 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         for (id, imageView) in imageViews {
             imageView.updateSelection(
                 isSelected: controller.selectedAttachmentID == id,
-                allowsInteraction: allowsInteraction
+                allowsInteraction: allowsInteraction,
+                isCropping: activeCropAttachmentID == id
             )
         }
     }
@@ -2591,9 +2768,11 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
 
             let placement = attachment.placement ?? defaultPlacement(for: attachment)
             imageView.frame = frame(for: placement)
+            imageView.apply(attachment: attachment)
             imageView.updateSelection(
                 isSelected: controller.selectedAttachmentID == attachment.id,
-                allowsInteraction: allowsInteraction
+                allowsInteraction: allowsInteraction,
+                isCropping: activeCropAttachmentID == attachment.id
             )
 
             if controller.selectedAttachmentID == attachment.id {
@@ -2614,11 +2793,17 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         panGesture.maximumNumberOfTouches = 1
         imageView.addGestureRecognizer(panGesture)
 
-        let resizePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleResizePan(_:)))
-        resizePanGesture.maximumNumberOfTouches = 1
-        imageView.resizeHandle.addGestureRecognizer(resizePanGesture)
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        imageView.addGestureRecognizer(pinchGesture)
 
-        imageView.editButton.addTarget(self, action: #selector(handleEditButtonTap(_:)), for: .touchUpInside)
+        let rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        imageView.addGestureRecognizer(rotationGesture)
+
+        for handle in imageView.resizeHandles {
+            let resizePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleResizePan(_:)))
+            resizePanGesture.maximumNumberOfTouches = 1
+            handle.addGestureRecognizer(resizePanGesture)
+        }
 
         return imageView
     }
@@ -2628,6 +2813,9 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         guard allowsInteraction,
               let imageView = gesture.view as? DocumentWorkspacePlacedImageView else { return }
         controller.selectAttachment(imageView.attachmentID)
+        if activeCropAttachmentID == imageView.attachmentID {
+            finishCropEditing(confirm: true)
+        }
     }
 
     @objc
@@ -2635,6 +2823,7 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         guard allowsInteraction,
               let imageView = gesture.view as? DocumentWorkspacePlacedImageView,
               let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+        guard activeCropAttachmentID == nil else { return }
 
         let attachmentID = imageView.attachmentID
         let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
@@ -2664,15 +2853,14 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
     }
 
     @objc
-    private func handleResizePan(_ gesture: UIPanGestureRecognizer) {
+    private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         guard allowsInteraction,
-              let handleView = gesture.view,
-              let imageView = handleView.superview as? DocumentWorkspacePlacedImageView,
+              let imageView = gesture.view as? DocumentWorkspacePlacedImageView,
               let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+        guard activeCropAttachmentID == nil else { return }
 
         let attachmentID = imageView.attachmentID
         let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
-        let aspectRatio = max(CGFloat(startingPlacement.width / max(startingPlacement.height, 0.0001)), 0.2)
 
         switch gesture.state {
         case .began:
@@ -2680,23 +2868,11 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
             resizeStartPlacements[attachmentID] = startingPlacement
         case .changed:
             guard let initialPlacement = resizeStartPlacements[attachmentID] else { return }
-            let translation = gesture.translation(in: self)
-            let scaleX = 1 + (translation.x / max(bounds.width, 1))
-            let scaleY = 1 + (translation.y / max(bounds.height, 1))
-            let scale = max(0.45, max(scaleX, scaleY))
-
-            var proposedWidth = CGFloat(initialPlacement.width) * scale
-            proposedWidth = min(max(proposedWidth, 0.12), 1 - CGFloat(initialPlacement.x))
-            let proposedHeight = min(max(proposedWidth / aspectRatio, 0.12), 1 - CGFloat(initialPlacement.y))
-            proposedWidth = min(max(proposedHeight * aspectRatio, 0.12), 1 - CGFloat(initialPlacement.x))
-
-            let updatedPlacement = DocumentWorkspaceAttachmentPlacement(
-                x: initialPlacement.x,
-                y: initialPlacement.y,
-                width: Double(proposedWidth),
-                height: Double(proposedHeight)
-            ).clamped()
-            controller.updateAttachmentPlacement(id: attachmentID, placement: updatedPlacement, persist: false)
+            controller.updateAttachmentPlacement(
+                id: attachmentID,
+                placement: initialPlacement.scaled(by: gesture.scale),
+                persist: false
+            )
         case .ended, .cancelled, .failed:
             resizeStartPlacements.removeValue(forKey: attachmentID)
             if let finalPlacement = controller.attachment(withID: attachmentID)?.placement {
@@ -2708,11 +2884,70 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
     }
 
     @objc
-    private func handleEditButtonTap(_ sender: UIButton) {
+    private func handleRotation(_ gesture: UIRotationGestureRecognizer) {
         guard allowsInteraction,
-              let imageView = sender.superview as? DocumentWorkspacePlacedImageView else { return }
-        controller.selectAttachment(imageView.attachmentID)
-        onEditAttachment?(imageView.attachmentID)
+              let imageView = gesture.view as? DocumentWorkspacePlacedImageView,
+              let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+        guard activeCropAttachmentID == nil else { return }
+
+        let attachmentID = imageView.attachmentID
+        let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
+
+        switch gesture.state {
+        case .began:
+            controller.selectAttachment(attachmentID)
+            resizeStartPlacements[attachmentID] = startingPlacement
+        case .changed:
+            guard let initialPlacement = resizeStartPlacements[attachmentID] else { return }
+            let deltaDegrees = Double(gesture.rotation * 180 / .pi)
+            controller.updateAttachmentPlacement(
+                id: attachmentID,
+                placement: initialPlacement.rotated(by: deltaDegrees),
+                persist: false
+            )
+        case .ended, .cancelled, .failed:
+            resizeStartPlacements.removeValue(forKey: attachmentID)
+            if let finalPlacement = controller.attachment(withID: attachmentID)?.placement {
+                controller.updateAttachmentPlacement(id: attachmentID, placement: finalPlacement, persist: true)
+            }
+        default:
+            break
+        }
+    }
+
+    @objc
+    private func handleResizePan(_ gesture: UIPanGestureRecognizer) {
+        guard allowsInteraction,
+              let handleView = gesture.view,
+              let imageView = handleView.superview as? DocumentWorkspacePlacedImageView,
+              let attachment = controller.attachment(withID: imageView.attachmentID) else { return }
+        guard activeCropAttachmentID == nil else { return }
+
+        let attachmentID = imageView.attachmentID
+        let startingPlacement = attachment.placement ?? defaultPlacement(for: attachment)
+        let anchorCorner = imageView.corner(for: handleView).opposite
+
+        switch gesture.state {
+        case .began:
+            controller.selectAttachment(attachmentID)
+            resizeStartPlacements[attachmentID] = startingPlacement
+        case .changed:
+            guard let initialPlacement = resizeStartPlacements[attachmentID] else { return }
+            let translation = gesture.translation(in: self)
+            let updatedPlacement = initialPlacement.resizing(
+                with: translation,
+                in: bounds.size,
+                anchoredAt: anchorCorner
+            )
+            controller.updateAttachmentPlacement(id: attachmentID, placement: updatedPlacement, persist: false)
+        case .ended, .cancelled, .failed:
+            resizeStartPlacements.removeValue(forKey: attachmentID)
+            if let finalPlacement = controller.attachment(withID: attachmentID)?.placement {
+                controller.updateAttachmentPlacement(id: attachmentID, placement: finalPlacement, persist: true)
+            }
+        default:
+            break
+        }
     }
 
     private func frame(for placement: DocumentWorkspaceAttachmentPlacement) -> CGRect {
@@ -2729,19 +2964,169 @@ final class DocumentWorkspaceAttachmentCanvasUIView: UIView {
         let imageSize = UIImage(contentsOfFile: fileURL.path)?.size ?? CGSize(width: 1600, height: 1200)
         return DocumentWorkspaceAttachmentPlacement.defaultPlacement(for: imageSize)
     }
+
+    private func configureSelectionToolbar() {
+        selectionToolbar.onCrop = { [weak self] in
+            self?.toggleCropMode()
+        }
+        selectionToolbar.onRotate = { [weak self] in
+            self?.rotateSelectedAttachment()
+        }
+        selectionToolbar.onDuplicate = { [weak self] in
+            self?.duplicateSelectedAttachment()
+        }
+        selectionToolbar.onDelete = { [weak self] in
+            self?.deleteSelectedAttachment()
+        }
+        selectionToolbar.onToggleLayerActions = { [weak self] in
+            self?.toggleLayerActions()
+        }
+        selectionToolbar.onBringForward = { [weak self] in
+            self?.bringSelectedAttachmentToFront()
+        }
+        selectionToolbar.onSendBackward = { [weak self] in
+            self?.sendSelectedAttachmentToBack()
+        }
+        selectionToolbar.isHidden = true
+    }
+
+    private func updateToolbarVisibility() {
+        if let activeCropAttachmentID,
+           controller.selectedAttachmentID != activeCropAttachmentID {
+            finishCropEditing(confirm: true)
+        }
+
+        selectionToolbar.isHidden = controller.selectedAttachmentID == nil
+    }
+
+    private func layoutSelectionToolbar() {
+        guard let selectedID = controller.selectedAttachmentID,
+              let selectedView = imageViews[selectedID] else {
+            selectionToolbar.isHidden = true
+            return
+        }
+
+        let selectedFrame = selectedView.convert(selectedView.bounds, to: self).integral
+        let targetWidth = min(max(selectionToolbar.sizeThatFits(.zero).width, 248), bounds.width - 24)
+        let targetHeight = selectionToolbar.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude)).height
+        let x = min(max(12, selectedFrame.midX - targetWidth / 2), max(12, bounds.width - targetWidth - 12))
+        let y = min(max(12, selectedFrame.maxY + 12), max(12, bounds.height - targetHeight - 12))
+        selectionToolbar.frame = CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
+        selectionToolbar.isHidden = false
+        bringSubviewToFront(selectionToolbar)
+    }
+
+    private func layoutCropOverlays() {
+        guard let activeCropAttachmentID,
+              let imageView = imageViews[activeCropAttachmentID] else { return }
+        imageView.layoutCropOverlay()
+        bringSubviewToFront(selectionToolbar)
+    }
+
+    private func toggleCropMode() {
+        guard let selectedID = controller.selectedAttachmentID,
+              let imageView = imageViews[selectedID] else { return }
+
+        if activeCropAttachmentID == selectedID {
+            finishCropEditing(confirm: true)
+            return
+        }
+
+        activeCropAttachmentID = selectedID
+        imageView.beginCropEditing()
+        updateSelectionState()
+        setNeedsLayout()
+    }
+
+    private func finishCropEditing(confirm: Bool) {
+        guard let activeCropAttachmentID,
+              let imageView = imageViews[activeCropAttachmentID] else { return }
+
+        let cropRect = confirm ? imageView.currentCropRect() : imageView.initialCropRect
+        controller.adjustAttachmentCrop(id: activeCropAttachmentID, cropRect: cropRect, persist: confirm)
+        imageView.endCropEditing()
+        self.activeCropAttachmentID = nil
+        updateSelectionState()
+        setNeedsLayout()
+    }
+
+    private func duplicateSelectedAttachment() {
+        guard let selectedID = controller.selectedAttachmentID else { return }
+        controller.duplicateAttachment(selectedID)
+    }
+
+    private func rotateSelectedAttachment() {
+        guard let selectedID = controller.selectedAttachmentID else { return }
+        controller.rotateAttachment(selectedID)
+    }
+
+    private func deleteSelectedAttachment() {
+        guard let selectedID = controller.selectedAttachmentID,
+              let attachment = controller.attachment(withID: selectedID) else { return }
+        controller.deleteAttachment(attachment)
+        activeCropAttachmentID = nil
+        updateSelectionState()
+        setNeedsLayout()
+    }
+
+    private func toggleLayerActions() {
+        selectionToolbar.toggleLayerActions()
+        setNeedsLayout()
+    }
+
+    private func bringSelectedAttachmentToFront() {
+        guard let selectedID = controller.selectedAttachmentID else { return }
+        controller.bringAttachmentToFront(selectedID)
+        selectionToolbar.hideLayerActions()
+        setNeedsLayout()
+    }
+
+    private func sendSelectedAttachmentToBack() {
+        guard let selectedID = controller.selectedAttachmentID else { return }
+        controller.sendAttachmentToBack(selectedID)
+        selectionToolbar.hideLayerActions()
+        setNeedsLayout()
+    }
+
+    @objc private func handleCanvasBackgroundTap(_ gesture: UITapGestureRecognizer) {
+        guard activeCropAttachmentID != nil else { return }
+        if gesture.state == .ended {
+            finishCropEditing(confirm: true)
+        }
+    }
 }
 
 private final class DocumentWorkspacePlacedImageView: UIView {
     let attachmentID: UUID
-    let resizeHandle = UIView()
-    let editButton = UIButton(type: .system)
+    enum Corner {
+        case topLeft, topRight, bottomLeft, bottomRight
+
+        var opposite: Corner {
+            switch self {
+            case .topLeft: return .bottomRight
+            case .topRight: return .bottomLeft
+            case .bottomLeft: return .topRight
+            case .bottomRight: return .topLeft
+            }
+        }
+    }
 
     private let imageView = UIImageView()
     private let selectionBorder = CAShapeLayer()
+    private let cropOverlay = DocumentWorkspaceCropOverlayView()
+    let resizeHandles: [UIView]
     private let accentColor = UIColor(red: 1.0, green: 0.439, blue: 0.0, alpha: 1.0)
+    private let originalImage: UIImage
+    private var renderedImage: UIImage
+    private(set) var initialCropRect: CGRect?
+    private var currentPlacement: DocumentWorkspaceAttachmentPlacement?
+    private var isCropping = false
 
     init(attachmentID: UUID, image: UIImage) {
         self.attachmentID = attachmentID
+        self.originalImage = image
+        self.renderedImage = image
+        self.resizeHandles = [UIView(), UIView(), UIView(), UIView()]
         super.init(frame: .zero)
 
         backgroundColor = .clear
@@ -2753,41 +3138,30 @@ private final class DocumentWorkspacePlacedImageView: UIView {
         imageView.layer.cornerRadius = 12
         imageView.layer.borderWidth = 1
         imageView.layer.borderColor = UIColor.black.withAlphaComponent(0.06).cgColor
-        imageView.layer.shadowColor = UIColor.black.cgColor
-        imageView.layer.shadowOpacity = 0.08
-        imageView.layer.shadowRadius = 14
-        imageView.layer.shadowOffset = CGSize(width: 0, height: 8)
         addSubview(imageView)
 
         selectionBorder.fillColor = UIColor.clear.cgColor
         selectionBorder.strokeColor = accentColor.cgColor
         selectionBorder.lineWidth = 2
-        selectionBorder.lineDashPattern = [8, 6]
         selectionBorder.isHidden = true
         layer.addSublayer(selectionBorder)
 
-        resizeHandle.backgroundColor = accentColor
-        resizeHandle.layer.cornerRadius = 13
-        resizeHandle.layer.borderWidth = 3
-        resizeHandle.layer.borderColor = UIColor.white.cgColor
-        resizeHandle.layer.shadowColor = UIColor.black.cgColor
-        resizeHandle.layer.shadowOpacity = 0.12
-        resizeHandle.layer.shadowRadius = 6
-        resizeHandle.layer.shadowOffset = CGSize(width: 0, height: 3)
-        resizeHandle.isHidden = true
-        resizeHandle.isUserInteractionEnabled = true
-        addSubview(resizeHandle)
+        cropOverlay.isHidden = true
+        imageView.addSubview(cropOverlay)
 
-        var config = UIButton.Configuration.filled()
-        config.title = "자르기"
-        config.baseBackgroundColor = accentColor
-        config.baseForegroundColor = .white
-        config.cornerStyle = .capsule
-        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
-        editButton.configuration = config
-        editButton.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
-        editButton.isHidden = true
-        addSubview(editButton)
+        for handle in resizeHandles {
+            handle.backgroundColor = accentColor
+            handle.layer.cornerRadius = 7
+            handle.layer.borderWidth = 2.5
+            handle.layer.borderColor = UIColor.white.cgColor
+            handle.layer.shadowColor = UIColor.black.cgColor
+            handle.layer.shadowOpacity = 0.12
+            handle.layer.shadowRadius = 6
+            handle.layer.shadowOffset = CGSize(width: 0, height: 3)
+            handle.isHidden = true
+            handle.isUserInteractionEnabled = true
+            addSubview(handle)
+        }
     }
 
     @available(*, unavailable)
@@ -2798,33 +3172,426 @@ private final class DocumentWorkspacePlacedImageView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         imageView.frame = bounds
-        selectionBorder.path = UIBezierPath(
-            roundedRect: bounds.insetBy(dx: 1, dy: 1),
-            cornerRadius: 12
-        ).cgPath
-        editButton.sizeToFit()
-        let editSize = editButton.bounds.size
-        editButton.frame = CGRect(x: 8, y: 8, width: max(editSize.width, 56), height: max(editSize.height, 32))
-        resizeHandle.frame = CGRect(x: bounds.maxX - 26, y: bounds.maxY - 26, width: 26, height: 26)
+        selectionBorder.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerRadius: 14).cgPath
+        layoutResizeHandles()
+        layoutCropOverlay()
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        if !editButton.isHidden && editButton.frame.insetBy(dx: -12, dy: -12).contains(point) {
+        if resizeHandles.contains(where: { !$0.isHidden && $0.frame.insetBy(dx: -12, dy: -12).contains(point) }) {
             return true
         }
-        if !resizeHandle.isHidden {
-            let expandedHandleFrame = resizeHandle.frame.insetBy(dx: -18, dy: -18)
-            if expandedHandleFrame.contains(point) {
-                return true
-            }
+        if !cropOverlay.isHidden {
+            return true
         }
         return bounds.insetBy(dx: -8, dy: -8).contains(point)
     }
 
-    func updateSelection(isSelected: Bool, allowsInteraction: Bool) {
+    func updateSelection(isSelected: Bool, allowsInteraction: Bool, isCropping: Bool) {
+        self.isCropping = isCropping
         selectionBorder.isHidden = !(isSelected && allowsInteraction)
-        resizeHandle.isHidden = !(isSelected && allowsInteraction)
-        editButton.isHidden = !(isSelected && allowsInteraction)
+        resizeHandles.forEach { $0.isHidden = !(isSelected && allowsInteraction && !isCropping) }
+        cropOverlay.isHidden = !isCropping
+        let selected = isSelected && allowsInteraction
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = selected ? 0.16 : 0.08
+        layer.shadowRadius = selected ? 20 : 14
+        layer.shadowOffset = CGSize(width: 0, height: selected ? 10 : 8)
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 14).cgPath
+    }
+
+    func apply(attachment: DocumentWorkspaceAttachmentItem) {
+        guard currentPlacement != attachment.placement else { return }
+        currentPlacement = attachment.placement
+        if let cropRect = attachment.placement?.cropRect,
+           let cropped = originalImage.cropped(normalizedRect: cropRect) {
+            renderedImage = cropped
+        } else {
+            renderedImage = originalImage
+        }
+        imageView.image = renderedImage
+        if isCropping {
+            cropOverlay.setCropRect(attachment.placement?.cropRect ?? CGRect(x: 0.08, y: 0.08, width: 0.84, height: 0.84))
+        }
+        setNeedsLayout()
+    }
+
+    func beginCropEditing() {
+        initialCropRect = currentPlacement?.cropRect
+        cropOverlay.setCropRect(initialCropRect ?? CGRect(x: 0.08, y: 0.08, width: 0.84, height: 0.84))
+        cropOverlay.isHidden = false
+    }
+
+    func endCropEditing() {
+        cropOverlay.isHidden = true
+    }
+
+    func layoutCropOverlay() {
+        guard isCropping else { return }
+        cropOverlay.frame = bounds
+    }
+
+    func currentCropRect() -> CGRect? {
+        guard isCropping else { return currentPlacement?.cropRect }
+        return cropOverlay.cropRect
+    }
+
+    func corner(for handleView: UIView) -> Corner {
+        switch handleView {
+        case resizeHandles[0]: return .topLeft
+        case resizeHandles[1]: return .topRight
+        case resizeHandles[2]: return .bottomLeft
+        default: return .bottomRight
+        }
+    }
+
+    private func layoutResizeHandles() {
+        let size: CGFloat = 14
+        let points: [CGPoint] = [
+            CGPoint(x: bounds.minX, y: bounds.minY),
+            CGPoint(x: bounds.maxX, y: bounds.minY),
+            CGPoint(x: bounds.minX, y: bounds.maxY),
+            CGPoint(x: bounds.maxX, y: bounds.maxY)
+        ]
+        for (index, handle) in resizeHandles.enumerated() {
+            handle.frame = CGRect(
+                x: points[index].x - size / 2,
+                y: points[index].y - size / 2,
+                width: size,
+                height: size
+            )
+        }
+    }
+}
+
+private final class DocumentWorkspaceSelectionToolbarView: UIVisualEffectView {
+    let cropButton = UIButton(type: .system)
+    let rotateButton = UIButton(type: .system)
+    let duplicateButton = UIButton(type: .system)
+    let layerButton = UIButton(type: .system)
+    let deleteButton = UIButton(type: .system)
+    let bringForwardButton = UIButton(type: .system)
+    let sendBackwardButton = UIButton(type: .system)
+
+    var onCrop: (() -> Void)?
+    var onRotate: (() -> Void)?
+    var onDuplicate: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var onToggleLayerActions: (() -> Void)?
+    var onBringForward: (() -> Void)?
+    var onSendBackward: (() -> Void)?
+
+    private let stack = UIStackView()
+    private let layerActionsStack = UIStackView()
+    private let layerActionsContainer = UIView()
+    private var isLayerActionsVisible = false
+
+    override init(effect: UIVisualEffect?) {
+        super.init(effect: UIBlurEffect(style: .systemThinMaterial))
+        layer.cornerRadius = 18
+        layer.cornerCurve = .continuous
+        clipsToBounds = true
+
+        stack.axis = .horizontal
+        stack.spacing = 6
+        stack.alignment = .center
+        stack.distribution = .fillEqually
+        contentView.addSubview(stack)
+
+        layerActionsStack.axis = .horizontal
+        layerActionsStack.spacing = 6
+        layerActionsStack.alignment = .center
+        layerActionsStack.distribution = .fillEqually
+
+        layerActionsContainer.alpha = 0
+        layerActionsContainer.isHidden = true
+        layerActionsContainer.addSubview(layerActionsStack)
+        contentView.addSubview(layerActionsContainer)
+
+        configure(button: cropButton, systemName: "crop")
+        configure(button: rotateButton, systemName: "rotate.right")
+        configure(button: duplicateButton, systemName: "plus.square.on.square")
+        configure(button: layerButton, systemName: "square.on.square")
+        configure(button: deleteButton, systemName: "trash")
+        configure(button: bringForwardButton, systemName: "arrow.up.to.line")
+        configure(button: sendBackwardButton, systemName: "arrow.down.to.line")
+
+        cropButton.addTarget(self, action: #selector(didTapCrop), for: .touchUpInside)
+        rotateButton.addTarget(self, action: #selector(didTapRotate), for: .touchUpInside)
+        duplicateButton.addTarget(self, action: #selector(didTapDuplicate), for: .touchUpInside)
+        layerButton.addTarget(self, action: #selector(didTapLayer), for: .touchUpInside)
+        bringForwardButton.addTarget(self, action: #selector(didTapBringForward), for: .touchUpInside)
+        sendBackwardButton.addTarget(self, action: #selector(didTapSendBackward), for: .touchUpInside)
+        deleteButton.addTarget(self, action: #selector(didTapDelete), for: .touchUpInside)
+
+        [cropButton, rotateButton, duplicateButton, layerButton, deleteButton].forEach {
+            stack.addArrangedSubview($0)
+        }
+
+        [bringForwardButton, sendBackwardButton].forEach {
+            layerActionsStack.addArrangedSubview($0)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let contentBounds = contentView.bounds.insetBy(dx: 8, dy: 8)
+        let topHeight: CGFloat = 40
+        stack.frame = CGRect(x: contentBounds.minX, y: contentBounds.minY, width: contentBounds.width, height: topHeight)
+
+        if isLayerActionsVisible {
+            layerActionsContainer.isHidden = false
+            layerActionsContainer.alpha = 1
+            let layerHeight: CGFloat = 40
+            layerActionsContainer.frame = CGRect(
+                x: contentBounds.minX,
+                y: contentBounds.minY + topHeight + 6,
+                width: contentBounds.width,
+                height: layerHeight
+            )
+            layerActionsStack.frame = layerActionsContainer.bounds
+        } else {
+            layerActionsContainer.isHidden = true
+            layerActionsContainer.alpha = 0
+        }
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        let height: CGFloat = isLayerActionsVisible ? 86 : 48
+        return CGSize(width: 260, height: height)
+    }
+
+    private func configure(button: UIButton, systemName: String) {
+        var config = UIButton.Configuration.filled()
+        config.baseBackgroundColor = UIColor.black.withAlphaComponent(0.72)
+        config.baseForegroundColor = .white
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+        config.image = UIImage(systemName: systemName)
+        button.configuration = config
+    }
+
+    func toggleLayerActions() {
+        isLayerActionsVisible.toggle()
+        layerButton.configuration?.baseBackgroundColor = UIColor.black.withAlphaComponent(isLayerActionsVisible ? 0.88 : 0.72)
+        if isLayerActionsVisible {
+            layerButton.configuration?.image = UIImage(systemName: "square.on.square")
+        } else {
+            layerButton.configuration?.image = UIImage(systemName: "square.on.square")
+        }
+        setNeedsLayout()
+        layoutIfNeeded()
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            self.layerActionsContainer.alpha = self.isLayerActionsVisible ? 1 : 0
+            self.superview?.layoutIfNeeded()
+        } completion: { _ in
+            self.layerActionsContainer.isHidden = !self.isLayerActionsVisible
+        }
+    }
+
+    func hideLayerActions() {
+        guard isLayerActionsVisible else { return }
+        isLayerActionsVisible = false
+        setNeedsLayout()
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            self.layerActionsContainer.alpha = 0
+            self.superview?.layoutIfNeeded()
+        } completion: { _ in
+            self.layerActionsContainer.isHidden = true
+        }
+    }
+
+    @objc private func didTapCrop() { onCrop?() }
+    @objc private func didTapRotate() { onRotate?() }
+    @objc private func didTapDuplicate() { onDuplicate?() }
+    @objc private func didTapLayer() { onToggleLayerActions?() }
+    @objc private func didTapBringForward() { onBringForward?() }
+    @objc private func didTapSendBackward() { onSendBackward?() }
+    @objc private func didTapDelete() { onDelete?() }
+}
+
+private final class DocumentWorkspaceCropOverlayView: UIView {
+    private let dimLayer = CAShapeLayer()
+    private let borderLayer = CAShapeLayer()
+    private let handles: [UIView]
+    private(set) var cropRect: CGRect = CGRect(x: 0.08, y: 0.08, width: 0.84, height: 0.84)
+
+    override init(frame: CGRect) {
+        self.handles = [UIView(), UIView(), UIView(), UIView()]
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isUserInteractionEnabled = true
+
+        dimLayer.fillRule = .evenOdd
+        dimLayer.fillColor = UIColor.black.withAlphaComponent(0.56).cgColor
+        layer.addSublayer(dimLayer)
+
+        borderLayer.strokeColor = UIColor.white.cgColor
+        borderLayer.fillColor = UIColor.clear.cgColor
+        borderLayer.lineWidth = 2
+        borderLayer.shadowColor = UIColor.black.cgColor
+        borderLayer.shadowOpacity = 0.2
+        borderLayer.shadowRadius = 8
+        borderLayer.shadowOffset = CGSize(width: 0, height: 4)
+        layer.addSublayer(borderLayer)
+
+        for handle in handles {
+            handle.backgroundColor = .white
+            handle.layer.cornerRadius = 8
+            handle.layer.borderWidth = 2
+            handle.layer.borderColor = UIColor.black.withAlphaComponent(0.18).cgColor
+            handle.isUserInteractionEnabled = true
+            addSubview(handle)
+        }
+
+        for (index, handle) in handles.enumerated() {
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDrag(_:)))
+            pan.name = "\(index)"
+            handle.addGestureRecognizer(pan)
+        }
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleBackgroundTap))
+        tap.cancelsTouchesInView = false
+        addGestureRecognizer(tap)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let cropFrame = pixelCropFrame()
+        let path = UIBezierPath(rect: bounds)
+        path.append(UIBezierPath(roundedRect: cropFrame, cornerRadius: 16))
+        dimLayer.path = path.cgPath
+        dimLayer.frame = bounds
+        borderLayer.path = UIBezierPath(roundedRect: cropFrame, cornerRadius: 16).cgPath
+
+        let size: CGFloat = 18
+        let positions: [CGPoint] = [
+            cropFrame.origin,
+            CGPoint(x: cropFrame.maxX, y: cropFrame.minY),
+            CGPoint(x: cropFrame.minX, y: cropFrame.maxY),
+            CGPoint(x: cropFrame.maxX, y: cropFrame.maxY)
+        ]
+        for (index, handle) in handles.enumerated() {
+            handle.frame = CGRect(x: positions[index].x - size / 2, y: positions[index].y - size / 2, width: size, height: size)
+        }
+    }
+
+    func setCropRect(_ cropRect: CGRect) {
+        self.cropRect = cropRect.standardized.clampedUnitRect
+        setNeedsLayout()
+    }
+
+    @objc private func handleBackgroundTap() {
+        // The canvas confirms crop mode on any tap outside the active image.
+    }
+
+    @objc private func handleDrag(_ gesture: UIPanGestureRecognizer) {
+        guard let index = Int(gesture.name ?? "") else { return }
+        let translation = gesture.translation(in: self)
+        let dx = translation.x / max(bounds.width, 1)
+        let dy = translation.y / max(bounds.height, 1)
+        var rect = cropRect.standardized.clampedUnitRect
+
+        switch index {
+        case 0:
+            rect.origin.x += dx
+            rect.origin.y += dy
+            rect.size.width -= dx
+            rect.size.height -= dy
+        case 1:
+            rect.origin.y += dy
+            rect.size.width += dx
+            rect.size.height -= dy
+        case 2:
+            rect.origin.x += dx
+            rect.size.width -= dx
+            rect.size.height += dy
+        default:
+            rect.size.width += dx
+            rect.size.height += dy
+        }
+
+        cropRect = rect.clampedUnitRect
+        gesture.setTranslation(.zero, in: self)
+        setNeedsLayout()
+    }
+
+    func cropRectInSourceSpace(imageSize: CGSize) -> CGRect? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+        return cropRect.standardized.clampedUnitRect
+    }
+
+    private func pixelCropFrame() -> CGRect {
+        CGRect(
+            x: bounds.width * cropRect.origin.x,
+            y: bounds.height * cropRect.origin.y,
+            width: bounds.width * cropRect.width,
+            height: bounds.height * cropRect.height
+        ).integral
+    }
+}
+
+private extension CGRect {
+    var clampedUnitRect: CGRect {
+        let x = min(max(origin.x, 0), 1)
+        let y = min(max(origin.y, 0), 1)
+        let width = min(max(size.width, 0.1), 1 - x)
+        let height = min(max(size.height, 0.1), 1 - y)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+private extension DocumentWorkspaceAttachmentPlacement {
+    func resizing(with translation: CGPoint, in canvasSize: CGSize, anchoredAt anchor: DocumentWorkspacePlacedImageView.Corner) -> DocumentWorkspaceAttachmentPlacement {
+        let deltaX = Double(translation.x / max(canvasSize.width, 1))
+        let deltaY = Double(translation.y / max(canvasSize.height, 1))
+        var next = self
+
+        switch anchor {
+        case .topLeft:
+            next.x += deltaX
+            next.y += deltaY
+            next.width -= deltaX
+            next.height -= deltaY
+        case .topRight:
+            next.y += deltaY
+            next.width += deltaX
+            next.height -= deltaY
+        case .bottomLeft:
+            next.x += deltaX
+            next.width -= deltaX
+            next.height += deltaY
+        case .bottomRight:
+            next.width += deltaX
+            next.height += deltaY
+        }
+
+        return next.clamped()
+    }
+}
+
+private extension UIImage {
+    func cropped(normalizedRect: CGRect) -> UIImage? {
+        guard let cgImage else { return nil }
+        let rect = normalizedRect.standardized.clampedUnitRect
+        let pixelRect = CGRect(
+            x: CGFloat(cgImage.width) * rect.origin.x,
+            y: CGFloat(cgImage.height) * rect.origin.y,
+            width: CGFloat(cgImage.width) * rect.width,
+            height: CGFloat(cgImage.height) * rect.height
+        ).integral
+        guard let croppedCGImage = cgImage.cropping(to: pixelRect), !pixelRect.isNull else { return self }
+        return UIImage(cgImage: croppedCGImage, scale: scale, orientation: .up)
     }
 }
 

@@ -17,12 +17,10 @@ struct BlankNoteEditorView: View {
     @State private var pageTransitionFlashOpacity: Double = 0
     @State private var isShowingAnalyzeSheet = false
     @State private var isShowingShareSheet = false
-    @State private var isShowingTextComposer = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingFilePicker = false
     @State private var isShowingPageStyleSheet = false
     @State private var documentBeingRenamed: PharDocument?
-    @State private var imageEditorContext: WritingImageEditorContext?
     @State private var editingStrokePresetIndex: Int?
     @State private var isManagedTransition = false
     @State private var activePaletteTool: BlankNoteEditorViewModel.AnnotationTool? = nil
@@ -137,49 +135,13 @@ struct BlankNoteEditorView: View {
                 }
             )
         }
-        .sheet(isPresented: $isShowingTextComposer) {
-            WritingTextComposerSheet(pageLabel: currentPageLabel) { text in
-                workspaceController.addTextEntry(text)
-                withAnimation(PharTheme.AnimationToken.toolbarVisibility) {
-                    isBottomPanelExpanded = true
-                }
-            }
-        }
         .sheet(isPresented: $isShowingPhotoPicker) {
             WritingPhotoLibraryPicker { data, fileName in
                 isShowingPhotoPicker = false
                 viewModel.deactivateToolSelection()
-                DispatchQueue.main.async {
-                    guard let draft = workspaceController.makeImageDraft(from: data, suggestedFileName: fileName) else { return }
-                    imageEditorContext = WritingImageEditorContext(
-                        draft: draft,
-                        attachmentID: nil,
-                        basePlacement: nil
-                    )
-                }
+                workspaceController.importImageData(data, suggestedFileName: fileName, preferredPlacement: nil)
             } onCancel: {
                 isShowingPhotoPicker = false
-            }
-        }
-        .fullScreenCover(item: $imageEditorContext) { context in
-            WritingImageInsertionEditorSheet(
-                draft: context.draft,
-                basePlacement: context.basePlacement
-            ) { data, fileName, placement in
-                if let attachmentID = context.attachmentID {
-                    workspaceController.replaceImageAttachmentData(
-                        id: attachmentID,
-                        data: data,
-                        suggestedFileName: fileName,
-                        preferredPlacement: placement
-                    )
-                } else {
-                    workspaceController.importImageData(
-                        data,
-                        suggestedFileName: fileName,
-                        preferredPlacement: placement
-                    )
-                }
             }
         }
         .sheet(isPresented: $isShowingFilePicker) {
@@ -516,10 +478,7 @@ struct BlankNoteEditorView: View {
                 controller: workspaceController,
                 pageKey: viewModel.currentPageID?.uuidString.lowercased(),
                 allowsInteraction: !viewModel.isCanvasInputEnabled
-            ) { attachmentID in
-                viewModel.deactivateToolSelection()
-                imageEditorContext = workspaceController.makeImageEditorContext(for: attachmentID)
-            }
+            )
 
             if viewModel.isBindingEvidence {
                 Color.black.opacity(0.4)
@@ -1567,12 +1526,7 @@ struct BlankNoteEditorView: View {
 
     private func handlePasteImageAction() {
         viewModel.deactivateToolSelection()
-        guard let draft = workspaceController.pastedImageDraft() else { return }
-        imageEditorContext = WritingImageEditorContext(
-            draft: draft,
-            attachmentID: nil,
-            basePlacement: nil
-        )
+        workspaceController.importImageFromPasteboard()
     }
 
     private func dockActionButton(
